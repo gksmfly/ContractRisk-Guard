@@ -1,0 +1,80 @@
+# ========================
+# Python
+# ========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 가상환경
+.venv/
+venv/
+env/
+ENV/
+
+# ========================
+# 환경 변수 / 보안
+# ========================
+.env
+.env.local
+.env.*.local
+*.key
+secrets.json
+
+# ========================
+# 데이터
+# ========================
+data/raw/
+data/processed/
+data/crawl.log
+*.json
+!configs/*.json
+
+# ========================
+# 모델 파일
+# ========================
+models/*.pt
+models/*.bin
+models/*.ckpt
+models/*.safetensors
+
+# ========================
+# Jupyter
+# ========================
+.ipynb_checkpoints/
+*.ipynb
+
+# ========================
+# IDE / 에디터
+# ========================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ========================
+# macOS
+# ========================
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ========================
+# 로그
+# ========================
+*.log
+logs/
+
+# ========================
+# Docker
+# ========================
+docker-compose.override.yml

@@ -1,0 +1,31 @@
+# HTTP 요청
+requests>=2.31.0
+
+# 데이터 처리
+pandas>=2.1.0
+numpy>=1.26.0
+
+# 자연어 처리 (계약서 분석용)
+transformers>=4.36.0
+torch>=2.1.0
+sentencepiece>=0.1.99
+konlpy>=0.6.0
+
+# ML 모델
+scikit-learn>=1.3.0
+
+# 환경 변수 관리
+python-dotenv>=1.0.0
+
+# 백엔드 API (FastAPI)
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
+
+# 데이터베이스
+sqlalchemy>=2.0.0
+
+# 개발/테스트
+pytest>=7.4.0
+pytest-asyncio>=0.23.0
+httpx>=0.26.0
