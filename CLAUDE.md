@@ -8,7 +8,77 @@
 
 ## 코드 작성 규칙
 
+### 기본 원칙
+- 코드의 기준(Source of Truth)은 로컬(Mac)이다
+- 서버에서 직접 코드 수정 금지
+- 모든 코드는 Git을 통해서만 서버에 반영한다
+- Jupyter Notebook에서 코드 수정 금지
+- 모든 파일 첫 줄에는 반드시 해당 파일 경로를 주석으로 작성한다
+```python
+# scripts/crawl_law.py
+```
 
+### 언어 및 버전
+- Python 3.11 이상
+- 타입 힌트 필수 (`def func(x: str) -> dict:`)
+- f-string 사용 (`%` 포맷, `.format()` 금지)
+
+### 파일 및 디렉토리 네이밍
+- 파일명: `snake_case` (crawl_law.py, hybrid_retriever.py)
+- 클래스명: `PascalCase` (AnalysisAgent, RiskPolicy)
+- 상수명: `UPPER_SNAKE_CASE` (DOMAIN_LAWS, BASE_URL)
+- 경로 하드코딩 금지, 반드시 `.env` 또는 `Path()` 사용
+
+### 환경변수
+- 모든 민감 정보는 `.env`에서 관리
+- `.env`는 절대 Git에 올리지 않는다
+- 로컬: `.env.local` → `.env`로 복사해서 사용
+- 서버: `.env.server` → `.env`로 복사해서 사용
+
+### 함수 작성
+- 함수 하나는 하나의 역할만
+- 함수명은 동사로 시작 (`fetch_`, `crawl_`, `save_`, `build_`)
+- 모든 함수에 docstring 작성
+```python
+def fetch_law_detail(auth_key: str, mst_id: str) -> dict | None:
+    """
+    MST 번호로 법령 상세 내용을 조회합니다.
+
+    Args:
+        auth_key: API 인증키
+        mst_id: 법령일련번호
+
+    Returns:
+        법령 상세 내용 딕셔너리, 실패 시 None
+    """
+```
+
+### 예외 처리
+- 모든 API 호출은 `try-except`로 감싼다
+- 에러는 `print()` 대신 `logger` 사용
+- 실패해도 전체 프로세스가 멈추지 않도록 처리
+
+### 로깅
+- `print()` 사용 금지, 반드시 `logger` 사용
+- 수집 스크립트는 `logs/` 폴더에 파일 로그 저장
+- 로그 파일은 Git에 올리지 않는다
+
+### 데이터 관리
+- 실제 데이터는 서버에만 저장
+- 로컬에는 샘플 데이터만 사용
+- 대용량 데이터 Git 업로드 금지
+- 데이터 저장 경로는 `.env`로 관리
+
+### Agent 작성 규칙
+- 모든 Agent는 `base_agent.py` 상속
+- Agent 하나는 하나의 역할만
+- 입력/출력 타입 명시 필수
+- 실패 조건 반드시 정의
+
+### Git 규칙
+- `main`: 안정 버전
+- `dev`: 개발용
+- 서버에서는 `pull`만 수행, `commit` 금지
 
 ## 프로젝트 개요
 
@@ -54,28 +124,23 @@ ContractRisk-Guard는 한국 법령 문서를 활용하여 **기업-개인(B2C) 
 
 ## 데이터 수집 사용법
 
+전체 수집 후 파싱·필터링 단계에서 도메인별 분류를 진행합니다.
+
 ```bash
-# 전체 도메인 법령 수집
+# 법령 전체 수집 → data/raw/laws/
 python scripts/crawl_law.py --key <인증키>
 
-# 해지 조항 관련 법령만 수집
-python scripts/crawl_law.py --key <인증키> --domain termination
+# 판례 전체 수집 → data/raw/precedents/
+python scripts/crawl_precedent.py --key <인증키>
 
-# 책임 제한 관련 법령만 수집
-python scripts/crawl_law.py --key <인증키> --domain liability
-
-# 키워드로 법령 검색 (새 법령 탐색용)
-python scripts/crawl_law.py --key <인증키> --query 약관
-
-# 특정 MST 법령 수집
-python scripts/crawl_law.py --key <인증키> --mst 253527
+# 법령해석례 전체 수집 → data/raw/interpretations/
+python scripts/crawl_interpretation.py --key <인증키>
 ```
 
 ## 환경 설정
 
 - Python 버전: **3.11.10** (`.python-version` 참조)
 - 가상환경: `venv/`
-
 ```bash
 source venv/bin/activate
 pip install -r requirements.txt
