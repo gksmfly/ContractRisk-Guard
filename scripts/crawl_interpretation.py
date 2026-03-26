@@ -1,3 +1,4 @@
+# scripts/crawl_interpretation.py
 """
 국가법령정보 API - 법령해석례 전체 수집 스크립트
 

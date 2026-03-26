@@ -1,3 +1,4 @@
+# scripts/crawl_law.py
 """
 국가법령정보 API - 법령 전체 수집 스크립트
 

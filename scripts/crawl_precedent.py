@@ -1,3 +1,4 @@
+# scripts/crawl_precedent.py
 """
 국가법령정보 API - 판례 전체 수집 스크립트
 
