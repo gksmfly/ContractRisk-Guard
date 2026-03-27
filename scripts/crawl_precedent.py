@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-LOG_DIR = Path(os.getenv("LOG_DIR", "data/logs"))
+LOG_DIR = Path(os.environ["LOG_DIR"])
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
@@ -30,9 +30,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-LIST_URL = os.getenv("LAW_LIST_URL", "http://www.law.go.kr/DRF/lawSearch.do")
-DETAIL_URL = os.getenv("LAW_DETAIL_URL", "http://www.law.go.kr/DRF/lawService.do")
-RAW_DIR = Path(os.getenv("RAW_BASE_DIR", "data/raw")) / "precedents"
+LIST_URL = os.environ["LAW_LIST_URL"]
+DETAIL_URL = os.environ["LAW_DETAIL_URL"]
+RAW_DIR = Path(os.environ["PREC_RAW_DIR"])
 
 
 def fetch_list(auth_key: str, page: int = 1, display: int = 100) -> dict:
@@ -159,7 +159,6 @@ def main():
     args = parser.parse_args()
 
     RAW_DIR.mkdir(parents=True, exist_ok=True)
-    Path("data/logs").mkdir(parents=True, exist_ok=True)
     crawl_all(args.key, delay=args.delay)
 
 
