@@ -30,8 +30,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-LIST_URL = "http://www.law.go.kr/DRF/lawSearch.do"
-DETAIL_URL = "http://www.law.go.kr/DRF/lawService.do"
+LIST_URL = os.getenv("LAW_LIST_URL", "http://www.law.go.kr/DRF/lawSearch.do")
+DETAIL_URL = os.getenv("LAW_DETAIL_URL", "http://www.law.go.kr/DRF/lawService.do")
 RAW_DIR = Path(os.getenv("RAW_BASE_DIR", "data/raw")) / "precedents"
 
 
