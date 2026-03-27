@@ -14,6 +14,7 @@ import argparse
 import logging
 from pathlib import Path
 
+Path("data/logs").mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -117,18 +118,24 @@ def crawl_all(auth_key: str, delay: float = 1.0) -> None:
             skipped += 1
             continue
 
-        try:
-            data = fetch_detail(auth_key, mst_id)
-            if data:
-                save_json(data, filepath)
-                logger.info(f"[{i}/{len(mst_list)}] 저장 완료 - MST: {mst_id}")
-                success += 1
-            else:
-                logger.warning(f"[{i}/{len(mst_list)}] 데이터 없음 - MST: {mst_id}")
-                failed += 1
-        except requests.RequestException as e:
-            logger.error(f"[{i}/{len(mst_list)}] 요청 실패 - MST: {mst_id} | {e}")
-            failed += 1
+        for attempt in range(1, 4):
+            try:
+                data = fetch_detail(auth_key, mst_id)
+                if data:
+                    save_json(data, filepath)
+                    logger.info(f"[{i}/{len(mst_list)}] 저장 완료 - MST: {mst_id}")
+                    success += 1
+                else:
+                    logger.warning(f"[{i}/{len(mst_list)}] 데이터 없음 - MST: {mst_id}")
+                    failed += 1
+                break
+            except requests.RequestException as e:
+                if attempt < 3:
+                    logger.warning(f"[{i}/{len(mst_list)}] 재시도 {attempt}/3 - MST: {mst_id} | {e}")
+                    time.sleep(delay * attempt)
+                else:
+                    logger.error(f"[{i}/{len(mst_list)}] 최종 실패 - MST: {mst_id} | {e}")
+                    failed += 1
 
         time.sleep(delay)
 

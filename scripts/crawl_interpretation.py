@@ -14,6 +14,7 @@ import argparse
 import logging
 from pathlib import Path
 
+Path("data/logs").mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -24,8 +25,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-LIST_URL = "http://www.law.go.kr/DRF/expcSearch.do"
-DETAIL_URL = "http://www.law.go.kr/DRF/expcService.do"
+LIST_URL = "http://www.law.go.kr/DRF/lawSearch.do"
+DETAIL_URL = "http://www.law.go.kr/DRF/lawService.do"
 RAW_DIR = Path("data/raw/interpretations")
 
 
@@ -72,7 +73,7 @@ def collect_id_list(auth_key: str, delay: float) -> list[dict]:
         logger.info(f"해석례 목록 조회 - 페이지 {page}")
         result = fetch_list(auth_key, page=page)
 
-        expcs = result.get("ExpcSearch", {}).get("expc", [])
+        expcs = result.get("Expc", {}).get("expc", [])
         if not expcs:
             break
 
@@ -80,15 +81,15 @@ def collect_id_list(auth_key: str, delay: float) -> list[dict]:
             expcs = [expcs]
 
         for expc in expcs:
-            expc_id = expc.get("해석례일련번호") or expc.get("ID")
-            title = expc.get("제목") or ""
+            expc_id = expc.get("법령해석례일련번호") or expc.get("id")
+            title = expc.get("안건명") or ""
             if expc_id:
                 id_list.append({"id": str(expc_id), "title": title})
 
         logger.info(f"페이지 {page} - {len(expcs)}건 (누적: {len(id_list)}건)")
 
-        total_count = int(result.get("ExpcSearch", {}).get("totalCnt", 0))
-        display = int(result.get("ExpcSearch", {}).get("numOfRows", 100))
+        total_count = int(result.get("Expc", {}).get("totalCnt", 0))
+        display = int(result.get("Expc", {}).get("numOfRows", 100))
         if page * display >= total_count:
             break
 
@@ -122,18 +123,24 @@ def crawl_all(auth_key: str, delay: float = 1.0) -> None:
             skipped += 1
             continue
 
-        try:
-            data = fetch_detail(auth_key, expc_id)
-            if data:
-                save_json(data, filepath)
-                logger.info(f"[{i}/{len(id_list)}] 저장 완료 - {item['title']} (ID: {expc_id})")
-                success += 1
-            else:
-                logger.warning(f"[{i}/{len(id_list)}] 데이터 없음 - ID: {expc_id}")
-                failed += 1
-        except requests.RequestException as e:
-            logger.error(f"[{i}/{len(id_list)}] 요청 실패 - ID: {expc_id} | {e}")
-            failed += 1
+        for attempt in range(1, 4):
+            try:
+                data = fetch_detail(auth_key, expc_id)
+                if data:
+                    save_json(data, filepath)
+                    logger.info(f"[{i}/{len(id_list)}] 저장 완료 - {item['title']} (ID: {expc_id})")
+                    success += 1
+                else:
+                    logger.warning(f"[{i}/{len(id_list)}] 데이터 없음 - ID: {expc_id}")
+                    failed += 1
+                break
+            except requests.RequestException as e:
+                if attempt < 3:
+                    logger.warning(f"[{i}/{len(id_list)}] 재시도 {attempt}/3 - ID: {expc_id} | {e}")
+                    time.sleep(delay * attempt)
+                else:
+                    logger.error(f"[{i}/{len(id_list)}] 최종 실패 - ID: {expc_id} | {e}")
+                    failed += 1
 
         time.sleep(delay)
 
