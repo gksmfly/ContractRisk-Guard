@@ -7,27 +7,32 @@
     python scripts/crawl_precedent.py --key <인증키> --delay 1.5
 """
 
+import os
 import requests
 import json
 import time
 import argparse
 import logging
 from pathlib import Path
+from dotenv import load_dotenv
 
-Path("data/logs").mkdir(parents=True, exist_ok=True)
+load_dotenv()
+
+LOG_DIR = Path(os.getenv("LOG_DIR", "data/logs"))
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler("data/logs/crawl_precedent.log", encoding="utf-8"),
+        logging.FileHandler(LOG_DIR / "crawl_precedent.log", encoding="utf-8"),
     ],
 )
 logger = logging.getLogger(__name__)
 
 LIST_URL = "http://www.law.go.kr/DRF/lawSearch.do"
 DETAIL_URL = "http://www.law.go.kr/DRF/lawService.do"
-RAW_DIR = Path("data/raw/precedents")
+RAW_DIR = Path(os.getenv("RAW_BASE_DIR", "data/raw")) / "precedents"
 
 
 def fetch_list(auth_key: str, page: int = 1, display: int = 100) -> dict:
