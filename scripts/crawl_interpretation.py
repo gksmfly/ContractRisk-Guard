@@ -4,7 +4,6 @@
 
 사용법:
     python scripts/crawl_interpretation.py --key <인증키>
-    python scripts/crawl_interpretation.py --key <인증키> --delay 1.5
 """
 
 import os
