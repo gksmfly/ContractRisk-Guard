@@ -69,6 +69,22 @@ HEADERS: dict[str, str] = {
 }
 
 
+def build_case_identifier(case: dict[str, Any], fallback_index: int | None = None) -> str:
+    """사건번호/의결번호/사건명을 조합한 안전한 식별자를 생성합니다."""
+    cell_data = case.get("셀_데이터", {})
+    identifier_parts = [
+        str(cell_data.get("사건번호", "")).strip(),
+        str(cell_data.get("의결번호", "")).strip(),
+        str(case.get("사건명", "")).strip(),
+    ]
+    raw_name = " | ".join(part for part in identifier_parts if part)
+    if not raw_name and fallback_index is not None:
+        raw_name = f"case_{fallback_index}"
+    safe_name = re.sub(r'[\\/:*?"<>|]', "_", raw_name)
+    safe_name = re.sub(r"\s+", "_", safe_name).strip("._")
+    return safe_name[:140] or f"case_{fallback_index or 'unknown'}"
+
+
 def download_pdf(doc_id: str, doc_sn: str, filepath: Path, delay: float = 1.0) -> bool:
     """docId, docSn을 POST로 전송하여 PDF를 다운로드합니다."""
     if filepath.exists():
@@ -87,6 +103,15 @@ def download_pdf(doc_id: str, doc_sn: str, filepath: Path, delay: float = 1.0) -
 
             if len(response.content) < 100:
                 logger.warning(f"응답이 너무 작음 ({len(response.content)} bytes): {filepath.name}")
+                return False
+
+            content_type = response.headers.get("Content-Type", "")
+            if "pdf" not in content_type.lower() and not response.content.startswith(b"%PDF"):
+                logger.warning(
+                    "PDF 응답 검증 실패: %s | Content-Type=%s",
+                    filepath.name,
+                    content_type,
+                )
                 return False
 
             filepath.parent.mkdir(parents=True, exist_ok=True)
@@ -279,7 +304,7 @@ def run_download(cases: list[dict[str, Any]], delay: float) -> dict[str, Path]:
         doc_id = pdf_info.get("docId", "")
         doc_sn = pdf_info.get("docSn", "")
         title = case.get("사건명", f"case_{i}")
-        safe_name = re.sub(r'[\\/:*?"<>|]', "_", title)[:80]
+        safe_name = build_case_identifier(case, fallback_index=i)
 
         if not doc_id:
             logger.warning(f"[{i}/{len(cases)}] PDF 정보 없음: {title}")
@@ -363,9 +388,9 @@ def main() -> None:
         logger.info("PDF 다운로드 건너뜀 (--skip-download)")
         # 기존 다운로드 파일 매핑
         downloaded: dict[str, Path] = {}
-        for case in cases:
+        for i, case in enumerate(cases, 1):
             title = case.get("사건명", "")
-            safe_name = re.sub(r'[\\/:*?"<>|]', "_", title)[:80]
+            safe_name = build_case_identifier(case, fallback_index=i)
             filepath = PDF_DIR / f"{safe_name}.pdf"
             if filepath.exists():
                 downloaded[title] = filepath

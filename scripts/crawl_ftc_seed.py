@@ -63,41 +63,81 @@ def get_total_count(page: Any) -> int:
     return 0
 
 
+def normalize_text(value: str) -> str:
+    """비교를 위해 공백을 정규화합니다."""
+    return re.sub(r"\s+", " ", value).strip()
+
+
 def extract_pdf_info(tr: Any) -> dict[str, str]:
     """행에서 PDF 다운로드용 docId, docSn을 추출합니다."""
-    # fn_downloadFile(this) 링크 아래 hidden input에서 추출
-    for a in tr.query_selector_all("a"):
-        onclick = a.get_attribute("onclick") or ""
-        if "fn_downloadFile" not in onclick:
-            continue
+    for element in tr.query_selector_all("a, button, input[type='hidden']"):
+        onclick = element.get_attribute("onclick") or ""
+        values = re.findall(r"['\"]([^'\"]+)['\"]", onclick)
+        if "fn_downloadFile" in onclick and len(values) >= 2:
+            return {"docId": values[0], "docSn": values[1]}
 
-        hidden_inputs = a.query_selector_all("input[type='hidden']")
-        if len(hidden_inputs) >= 2:
-            doc_id = hidden_inputs[0].get_attribute("value") or ""
-            doc_sn = hidden_inputs[1].get_attribute("value") or ""
-            if doc_id:
-                return {"docId": doc_id, "docSn": doc_sn}
+        data_doc_id = element.get_attribute("data-doc-id") or element.get_attribute("docid") or ""
+        data_doc_sn = element.get_attribute("data-doc-sn") or element.get_attribute("docsn") or ""
+        if data_doc_id:
+            return {"docId": data_doc_id, "docSn": data_doc_sn}
+
+    hidden_values: list[str] = []
+    for hidden in tr.query_selector_all("input[type='hidden']"):
+        value = hidden.get_attribute("value") or ""
+        if value:
+            hidden_values.append(value)
+    if len(hidden_values) >= 2:
+        return {"docId": hidden_values[0], "docSn": hidden_values[1]}
+
+    row_html = tr.inner_html()
+    html_match = re.search(
+        r"fn_downloadFile\(\s*['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]+)['\"]",
+        row_html,
+    )
+    if html_match:
+        return {"docId": html_match.group(1), "docSn": html_match.group(2)}
 
     return {}
 
 
-def parse_rows(page: Any) -> list[dict[str, Any]]:
+def find_result_table(page: Any) -> Any | None:
+    """검색 결과 테이블을 반환합니다."""
+    for selector in [
+        "#contents table",
+        "table.boardList",
+        "table.list",
+        "table",
+    ]:
+        table = page.query_selector(selector)
+        if table and table.query_selector("tbody tr"):
+            return table
+    return None
+
+
+def get_column_names(table: Any) -> list[str]:
+    """결과 테이블의 컬럼명을 추출합니다."""
+    th_elements = table.query_selector_all("thead th, tr:first-child th")
+    return [normalize_text(th.inner_text()) for th in th_elements]
+
+
+def is_target_row(cell_data: dict[str, str], keyword: str | None) -> bool:
+    """불공정약관 조건과 키워드 조건을 만족하는 행인지 확인합니다."""
+    action_type = normalize_text(cell_data.get("대표조치유형", ""))
+    title = normalize_text(cell_data.get("사건명", ""))
+
+    if action_type and "불공정약관" not in action_type:
+        return False
+    if keyword and keyword not in title:
+        return False
+    return True
+
+
+def parse_rows(page: Any, keyword: str | None = None) -> list[dict[str, Any]]:
     """현재 페이지의 테이블 행을 파싱하여 사건 목록을 반환합니다."""
     rows: list[dict[str, Any]] = []
 
-    tr_elements = []
-    for selector in [
-        "table.boardList tbody tr",
-        "#contents table tbody tr",
-        "table.list tbody tr",
-        "table tbody tr",
-    ]:
-        tr_elements = page.query_selector_all(selector)
-        if tr_elements:
-            logger.info(f"테이블 선택자 매칭: '{selector}' → {len(tr_elements)}행")
-            break
-
-    if not tr_elements:
+    table = find_result_table(page)
+    if not table:
         tables = page.query_selector_all("table")
         logger.warning(f"테이블 행을 찾지 못함 (페이지 내 table 수: {len(tables)})")
         for idx, t in enumerate(tables):
@@ -107,9 +147,10 @@ def parse_rows(page: Any) -> list[dict[str, Any]]:
             logger.warning(f"  table[{idx}] class='{cls}' id='{tid}' rows={row_count}")
         return rows
 
-    # 헤더 행에서 컬럼명 추출
-    th_elements = page.query_selector_all("table thead th, table tr:first-child th")
-    col_names = [th.inner_text().strip() for th in th_elements] if th_elements else []
+    tr_elements = table.query_selector_all("tbody tr")
+    logger.info(f"테이블 행 수: {len(tr_elements)}")
+
+    col_names = get_column_names(table)
     if col_names:
         logger.info(f"컬럼명: {col_names}")
 
@@ -124,10 +165,10 @@ def parse_rows(page: Any) -> list[dict[str, Any]]:
 
         # 링크(사건명) 추출
         link = tr.query_selector("a")
-        title = link.inner_text().strip() if link else ""
+        title = normalize_text(link.inner_text()) if link else ""
 
         # 각 td 텍스트
-        td_texts = [td.inner_text().strip() for td in tds]
+        td_texts = [normalize_text(td.inner_text()) for td in tds]
 
         # 컬럼명과 매핑
         cell_data: dict[str, str] = {}
@@ -138,8 +179,20 @@ def parse_rows(page: Any) -> list[dict[str, Any]]:
         else:
             cell_data = {f"col_{i}": v for i, v in enumerate(td_texts)}
 
+        if title:
+            cell_data["사건명"] = title
+        if not is_target_row(cell_data, keyword):
+            continue
+
         # PDF 다운로드 정보 추출 (docId, docSn)
         pdf_info = extract_pdf_info(tr)
+        if not pdf_info:
+            logger.warning(
+                "PDF 정보 추출 실패: 사건명='%s', 사건번호='%s', 의결번호='%s'",
+                title,
+                cell_data.get("사건번호", ""),
+                cell_data.get("의결번호", ""),
+            )
 
         row: dict[str, Any] = {
             "사건명": title,
@@ -151,48 +204,41 @@ def parse_rows(page: Any) -> list[dict[str, Any]]:
     return rows
 
 
-def navigate_to_page(page: Any, page_num: int) -> bool:
-    """목록에서 특정 페이지 번호로 이동합니다."""
-    if page_num <= 1:
-        return True
-    try:
-        paging_link = page.query_selector(
-            f"a[onclick*='goPage({page_num})'], "
-            f"a[onclick*=\"goPage('{page_num}')\"], "
-            f".paging a:text-is('{page_num}')"
-        )
-        if paging_link:
-            paging_link.click()
+def go_next_page(page: Any, current_page: int) -> bool:
+    """현재 페이지에서 다음 페이지로 이동합니다."""
+    next_num = current_page + 1
+
+    # 1) 다음 페이지 번호 링크가 보이면 클릭
+    next_link = page.query_selector(
+        f".paging a:text-is('{next_num}'), "
+        f"a[onclick*='{next_num}']"
+    )
+    if next_link:
+        try:
+            next_link.click()
             page.wait_for_load_state("networkidle", timeout=15000)
             time.sleep(1)
             return True
-    except Exception:
-        pass
-    try:
-        page.evaluate(f"goPage({page_num})")
-        page.wait_for_load_state("networkidle", timeout=15000)
-        time.sleep(1)
-        return True
-    except Exception as e:
-        logger.warning(f"페이지 {page_num} 이동 실패: {e}")
-        return False
+        except Exception:
+            pass
 
+    # 2) 다음 그룹 버튼 클릭 (10페이지 단위 그룹 넘김)
+    for selector in [
+        "a.next", ".paging .next", "a[title='다음']",
+        "a:text-is('다음')", "a:text-is('>')",
+        ".pagination .next a", "a.page-next",
+    ]:
+        next_btn = page.query_selector(selector)
+        if next_btn:
+            try:
+                next_btn.click()
+                page.wait_for_load_state("networkidle", timeout=15000)
+                time.sleep(1)
+                return True
+            except Exception:
+                continue
 
-def has_next_page(page: Any, current_page: int) -> bool:
-    """다음 페이지가 존재하는지 확인합니다."""
-    next_num = current_page + 1
-    next_link = page.query_selector(
-        f"a[onclick*='goPage({next_num})'], "
-        f"a[onclick*=\"goPage('{next_num}')\"], "
-        f".paging a:text-is('{next_num}')"
-    )
-    if next_link:
-        return True
-    next_btn = page.query_selector(
-        "a.next, .paging .next, a[title='다음'], "
-        "a:text-is('다음'), a:text-is('>')"
-    )
-    return next_btn is not None
+    return False
 
 
 def crawl_category(
@@ -213,6 +259,9 @@ def crawl_category(
 
     total = get_total_count(page)
     logger.info(f"{label} 총 {total}건 발견")
+    if total == 0:
+        logger.warning(f"{label} 검색 결과 총 건수가 0건으로 확인되어 수집을 중단합니다.")
+        return []
 
     all_cases: list[dict[str, Any]] = []
     page_num = 1
@@ -220,13 +269,7 @@ def crawl_category(
     while True:
         logger.info(f"{label} - 페이지 {page_num} 크롤링 중")
 
-        if page_num > 1:
-            page.goto(url, wait_until="networkidle", timeout=30000)
-            time.sleep(delay)
-            if not navigate_to_page(page, page_num):
-                break
-
-        rows = parse_rows(page)
+        rows = parse_rows(page, keyword=keyword)
         if not rows:
             logger.info(f"{label} - 페이지 {page_num}에 데이터 없음, 크롤링 종료")
             break
@@ -244,7 +287,9 @@ def crawl_category(
 
         logger.info(f"{label} - 페이지 {page_num} 완료: {len(rows)}건 (누적: {len(all_cases)}건)")
 
-        if not has_next_page(page, page_num):
+        # 다음 페이지로 이동 (순차 진행)
+        if not go_next_page(page, page_num):
+            logger.info(f"{label} - 마지막 페이지: {page_num}")
             break
         page_num += 1
 
@@ -253,20 +298,25 @@ def crawl_category(
 
 
 def deduplicate(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """사건명 기준으로 중복을 제거합니다."""
+    """사건번호/의결번호/사건명을 조합한 키 기준으로 중복을 제거합니다."""
     seen: dict[str, dict[str, Any]] = {}
     for case in cases:
         title = case.get("사건명", "")
-        if not title:
+        cell_data = case.get("셀_데이터", {})
+        case_number = normalize_text(cell_data.get("사건번호", ""))
+        decision_number = normalize_text(cell_data.get("의결번호", ""))
+        dedup_key = " | ".join(filter(None, [case_number, decision_number, title]))
+
+        if not dedup_key:
             continue
-        if title not in seen:
-            seen[title] = case
+        if dedup_key not in seen:
+            seen[dedup_key] = case
         else:
             # 키워드 병합
-            existing_kw = seen[title].get("검색_키워드", "")
+            existing_kw = seen[dedup_key].get("검색_키워드", "")
             new_kw = case.get("검색_키워드", "")
             merged_kw = ", ".join(sorted(filter(None, {existing_kw, new_kw})))
-            seen[title]["검색_키워드"] = merged_kw
+            seen[dedup_key]["검색_키워드"] = merged_kw
     return list(seen.values())
 
 
