@@ -2,8 +2,8 @@
 """
 공정거래위원회 심결례 - 불공정약관 시정조치 사례 목록 수집 스크립트 (Seed 데이터)
 
-1단계: 목록 크롤링 → 사건번호, 의결번호, 사건명, 의결일, PDF URL 수집
-상세 페이지 클릭 없이 목록 테이블 + PDF 링크만 빠르게 수집합니다.
+불공정약관 목록 전체를 순회하며 사건 메타데이터와 PDF 다운로드 식별자를 수집합니다.
+검색 키워드에 의존하지 않고, 대표위반유형=불공정약관으로 필터된 전체 페이지를 모읍니다.
 
 사전 설치:
     pip install playwright
@@ -12,6 +12,7 @@
 사용법:
     python scripts/crawl_ftc_seed.py
     python scripts/crawl_ftc_seed.py --delay 2.0
+    python scripts/crawl_ftc_seed.py --max-pages 220
     python scripts/crawl_ftc_seed.py --no-headless
 """
 
@@ -23,6 +24,7 @@ import time
 import argparse
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 from dotenv import load_dotenv
 
@@ -43,24 +45,12 @@ logger = logging.getLogger(__name__)
 SEED_DIR = Path(os.environ.get("FTC_SEED_DIR", "data/seed"))
 BASE_URL = "https://case.ftc.go.kr/ocp/co/ltfr.do"
 
-KEYWORDS: list[str] = ["면책", "손해배상", "해지", "위약금", "책임"]
-
 
 def save_json(data: Any, filepath: Path) -> None:
     """JSON 데이터를 파일로 저장합니다."""
     filepath.parent.mkdir(parents=True, exist_ok=True)
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
-
-
-def get_total_count(page: Any) -> int:
-    """검색 결과 총 건수를 추출합니다."""
-    body_text = page.inner_text("body")
-    for pattern in [r"총\s*([\d,]+)\s*건", r"전체\s*([\d,]+)\s*건", r"\(\s*([\d,]+)\s*건\s*\)"]:
-        match = re.search(pattern, body_text)
-        if match:
-            return int(match.group(1).replace(",", ""))
-    return 0
 
 
 def normalize_text(value: str) -> str:
@@ -120,19 +110,16 @@ def get_column_names(table: Any) -> list[str]:
     return [normalize_text(th.inner_text()) for th in th_elements]
 
 
-def is_target_row(cell_data: dict[str, str], keyword: str | None) -> bool:
-    """불공정약관 조건과 키워드 조건을 만족하는 행인지 확인합니다."""
+def is_target_row(cell_data: dict[str, str]) -> bool:
+    """불공정약관 사건 행인지 확인합니다."""
     action_type = normalize_text(cell_data.get("대표조치유형", ""))
-    title = normalize_text(cell_data.get("사건명", ""))
 
     if action_type and "불공정약관" not in action_type:
-        return False
-    if keyword and keyword not in title:
         return False
     return True
 
 
-def parse_rows(page: Any, keyword: str | None = None) -> list[dict[str, Any]]:
+def parse_rows(page: Any) -> list[dict[str, Any]]:
     """현재 페이지의 테이블 행을 파싱하여 사건 목록을 반환합니다."""
     rows: list[dict[str, Any]] = []
 
@@ -181,7 +168,7 @@ def parse_rows(page: Any, keyword: str | None = None) -> list[dict[str, Any]]:
 
         if title:
             cell_data["사건명"] = title
-        if not is_target_row(cell_data, keyword):
+        if not is_target_row(cell_data):
             continue
 
         # PDF 다운로드 정보 추출 (docId, docSn)
@@ -204,96 +191,88 @@ def parse_rows(page: Any, keyword: str | None = None) -> list[dict[str, Any]]:
     return rows
 
 
-def go_next_page(page: Any, current_page: int) -> bool:
-    """현재 페이지에서 다음 페이지로 이동합니다."""
-    next_num = current_page + 1
-
-    # 1) 다음 페이지 번호 링크가 보이면 클릭
-    next_link = page.query_selector(
-        f".paging a:text-is('{next_num}'), "
-        f"a[onclick*='{next_num}']"
+def build_list_url(page_index: int) -> str:
+    """불공정약관 목록 페이지 URL을 생성합니다."""
+    query = urlencode(
+        {
+            "pageIndex": page_index,
+            "caseNo": "",
+            "caseNm": "",
+            "decsnNo": "",
+            "startRceptDt": "",
+            "endRceptDt": "",
+            "reprsntManagtTyCd": "",
+            "reprsntViolTy": "10",
+            "searchKrwd": "",
+        }
     )
-    if next_link:
-        try:
-            next_link.click()
-            page.wait_for_load_state("networkidle", timeout=15000)
-            time.sleep(1)
-            return True
-        except Exception:
-            pass
-
-    # 2) 다음 그룹 버튼 클릭 (10페이지 단위 그룹 넘김)
-    for selector in [
-        "a.next", ".paging .next", "a[title='다음']",
-        "a:text-is('다음')", "a:text-is('>')",
-        ".pagination .next a", "a.page-next",
-    ]:
-        next_btn = page.query_selector(selector)
-        if next_btn:
-            try:
-                next_btn.click()
-                page.wait_for_load_state("networkidle", timeout=15000)
-                time.sleep(1)
-                return True
-            except Exception:
-                continue
-
-    return False
+    return f"{BASE_URL}?{query}"
 
 
-def crawl_category(
-    page: Any,
-    keyword: str | None = None,
-    delay: float = 1.5,
-) -> list[dict[str, Any]]:
-    """불공정약관 카테고리(+ 키워드 검색) 전체 페이지를 크롤링합니다."""
-    url = f"{BASE_URL}?represntViolTy=10"
-    if keyword:
-        url += f"&searchKeyword={keyword}"
+def build_case_record(row: dict[str, Any], page_index: int) -> dict[str, Any]:
+    """수집 행을 저장용 사건 레코드로 변환합니다."""
+    return {
+        "사건명": row["사건명"],
+        "셀_데이터": row["셀_데이터"],
+        "pdf_info": row["pdf_info"],
+        "출처": "공정거래위원회 심결례",
+        "카테고리": "불공정약관",
+        "수집_페이지": page_index,
+    }
 
-    label = f"키워드=[{keyword}]" if keyword else "전체(불공정약관)"
-    logger.info(f"{label} 크롤링 시작 - URL: {url}")
 
-    page.goto(url, wait_until="networkidle", timeout=30000)
-    time.sleep(delay)
-
-    total = get_total_count(page)
-    logger.info(f"{label} 총 {total}건 발견")
-    if total == 0:
-        logger.warning(f"{label} 검색 결과 총 건수가 0건으로 확인되어 수집을 중단합니다.")
-        return []
+def crawl_all_pages(page: Any, delay: float = 1.5, max_pages: int = 250) -> list[dict[str, Any]]:
+    """불공정약관 전체 페이지를 순회하며 사건 목록을 수집합니다."""
+    logger.info("전체(불공정약관) 크롤링 시작")
 
     all_cases: list[dict[str, Any]] = []
-    page_num = 1
+    previous_signature = ""
 
-    while True:
-        logger.info(f"{label} - 페이지 {page_num} 크롤링 중")
+    for page_index in range(1, max_pages + 1):
+        url = build_list_url(page_index)
+        logger.info("전체(불공정약관) - 페이지 %s 크롤링 시작: %s", page_index, url)
 
-        rows = parse_rows(page, keyword=keyword)
+        page.goto(url, wait_until="networkidle", timeout=30000)
+        time.sleep(delay)
+
+        rows = parse_rows(page)
         if not rows:
-            logger.info(f"{label} - 페이지 {page_num}에 데이터 없음, 크롤링 종료")
+            logger.info("전체(불공정약관) - 페이지 %s 데이터 없음, 수집 종료", page_index)
             break
+
+        page_signature = " || ".join(
+            [
+                rows[0]["사건명"],
+                rows[-1]["사건명"],
+                str(len(rows)),
+            ]
+        )
+        if page_signature == previous_signature:
+            logger.warning(
+                "전체(불공정약관) - 페이지 %s가 직전 페이지와 동일하여 수집을 중단합니다.",
+                page_index,
+            )
+            break
+        previous_signature = page_signature
 
         for row in rows:
-            case: dict[str, Any] = {
-                "사건명": row["사건명"],
-                "셀_데이터": row["셀_데이터"],
-                "pdf_info": row["pdf_info"],
-                "검색_키워드": keyword or "",
-                "출처": "공정거래위원회 심결례",
-                "카테고리": "불공정약관",
-            }
-            all_cases.append(case)
+            all_cases.append(build_case_record(row, page_index))
 
-        logger.info(f"{label} - 페이지 {page_num} 완료: {len(rows)}건 (누적: {len(all_cases)}건)")
+        logger.info(
+            "전체(불공정약관) - 페이지 %s 완료: %s건 (누적: %s건)",
+            page_index,
+            len(rows),
+            len(all_cases),
+        )
 
-        # 다음 페이지로 이동 (순차 진행)
-        if not go_next_page(page, page_num):
-            logger.info(f"{label} - 마지막 페이지: {page_num}")
+        if len(rows) < 10:
+            logger.info(
+                "전체(불공정약관) - 페이지 %s가 마지막 페이지로 판단되어 수집을 종료합니다.",
+                page_index,
+            )
             break
-        page_num += 1
 
-    logger.info(f"{label} 크롤링 완료 - 총 {len(all_cases)}건 수집")
+    logger.info("전체(불공정약관) 크롤링 완료 - 총 %s건 수집", len(all_cases))
     return all_cases
 
 
@@ -320,8 +299,8 @@ def deduplicate(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(seen.values())
 
 
-def crawl_all(delay: float = 1.5, headless: bool = True) -> None:
-    """불공정약관 전체 + 키워드별 크롤링 후 중복 제거하여 저장합니다."""
+def crawl_all(delay: float = 1.5, headless: bool = True, max_pages: int = 250) -> None:
+    """불공정약관 전체 페이지를 크롤링 후 중복 제거하여 저장합니다."""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -344,22 +323,12 @@ def crawl_all(delay: float = 1.5, headless: bool = True) -> None:
         )
         page = context.new_page()
 
-        # 1단계: 불공정약관 전체 크롤링
         try:
-            cases = crawl_category(page, keyword=None, delay=delay)
+            cases = crawl_all_pages(page, delay=delay, max_pages=max_pages)
             all_cases.extend(cases)
             logger.info(f"전체 크롤링 완료: {len(cases)}건")
         except Exception as e:
             logger.error(f"전체 크롤링 실패: {e}")
-
-        # 2단계: 키워드별 추가 검색
-        for kw in KEYWORDS:
-            try:
-                cases = crawl_category(page, keyword=kw, delay=delay)
-                all_cases.extend(cases)
-                logger.info(f"키워드 [{kw}] 크롤링 완료: {len(cases)}건")
-            except Exception as e:
-                logger.error(f"키워드 [{kw}] 크롤링 실패: {e}")
 
         browser.close()
 
@@ -374,7 +343,7 @@ def crawl_all(delay: float = 1.5, headless: bool = True) -> None:
     result = {
         "총_건수": after_count,
         "수집_카테고리": "불공정약관(represntViolTy=10)",
-        "검색_키워드": KEYWORDS,
+        "수집_방식": "불공정약관 전체 페이지 순회",
         "사례": unique_cases,
     }
     save_json(result, output_path)
@@ -392,10 +361,16 @@ def main() -> None:
     parser.add_argument(
         "--no-headless", action="store_true", help="브라우저 화면 표시 (디버깅용)"
     )
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=250,
+        help="최대 순회 페이지 수(기본값: 250)",
+    )
     args = parser.parse_args()
 
     SEED_DIR.mkdir(parents=True, exist_ok=True)
-    crawl_all(delay=args.delay, headless=not args.no_headless)
+    crawl_all(delay=args.delay, headless=not args.no_headless, max_pages=args.max_pages)
 
 
 if __name__ == "__main__":
