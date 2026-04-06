@@ -12,11 +12,13 @@ JS 렌더링이 필요하므로 Playwright를 사용합니다.
 사용법:
     python scripts/crawl_ftc_seed.py
     python scripts/crawl_ftc_seed.py --delay 2.0
+    python scripts/crawl_ftc_seed.py --no-headless   # 브라우저 화면 표시 (디버깅용)
 """
 
 import json
 import logging
 import os
+import re
 import time
 import argparse
 from pathlib import Path
@@ -51,70 +53,147 @@ def save_json(data: Any, filepath: Path) -> None:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
 
-def parse_rows(page: Any) -> list[dict[str, str]]:
+def get_total_count(page: Any) -> int:
+    """검색 결과 총 건수를 추출합니다."""
+    body_text = page.inner_text("body")
+
+    # "총 N건", "전체 N건", "(N건)" 등 다양한 패턴 시도
+    for pattern in [r"총\s*([\d,]+)\s*건", r"전체\s*([\d,]+)\s*건", r"\(\s*([\d,]+)\s*건\s*\)"]:
+        match = re.search(pattern, body_text)
+        if match:
+            return int(match.group(1).replace(",", ""))
+
+    return 0
+
+
+def parse_rows(page: Any) -> list[dict[str, Any]]:
     """현재 페이지의 테이블 행을 파싱하여 사건 목록을 반환합니다."""
-    rows: list[dict[str, str]] = []
+    rows: list[dict[str, Any]] = []
 
-    # 테이블 행 선택 (목록 테이블의 tbody tr)
-    tr_elements = page.query_selector_all("table.boardList tbody tr")
-    if not tr_elements:
-        # 대체 선택자 시도
-        tr_elements = page.query_selector_all("#contents table tbody tr")
-    if not tr_elements:
-        tr_elements = page.query_selector_all("table tbody tr")
+    # 여러 테이블 선택자 시도
+    tr_elements = []
+    for selector in [
+        "table.boardList tbody tr",
+        "#contents table tbody tr",
+        "table.list tbody tr",
+        "table tbody tr",
+    ]:
+        tr_elements = page.query_selector_all(selector)
+        if tr_elements:
+            logger.info(f"테이블 선택자 매칭: '{selector}' → {len(tr_elements)}행")
+            break
 
-    for tr in tr_elements:
+    if not tr_elements:
+        # 디버깅: 페이지에 있는 테이블 확인
+        tables = page.query_selector_all("table")
+        logger.warning(f"테이블 행을 찾지 못함 (페이지 내 table 수: {len(tables)})")
+        for idx, t in enumerate(tables):
+            cls = t.get_attribute("class") or ""
+            tid = t.get_attribute("id") or ""
+            row_count = len(t.query_selector_all("tr"))
+            logger.warning(f"  table[{idx}] class='{cls}' id='{tid}' rows={row_count}")
+        return rows
+
+    for idx, tr in enumerate(tr_elements):
         tds = tr.query_selector_all("td")
-        if len(tds) < 3:
+        if len(tds) < 2:
             continue
 
-        # 링크에서 상세 페이지 정보 추출
+        # "데이터가 없습니다" 류의 안내 행 건너뛰기
+        if len(tds) == 1:
+            continue
+        first_text = tds[0].inner_text().strip()
+        if "없습니다" in first_text or "데이터" in first_text:
+            continue
+
+        # 링크 추출
         link = tr.query_selector("a")
-        onclick = link.get_attribute("onclick") if link else ""
         title = link.inner_text().strip() if link else ""
 
         # 각 td에서 텍스트 추출
         td_texts = [td.inner_text().strip() for td in tds]
 
-        row: dict[str, str] = {
+        row: dict[str, Any] = {
             "제목": title,
-            "onclick": onclick or "",
             "셀_텍스트": td_texts,
+            "행_인덱스": idx,
         }
         rows.append(row)
 
     return rows
 
 
-def fetch_detail(page: Any, onclick: str, delay: float) -> dict[str, str]:
-    """심결례 상세 페이지에서 본문 정보를 추출합니다."""
+def fetch_detail_by_click(page: Any, row_idx: int, delay: float) -> dict[str, str]:
+    """목록에서 링크를 직접 클릭하여 상세 페이지 정보를 추출합니다."""
     detail: dict[str, str] = {}
     try:
-        # onclick 함수 실행으로 상세 페이지 이동
-        page.evaluate(onclick.rstrip(";"))
-        page.wait_for_load_state("networkidle", timeout=15000)
+        # 현재 목록의 행에서 링크를 다시 찾아 클릭
+        tr_elements = page.query_selector_all("table tbody tr")
+        target_tr = None
+        td_row_idx = 0
+        for tr in tr_elements:
+            tds = tr.query_selector_all("td")
+            if len(tds) < 2:
+                continue
+            if td_row_idx == row_idx:
+                target_tr = tr
+                break
+            td_row_idx += 1
+
+        if not target_tr:
+            logger.warning(f"행 인덱스 {row_idx}에 해당하는 행을 찾지 못함")
+            return detail
+
+        link = target_tr.query_selector("a")
+        if not link:
+            logger.warning(f"행 인덱스 {row_idx}에 링크가 없음")
+            return detail
+
+        # 클릭 후 네비게이션 대기
+        link.click()
+        page.wait_for_load_state("networkidle", timeout=20000)
         time.sleep(delay)
 
-        # 상세 정보 테이블에서 항목 추출
-        detail_rows = page.query_selector_all("table.boardView tr, table.viewTbl tr, .view_table tr")
+        # 상세 정보 테이블에서 항목 추출 (여러 선택자 시도)
+        detail_rows = []
+        for selector in [
+            "table.boardView tr",
+            "table.viewTbl tr",
+            ".view_table tr",
+            "table.tbl_view tr",
+            "#contents table tr",
+        ]:
+            detail_rows = page.query_selector_all(selector)
+            if detail_rows:
+                break
+
         for dr in detail_rows:
             th = dr.query_selector("th")
             td = dr.query_selector("td")
             if th and td:
                 key = th.inner_text().strip()
                 value = td.inner_text().strip()
-                if key:
+                if key and value:
                     detail[key] = value
 
         # 본문 영역 추출 (여러 선택자 시도)
-        for selector in [".view_cont", ".boardViewCont", "#contents .cont", ".detailContent"]:
+        for selector in [
+            ".view_cont",
+            ".boardViewCont",
+            ".detailContent",
+            ".cont_area",
+            "#contents .cont",
+            ".board_view",
+        ]:
             body_el = page.query_selector(selector)
             if body_el:
-                detail["본문"] = body_el.inner_text().strip()
-                break
+                text = body_el.inner_text().strip()
+                if len(text) > 50:
+                    detail["본문"] = text
+                    break
 
+        # 본문을 못 찾았으면 전체 컨텐츠에서 추출
         if not detail.get("본문"):
-            # 본문이 별도 영역에 없으면 전체 컨텐츠에서 추출
             content_el = page.query_selector("#contents")
             if content_el:
                 detail["본문_전체"] = content_el.inner_text().strip()
@@ -125,49 +204,56 @@ def fetch_detail(page: Any, onclick: str, delay: float) -> dict[str, str]:
     return detail
 
 
-def crawl_list_page(page: Any, page_num: int) -> list[dict[str, str]]:
-    """목록에서 특정 페이지로 이동하여 데이터를 파싱합니다."""
-    if page_num > 1:
-        try:
-            # 페이지네이션 클릭
-            page.evaluate(f"goPage({page_num})")
+def navigate_to_page(page: Any, page_num: int) -> bool:
+    """목록에서 특정 페이지 번호로 이동합니다."""
+    if page_num <= 1:
+        return True
+
+    try:
+        # 페이지 번호 링크 클릭 시도
+        paging_link = page.query_selector(
+            f"a[onclick*='goPage({page_num})'], "
+            f"a[onclick*=\"goPage('{page_num}')\"], "
+            f".paging a:text-is('{page_num}')"
+        )
+        if paging_link:
+            paging_link.click()
             page.wait_for_load_state("networkidle", timeout=15000)
             time.sleep(1)
-        except Exception:
-            try:
-                # 대체: 페이지 링크 직접 클릭
-                paging_link = page.query_selector(f"a[onclick*='goPage({page_num})']")
-                if paging_link:
-                    paging_link.click()
-                    page.wait_for_load_state("networkidle", timeout=15000)
-                    time.sleep(1)
-            except Exception as e:
-                logger.warning(f"페이지 {page_num} 이동 실패: {e}")
-                return []
+            return True
+    except Exception:
+        pass
 
-    return parse_rows(page)
+    try:
+        # goPage 함수 직접 호출 시도
+        page.evaluate(f"goPage({page_num})")
+        page.wait_for_load_state("networkidle", timeout=15000)
+        time.sleep(1)
+        return True
+    except Exception as e:
+        logger.warning(f"페이지 {page_num} 이동 실패: {e}")
+        return False
 
 
-def get_total_count(page: Any) -> int:
-    """검색 결과 총 건수를 추출합니다."""
-    # 총 건수 텍스트에서 숫자 추출 (예: "총 123건")
-    for selector in [".total_count", ".result_count", ".board_count", ".pageInfo"]:
-        el = page.query_selector(selector)
-        if el:
-            text = el.inner_text()
-            import re
-            nums = re.findall(r"[\d,]+", text)
-            if nums:
-                return int(nums[0].replace(",", ""))
+def has_next_page(page: Any, current_page: int) -> bool:
+    """다음 페이지가 존재하는지 확인합니다."""
+    next_num = current_page + 1
 
-    # 대체: 페이지 전체 텍스트에서 "총 N건" 패턴 탐색
-    import re
-    body_text = page.query_selector("body").inner_text()
-    match = re.search(r"총\s*([\d,]+)\s*건", body_text)
-    if match:
-        return int(match.group(1).replace(",", ""))
+    # 다음 페이지 번호 링크 확인
+    next_link = page.query_selector(
+        f"a[onclick*='goPage({next_num})'], "
+        f"a[onclick*=\"goPage('{next_num}')\"], "
+        f".paging a:text-is('{next_num}')"
+    )
+    if next_link:
+        return True
 
-    return 0
+    # '다음' 버튼 확인
+    next_btn = page.query_selector(
+        "a.next, .paging .next, a[title='다음'], "
+        "a:text-is('다음'), a:text-is('>')"
+    )
+    return next_btn is not None
 
 
 def crawl_category(
@@ -176,7 +262,6 @@ def crawl_category(
     delay: float = 1.5,
 ) -> list[dict[str, Any]]:
     """불공정약관 카테고리(+ 키워드 검색) 전체 페이지를 크롤링합니다."""
-    # 기본 URL에 불공정약관 유형 파라미터 추가
     url = f"{BASE_URL}?represntViolTy=10"
     if keyword:
         url += f"&searchKeyword={keyword}"
@@ -195,13 +280,21 @@ def crawl_category(
 
     while True:
         logger.info(f"{label} - 페이지 {page_num} 크롤링 중")
-        rows = crawl_list_page(page, page_num)
 
+        # 페이지 이동 (1페이지는 이미 로드됨)
+        if page_num > 1:
+            # 목록 페이지를 다시 로드하고 해당 페이지로 이동
+            page.goto(url, wait_until="networkidle", timeout=30000)
+            time.sleep(delay)
+            if not navigate_to_page(page, page_num):
+                break
+
+        rows = parse_rows(page)
         if not rows:
             logger.info(f"{label} - 페이지 {page_num}에 데이터 없음, 크롤링 종료")
             break
 
-        for row in rows:
+        for i, row in enumerate(rows):
             case: dict[str, Any] = {
                 "제목": row["제목"],
                 "셀_텍스트": row["셀_텍스트"],
@@ -210,41 +303,31 @@ def crawl_category(
                 "카테고리": "불공정약관",
             }
 
-            # 상세 페이지 크롤링
-            if row.get("onclick"):
-                # 현재 URL 저장 (목록으로 복귀용)
-                list_url = page.url
-                detail = fetch_detail(page, row["onclick"], delay)
-                if detail:
-                    case["상세정보"] = detail
+            # 상세 페이지 크롤링: 클릭 → 파싱 → 뒤로가기
+            detail = fetch_detail_by_click(page, i, delay)
+            if detail:
+                case["상세정보"] = detail
 
-                # 목록 페이지로 복귀
-                page.goto(list_url, wait_until="networkidle", timeout=30000)
+            # 목록으로 복귀
+            try:
+                page.go_back(wait_until="networkidle", timeout=20000)
                 time.sleep(delay)
-
-                # 원래 페이지로 다시 이동
+            except Exception:
+                # go_back 실패 시 URL로 직접 재이동
+                page.goto(url, wait_until="networkidle", timeout=30000)
+                time.sleep(delay)
                 if page_num > 1:
-                    try:
-                        page.evaluate(f"goPage({page_num})")
-                        page.wait_for_load_state("networkidle", timeout=15000)
-                        time.sleep(1)
-                    except Exception:
-                        pass
+                    navigate_to_page(page, page_num)
 
             all_cases.append(case)
 
         logger.info(f"{label} - 페이지 {page_num} 완료: {len(rows)}건 (누적: {len(all_cases)}건)")
 
-        # 다음 페이지 존재 여부 확인
-        next_link = page.query_selector(f"a[onclick*='goPage({page_num + 1})']")
-        if not next_link:
-            # 대체: '다음' 버튼 확인
-            next_btn = page.query_selector("a.next, .paging .next, a[title='다음']")
-            if not next_btn:
-                break
+        # 다음 페이지 확인 (목록 페이지 다시 로드하여 확인)
+        if not has_next_page(page, page_num):
+            break
 
         page_num += 1
-        time.sleep(delay)
 
     logger.info(f"{label} 크롤링 완료 - 총 {len(all_cases)}건 수집")
     return all_cases
@@ -261,28 +344,23 @@ def deduplicate(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if title not in seen:
             seen[title] = case
         else:
-            # 상세정보가 더 풍부한 쪽을 유지
             existing = seen[title]
             existing_detail_len = len(json.dumps(existing.get("상세정보", {}), ensure_ascii=False))
             new_detail_len = len(json.dumps(case.get("상세정보", {}), ensure_ascii=False))
+            # 키워드 병합
+            existing_kw = existing.get("검색_키워드", "")
+            new_kw = case.get("검색_키워드", "")
+            merged_kw = ", ".join(sorted(filter(None, {existing_kw, new_kw})))
             if new_detail_len > existing_detail_len:
-                # 키워드 목록 병합
-                existing_kw = existing.get("검색_키워드", "")
-                new_kw = case.get("검색_키워드", "")
-                merged_kw = ", ".join(filter(None, set(f"{existing_kw}, {new_kw}".split(", "))))
                 case["검색_키워드"] = merged_kw
                 seen[title] = case
             else:
-                # 키워드만 병합
-                existing_kw = existing.get("검색_키워드", "")
-                new_kw = case.get("검색_키워드", "")
-                merged_kw = ", ".join(filter(None, set(f"{existing_kw}, {new_kw}".split(", "))))
                 seen[title]["검색_키워드"] = merged_kw
 
     return list(seen.values())
 
 
-def crawl_all(delay: float = 1.5) -> None:
+def crawl_all(delay: float = 1.5, headless: bool = True) -> None:
     """불공정약관 전체 + 키워드별 크롤링 후 중복 제거하여 저장합니다."""
     try:
         from playwright.sync_api import sync_playwright
@@ -295,7 +373,7 @@ def crawl_all(delay: float = 1.5) -> None:
     all_cases: list[dict[str, Any]] = []
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=headless)
         context = browser.new_context(
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -351,10 +429,13 @@ def main() -> None:
     parser.add_argument(
         "--delay", type=float, default=1.5, help="페이지 요청 간격(초, 기본값: 1.5)"
     )
+    parser.add_argument(
+        "--no-headless", action="store_true", help="브라우저 화면 표시 (디버깅용)"
+    )
     args = parser.parse_args()
 
     SEED_DIR.mkdir(parents=True, exist_ok=True)
-    crawl_all(delay=args.delay)
+    crawl_all(delay=args.delay, headless=not args.no_headless)
 
 
 if __name__ == "__main__":
