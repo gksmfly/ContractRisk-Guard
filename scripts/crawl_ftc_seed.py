@@ -256,13 +256,6 @@ def crawl_all_pages(page: Any, delay: float = 1.5, max_pages: int = 250) -> list
             len(all_cases),
         )
 
-        if len(rows) < 10:
-            logger.info(
-                "전체(불공정약관) - 페이지 %s가 마지막 페이지로 판단되어 수집을 종료합니다.",
-                page_index,
-            )
-            break
-
     logger.info("전체(불공정약관) 크롤링 완료 - 총 %s건 수집", len(all_cases))
     return all_cases
 

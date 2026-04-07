@@ -2,11 +2,12 @@
 """
 공정거래위원회 시정조치 PDF 다운로드 및 텍스트 파싱 스크립트
 
-ftc_cases_raw.json의 pdf_url에서 PDF를 다운로드하고
-pdfplumber로 텍스트를 추출하여 구조화된 데이터로 변환합니다.
+ftc_cases_raw.json의 pdf_info(docId, docSn)를 이용하여
+Playwright로 PDF를 다운로드하고 pdfplumber로 텍스트를 추출합니다.
 
 사전 설치:
-    pip install pdfplumber requests
+    pip install pdfplumber playwright
+    playwright install chromium
 
 사용법:
     python scripts/parse_ftc_pdf.py
@@ -21,8 +22,8 @@ import time
 import argparse
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
-import requests
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -57,16 +58,7 @@ def save_json(data: Any, filepath: Path) -> None:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
 
-DOWNLOAD_URL = "https://case.ftc.go.kr/ocp/co/getFileList.do"
-
-HEADERS: dict[str, str] = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0.0.0 Safari/537.36"
-    ),
-    "Referer": "https://case.ftc.go.kr/",
-}
+BASE_URL = "https://case.ftc.go.kr/ocp/co/ltfr.do"
 
 
 def build_case_identifier(case: dict[str, Any], fallback_index: int | None = None) -> str:
@@ -85,52 +77,47 @@ def build_case_identifier(case: dict[str, Any], fallback_index: int | None = Non
     return safe_name[:140] or f"case_{fallback_index or 'unknown'}"
 
 
-def download_pdf(doc_id: str, doc_sn: str, filepath: Path, delay: float = 1.0) -> bool:
-    """docId, docSn을 POST로 전송하여 PDF를 다운로드합니다."""
-    if filepath.exists():
-        logger.info(f"이미 존재 - 건너뜀: {filepath.name}")
+def build_list_url(page_index: int) -> str:
+    """불공정약관 목록 페이지 URL을 생성합니다."""
+    query = urlencode(
+        {
+            "pageIndex": page_index,
+            "caseNo": "",
+            "caseNm": "",
+            "decsnNo": "",
+            "startRceptDt": "",
+            "endRceptDt": "",
+            "reprsntManagtTyCd": "",
+            "reprsntViolTy": "10",
+            "searchKrwd": "",
+        }
+    )
+    return f"{BASE_URL}?{query}"
+
+
+def download_pdf_via_playwright(
+    page: Any, btn: Any, filepath: Path, delay: float = 1.0
+) -> bool:
+    """Playwright 다운로드 이벤트를 이용하여 PDF를 저장합니다."""
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with page.expect_download(timeout=30000) as download_info:
+            btn.click()
+        download = download_info.value
+        download.save_as(str(filepath))
+
+        file_size = filepath.stat().st_size
+        if file_size < 100:
+            logger.warning(f"파일이 너무 작음 ({file_size} bytes): {filepath.name}")
+            filepath.unlink(missing_ok=True)
+            return False
+
+        logger.info(f"다운로드 완료: {filepath.name} ({file_size:,} bytes)")
+        time.sleep(delay)
         return True
-
-    for attempt in range(1, 4):
-        try:
-            response = requests.post(
-                DOWNLOAD_URL,
-                data={"docId": doc_id, "docSn": doc_sn},
-                headers=HEADERS,
-                timeout=30,
-            )
-            response.raise_for_status()
-
-            if len(response.content) < 100:
-                logger.warning(f"응답이 너무 작음 ({len(response.content)} bytes): {filepath.name}")
-                return False
-
-            content_type = response.headers.get("Content-Type", "")
-            if "pdf" not in content_type.lower() and not response.content.startswith(b"%PDF"):
-                logger.warning(
-                    "PDF 응답 검증 실패: %s | Content-Type=%s",
-                    filepath.name,
-                    content_type,
-                )
-                return False
-
-            filepath.parent.mkdir(parents=True, exist_ok=True)
-            with open(filepath, "wb") as f:
-                f.write(response.content)
-
-            file_size = filepath.stat().st_size
-            logger.info(f"다운로드 완료: {filepath.name} ({file_size:,} bytes)")
-            time.sleep(delay)
-            return True
-
-        except requests.RequestException as e:
-            if attempt < 3:
-                logger.warning(f"재시도 {attempt}/3 - {filepath.name} | {e}")
-                time.sleep(delay * attempt)
-            else:
-                logger.error(f"최종 실패 - {filepath.name} | {e}")
-
-    return False
+    except Exception as e:
+        logger.warning(f"다운로드 실패 - {filepath.name} | {e}")
+        return False
 
 
 def extract_text_from_pdf(filepath: Path) -> str:
@@ -293,39 +280,141 @@ def parse_single_pdf(filepath: Path, case_info: dict[str, Any]) -> dict[str, Any
     return result
 
 
-def run_download(cases: list[dict[str, Any]], delay: float) -> dict[str, Path]:
-    """PDF 파일을 일괄 다운로드합니다."""
+def run_download(
+    cases: list[dict[str, Any]], delay: float, headless: bool = True
+) -> dict[str, Path]:
+    """Playwright로 목록 페이지를 순회하며 PDF를 일괄 다운로드합니다."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        logger.error("Playwright가 설치되어 있지 않습니다: pip install playwright && playwright install chromium")
+        return {}
+
     PDF_DIR.mkdir(parents=True, exist_ok=True)
     downloaded: dict[str, Path] = {}
-    success, skipped, failed, no_url = 0, 0, 0, 0
+    success, skipped, failed, no_pdf = 0, 0, 0, 0
 
+    # 사건번호 → (case, safe_name) 매핑 구축
+    case_map: dict[str, tuple[dict[str, Any], str, int]] = {}
     for i, case in enumerate(cases, 1):
         pdf_info = case.get("pdf_info", {})
         doc_id = pdf_info.get("docId", "")
-        doc_sn = pdf_info.get("docSn", "")
-        title = case.get("사건명", f"case_{i}")
-        safe_name = build_case_identifier(case, fallback_index=i)
-
         if not doc_id:
-            logger.warning(f"[{i}/{len(cases)}] PDF 정보 없음: {title}")
-            no_url += 1
+            no_pdf += 1
             continue
-
+        safe_name = build_case_identifier(case, fallback_index=i)
         filepath = PDF_DIR / f"{safe_name}.pdf"
         if filepath.exists():
             skipped += 1
-            downloaded[title] = filepath
+            downloaded[case.get("사건명", "")] = filepath
             continue
+        case_map[doc_id] = (case, safe_name, i)
 
-        if download_pdf(doc_id, doc_sn, filepath, delay):
-            success += 1
-            downloaded[title] = filepath
-        else:
-            failed += 1
+    if not case_map:
+        logger.info(
+            f"PDF 다운로드 완료 - 성공: {success}, 건너뜀: {skipped}, "
+            f"실패: {failed}, PDF없음: {no_pdf}"
+        )
+        return downloaded
+
+    logger.info(f"다운로드 대상: {len(case_map)}건 (이미 존재: {skipped}건)")
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=headless)
+        context = browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            locale="ko-KR",
+            accept_downloads=True,
+        )
+        page = context.new_page()
+        page.on("dialog", lambda d: d.accept())
+
+        remaining = set(case_map.keys())
+        page_index = 0
+
+        while remaining:
+            page_index += 1
+            url = build_list_url(page_index)
+
+            # 현재 페이지에서 다운로드할 대상을 반복 처리
+            page_has_targets = True
+            found_on_page = 0
+            page_exhausted = False
+
+            while page_has_targets and remaining:
+                try:
+                    page.goto(url, wait_until="networkidle", timeout=30000)
+                except Exception as e:
+                    logger.warning(f"페이지 {page_index} 로드 실패: {e}")
+                    page_exhausted = True
+                    break
+                time.sleep(delay)
+
+                table = page.query_selector("#contents table, table")
+                if not table:
+                    logger.info(f"페이지 {page_index}: 테이블 없음, 순회 종료")
+                    page_exhausted = True
+                    break
+
+                rows = table.query_selector_all("tbody tr")
+                if not rows:
+                    logger.info(f"페이지 {page_index}: 행 없음, 순회 종료")
+                    page_exhausted = True
+                    break
+
+                # 현재 페이지에서 하나의 대상을 찾아 다운로드
+                target_found = False
+                for tr in rows:
+                    tds = tr.query_selector_all("td")
+                    if len(tds) < 2:
+                        continue
+                    row_case_no = tds[0].inner_text().strip()
+
+                    if row_case_no not in remaining:
+                        continue
+
+                    case_info, safe_name, idx = case_map[row_case_no]
+                    title = case_info.get("사건명", "")
+                    filepath = PDF_DIR / f"{safe_name}.pdf"
+
+                    pdf_btn = tr.query_selector("a.down_files.pdf")
+                    if not pdf_btn:
+                        logger.warning(f"[{idx}/{len(cases)}] PDF 버튼 없음: {title}")
+                        remaining.discard(row_case_no)
+                        failed += 1
+                        continue
+
+                    if download_pdf_via_playwright(page, pdf_btn, filepath, delay):
+                        success += 1
+                        downloaded[title] = filepath
+                    else:
+                        failed += 1
+
+                    remaining.discard(row_case_no)
+                    found_on_page += 1
+                    target_found = True
+                    break  # 페이지를 다시 로드해야 하므로 루프 탈출
+
+                if not target_found:
+                    page_has_targets = False
+
+            logger.info(
+                f"페이지 {page_index}: {found_on_page}건 다운로드 "
+                f"(누적 성공: {success}, 남은: {len(remaining)})"
+            )
+
+            if page_exhausted or not remaining:
+                break
+
+        browser.close()
 
     logger.info(
         f"PDF 다운로드 완료 - 성공: {success}, 건너뜀: {skipped}, "
-        f"실패: {failed}, URL없음: {no_url}"
+        f"실패: {failed}, PDF없음: {no_pdf}"
     )
     return downloaded
 
@@ -372,6 +461,9 @@ def main() -> None:
     parser.add_argument(
         "--delay", type=float, default=1.0, help="다운로드 요청 간격(초, 기본값: 1.0)"
     )
+    parser.add_argument(
+        "--no-headless", action="store_true", help="브라우저 화면 표시 (디버깅용)"
+    )
     args = parser.parse_args()
 
     raw_path = SEED_DIR / "ftc_cases_raw.json"
@@ -396,7 +488,7 @@ def main() -> None:
                 downloaded[title] = filepath
         logger.info(f"기존 PDF 파일 {len(downloaded)}건 발견")
     else:
-        downloaded = run_download(cases, args.delay)
+        downloaded = run_download(cases, args.delay, headless=not args.no_headless)
 
     # 3단계: PDF 텍스트 추출 및 파싱
     parsed = run_parse(cases, downloaded)

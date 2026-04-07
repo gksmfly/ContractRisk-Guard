@@ -1,6 +1,9 @@
 # HTTP 요청
 requests>=2.31.0
 
+# 웹 크롤링 (JS 렌더링)
+playwright>=1.40.0
+
 # 데이터 처리
 pandas>=2.1.0
 numpy>=1.26.0
