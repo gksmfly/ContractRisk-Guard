@@ -110,15 +110,6 @@ def get_column_names(table: Any) -> list[str]:
     return [normalize_text(th.inner_text()) for th in th_elements]
 
 
-def is_target_row(cell_data: dict[str, str]) -> bool:
-    """불공정약관 사건 행인지 확인합니다."""
-    action_type = normalize_text(cell_data.get("대표조치유형", ""))
-
-    if action_type and "불공정약관" not in action_type:
-        return False
-    return True
-
-
 def parse_rows(page: Any) -> list[dict[str, Any]]:
     """현재 페이지의 테이블 행을 파싱하여 사건 목록을 반환합니다."""
     rows: list[dict[str, Any]] = []
@@ -168,8 +159,6 @@ def parse_rows(page: Any) -> list[dict[str, Any]]:
 
         if title:
             cell_data["사건명"] = title
-        if not is_target_row(cell_data):
-            continue
 
         # PDF 다운로드 정보 추출 (docId, docSn)
         pdf_info = extract_pdf_info(tr)
@@ -188,6 +177,8 @@ def parse_rows(page: Any) -> list[dict[str, Any]]:
         }
         rows.append(row)
 
+    pdf_count = sum(1 for row in rows if row["pdf_info"].get("docId"))
+    logger.info("현재 페이지 유효 행 수: %s, PDF 식별자 추출 성공: %s", len(rows), pdf_count)
     return rows
 
 
@@ -291,11 +282,10 @@ def deduplicate(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if dedup_key not in seen:
             seen[dedup_key] = case
         else:
-            # 키워드 병합
-            existing_kw = seen[dedup_key].get("검색_키워드", "")
-            new_kw = case.get("검색_키워드", "")
-            merged_kw = ", ".join(sorted(filter(None, {existing_kw, new_kw})))
-            seen[dedup_key]["검색_키워드"] = merged_kw
+            existing_page = int(seen[dedup_key].get("수집_페이지", 10**9))
+            new_page = int(case.get("수집_페이지", 10**9))
+            if new_page < existing_page:
+                seen[dedup_key] = case
     return list(seen.values())
 
 
