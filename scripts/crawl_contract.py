@@ -32,7 +32,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-LOG_DIR = Path(os.environ.get("LOG_DIR", "logs"))
+LOG_DIR = Path(os.environ.get("LOG_DIR", "data/logs"))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
@@ -60,11 +60,21 @@ CATEGORIES: dict[str, dict[str, str]] = {
 }
 
 
+def clean_surrogates(text: str) -> str:
+    """유효하지 않은 surrogate 문자를 제거합니다."""
+    return text.encode("utf-8", errors="replace").decode("utf-8")
+
+
 def save_json(data: Any, filepath: Path) -> None:
     """JSON 데이터를 파일로 저장합니다."""
     filepath.parent.mkdir(parents=True, exist_ok=True)
+    cleaned = json.loads(
+        json.dumps(data, ensure_ascii=False, default=str).encode(
+            "utf-8", errors="replace"
+        )
+    )
     with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+        json.dump(cleaned, f, ensure_ascii=False, indent=4)
 
 
 def build_safe_filename(text: str) -> str:
@@ -124,7 +134,8 @@ def extract_text_from_hwp(filepath: Path) -> str:
                     text_parts.append(text)
 
         ole.close()
-        return "\n".join(text_parts)
+        result = "\n".join(text_parts)
+        return result.encode("utf-8", errors="replace").decode("utf-8")
 
     except Exception as e:
         logger.error(f"HWP 텍스트 추출 실패 - {filepath.name}: {e}")
@@ -576,23 +587,34 @@ def crawl_all(
     # 3단계: HWP 텍스트 추출
     parsed = parse_hwp_files(all_items, downloaded)
 
-    # 4단계: 저장
+    # 4단계: 카테고리별 분리 저장
+    cat_groups: dict[str, list[dict[str, Any]]] = {}
+    for item in parsed:
+        cat = item.get("카테고리", "기타")
+        cat_groups.setdefault(cat, []).append(item)
+
+    for cat_name, cat_items in cat_groups.items():
+        safe_cat = build_safe_filename(cat_name)
+        cat_path = CONTRACT_DIR / f"contracts_{safe_cat}.json"
+        cat_result = {
+            "총_건수": len(cat_items),
+            "카테고리": cat_name,
+            "추출_필드": ["제목", "카테고리", "담당부서", "등록일", "원본_파일명", "추출_텍스트"],
+            "사례": cat_items,
+        }
+        save_json(cat_result, cat_path)
+        logger.info(f"  {cat_name}: {len(cat_items)}건 → {cat_path}")
+
+    # 전체 통합 파일도 저장
     output_path = CONTRACT_DIR / "contracts_parsed.json"
     result = {
         "총_건수": len(parsed),
+        "카테고리별_건수": {cat: len(items) for cat, items in cat_groups.items()},
         "추출_필드": ["제목", "카테고리", "담당부서", "등록일", "원본_파일명", "추출_텍스트"],
         "사례": parsed,
     }
     save_json(result, output_path)
-    logger.info(f"=== 저장 완료: {output_path} ({len(parsed)}건) ===")
-
-    # 카테고리별 통계
-    cat_counts: dict[str, int] = {}
-    for item in parsed:
-        cat = item.get("카테고리", "기타")
-        cat_counts[cat] = cat_counts.get(cat, 0) + 1
-    for cat, count in cat_counts.items():
-        logger.info(f"  {cat}: {count}건")
+    logger.info(f"=== 저장 완료: 전체 {output_path} ({len(parsed)}건) ===")
 
 
 def main() -> None:

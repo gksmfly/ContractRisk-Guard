@@ -11,9 +11,6 @@
 
 사용법:
     python scripts/crawl_ftc_seed.py
-    python scripts/crawl_ftc_seed.py --delay 2.0
-    python scripts/crawl_ftc_seed.py --max-pages 220
-    python scripts/crawl_ftc_seed.py --no-headless
 """
 
 import json
@@ -30,7 +27,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-LOG_DIR = Path(os.environ["LOG_DIR"])
+LOG_DIR = Path(os.environ.get("LOG_DIR", "data/logs"))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,

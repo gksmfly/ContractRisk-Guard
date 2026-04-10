@@ -28,7 +28,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-LOG_DIR = Path(os.environ["LOG_DIR"])
+LOG_DIR = Path(os.environ.get("LOG_DIR", "data/logs"))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,

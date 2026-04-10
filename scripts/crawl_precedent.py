@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-LOG_DIR = Path(os.environ["LOG_DIR"])
+LOG_DIR = Path(os.environ.get("LOG_DIR", "data/logs"))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
@@ -29,13 +29,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-LIST_URL = os.environ["LAW_LIST_URL"]
-DETAIL_URL = os.environ["LAW_DETAIL_URL"]
-RAW_DIR = Path(os.environ["PREC_RAW_DIR"])
+LIST_URL = os.environ.get("LAW_LIST_URL", "https://www.law.go.kr/DRF/lawSearch.do")
+DETAIL_URL = os.environ.get("LAW_DETAIL_URL", "https://www.law.go.kr/DRF/lawService.do")
+RAW_DIR = Path(os.environ.get("PREC_RAW_DIR", "data/raw/precedents"))
 
+
+"""판례 목록을 페이지 단위로 조회합니다."""
 
 def fetch_list(auth_key: str, page: int = 1, display: int = 100) -> dict:
-    """판례 목록을 페이지 단위로 조회합니다."""
     params = {
         "OC": auth_key,
         "target": "prec",
