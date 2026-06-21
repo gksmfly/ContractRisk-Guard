@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: #ffffff;
+    --foreground: #0f172a;
+    --card: #ffffff;
+    --card-foreground: #0f172a;
+    --popover: #ffffff;
+    --popover-foreground: #0f172a;
+    --primary: #2563eb;
+    --primary-foreground: #ffffff;
+    --secondary: #f1f5f9;
+    --secondary-foreground: #0f172a;
+    --muted: #f8fafc;
+    --muted-foreground: #64748b;
+    --accent: #eff6ff;
+    --accent-foreground: #1d4ed8;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    --border: #e2e8f0;
+    --input: #f1f5f9;
+    --ring: #2563eb;
+    --radius: 0.625rem;
+
+    /* Dark navbar */
+    --nav-bg: #0a0f1e;
+    --nav-border: rgba(255,255,255,0.08);
+  }
+
+  * {
+    border-color: #e2e8f0;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: #ffffff;
+    color: #0f172a;
+  }
+}
+
+@layer utilities {
+  .animate-in {
+    animation-fill-mode: both;
+  }
+  .fade-in {
+    animation: fadeIn 0.4s ease-out;
+  }
+  .slide-in-from-bottom-4 {
+    animation: slideInBottom 0.4s ease-out;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slideInBottom {
+  from { opacity: 0; transform: translateY(1rem); }
+  to   { opacity: 1; transform: translateY(0); }
+}
