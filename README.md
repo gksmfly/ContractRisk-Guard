@@ -31,7 +31,7 @@ Korean service contracts frequently contain unfair termination clauses (약관�
 | CLEAN label match rate | 94.9% (131 / 138 cases) |
 | NOISE label match rate | 76.2% (439 / 576 cases) |
 | Risk categories | High / Medium / Low |
-| Clause domains | 해지_조항, 책임제한_조항 |
+| Clause domains | 해지 조항, 책임제한 조항 |
 | Legal corpus | 16 laws, 26 interpretations, 1,995 court precedents, 2,488+ FTC cases |
 | Published | KAICTS 2025 |
 
