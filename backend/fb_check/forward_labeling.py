@@ -7,11 +7,16 @@ GPT-4o가 계약 조항 전문을 보고 domain, risk_level, evidence_span, reas
 """
 
 import json
+import os
 import time
 
+from dotenv import load_dotenv
 from openai import OpenAI
 
+load_dotenv()
+
 MAX_GPT_CHARS = 3000
+FORWARD_MODEL = os.environ["FORWARD_MODEL"]
 
 _FEW_SHOT_EXAMPLES = [
     {
@@ -80,7 +85,7 @@ _SYSTEM = """당신은 한국 계약법 전문가입니다.
 }"""
 
 
-def run_forward(client: OpenAI, clause_text: str, retries: int = 3) -> dict | None:
+def run_forward(client: OpenAI, clause_text: str, retries: int = 3, model: str = FORWARD_MODEL) -> dict | None:
     messages = [{"role": "system", "content": _SYSTEM}]
     messages.extend(_FEW_SHOT_EXAMPLES)
     messages.append({"role": "user", "content": f"계약 조항:\n{clause_text[:MAX_GPT_CHARS]}"})
@@ -88,7 +93,7 @@ def run_forward(client: OpenAI, clause_text: str, retries: int = 3) -> dict | No
     for attempt in range(retries):
         try:
             resp = client.chat.completions.create(
-                model="gpt-4o",
+                model=model,
                 messages=messages,
                 response_format={"type": "json_object"},
                 temperature=0,

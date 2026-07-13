@@ -1,4 +1,4 @@
-# scripts/utils.py
+# backend/scripts/utils.py
 """
 크롤링 스크립트 공통 유틸리티
 
@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]  # ContractRisk-Guard/
+PROJECT_ROOT = Path(__file__).resolve().parents[2]  # ContractRisk-Guard/
 
 
 """JSON 데이터를 파일로 저장한다.

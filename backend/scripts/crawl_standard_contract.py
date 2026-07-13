@@ -1,4 +1,4 @@
-# scripts/crawl_standard_contract.py
+# backend/scripts/crawl_standard_contract.py
 """
 공정거래위원회 표준계약서 HWP 자동 다운로드 및 텍스트 추출 스크립트
 
@@ -7,10 +7,10 @@
 olefile + zlib으로 텍스트를 추출하여 JSON으로 저장합니다.
 
 사용법:
-    python scripts/crawl_standard_contract.py
-    python scripts/crawl_standard_contract.py --skip-download   # HWP 재다운로드 없이 파싱만
-    python scripts/crawl_standard_contract.py --category 표준약관  # 특정 카테고리만
-    python scripts/crawl_standard_contract.py --no-headless      # 브라우저 화면 표시
+    python backend/scripts/crawl_standard_contract.py
+    python backend/scripts/crawl_standard_contract.py --skip-download   # HWP 재다운로드 없이 파싱만
+    python backend/scripts/crawl_standard_contract.py --category 표준약관  # 특정 카테고리만
+    python backend/scripts/crawl_standard_contract.py --no-headless      # 브라우저 화면 표시
 
 샘플 출력 데이터 (data/raw/contract/contracts_parsed.json):
     {

@@ -39,8 +39,12 @@ pydantic
 
 # 데이터베이스
 sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+
+# LLM
+openai>=1.30.0                  # GPT-4o-mini LLM Zero-shot 분류 (domain_filter 3단계)
 
 # 개발/테스트
 pytest>=7.4.0
 pytest-asyncio>=0.23.0
-httpx>=0.26.0openai>=1.30.0                  # GPT-4o-mini LLM Zero-shot 분류 (domain_filter 3단계)
+httpx>=0.26.0

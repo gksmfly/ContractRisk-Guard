@@ -1,4 +1,4 @@
-# scripts/crawl_ftc_cases.py
+# backend/scripts/crawl_ftc_cases.py
 """
 공정거래위원회 심결례 - 불공정약관 시정조치 사례 목록 수집 스크립트 (Seed 데이터)
 
@@ -7,7 +7,7 @@
 reprsntViolTy=10 은 실제로 필터링 되지 않아 caseNo=약관 으로 대체합니다.
 
 사용법:
-    python scripts/crawl_ftc_cases.py
+    python backend/scripts/crawl_ftc_cases.py
 
 샘플 출력 데이터 (data/raw/ftc_cases/ftc_cases_raw.json):
     {

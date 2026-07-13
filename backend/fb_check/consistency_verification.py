@@ -8,9 +8,15 @@ L == L' 이면 라벨 일관성 확인, L ≠ L' 이면 NOISE로 판정.
 """
 
 import json
+import os
 import time
 
+from dotenv import load_dotenv
 from openai import OpenAI
+
+load_dotenv()
+
+VERIFY_MODEL = os.environ["VERIFY_MODEL"]
 
 _FEW_SHOT_EXAMPLES = [
     {
@@ -64,7 +70,7 @@ _SYSTEM = """당신은 한국 계약법 전문가입니다.
 }"""
 
 
-def run_verify(client: OpenAI, evidence_span: str, retries: int = 3) -> dict | None:
+def run_verify(client: OpenAI, evidence_span: str, retries: int = 3, model: str = VERIFY_MODEL) -> dict | None:
     messages = [{"role": "system", "content": _SYSTEM}]
     messages.extend(_FEW_SHOT_EXAMPLES)
     messages.append({"role": "user", "content": f"근거 문구:\n{evidence_span}"})
@@ -72,7 +78,7 @@ def run_verify(client: OpenAI, evidence_span: str, retries: int = 3) -> dict | N
     for attempt in range(retries):
         try:
             resp = client.chat.completions.create(
-                model="gpt-4o",
+                model=model,
                 messages=messages,
                 response_format={"type": "json_object"},
                 temperature=0,

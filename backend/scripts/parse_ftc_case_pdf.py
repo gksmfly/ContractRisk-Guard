@@ -1,4 +1,4 @@
-# scripts/parse_ftc_case_pdf.py
+# backend/scripts/parse_ftc_case_pdf.py
 """
 공정거래위원회 시정조치 PDF 다운로드 및 텍스트 파싱 스크립트
 
@@ -6,8 +6,8 @@ ftc_cases_raw.json의 pdf_info(docId, docSn)를 이용하여
 Playwright로 PDF를 다운로드하고 pdfplumber로 텍스트를 추출합니다.
 
 사용법:
-    python scripts/parse_ftc_case_pdf.py
-    python scripts/parse_ftc_case_pdf.py --skip-download   # PDF 재다운로드 없이 파싱만
+    python backend/scripts/parse_ftc_case_pdf.py
+    python backend/scripts/parse_ftc_case_pdf.py --skip-download   # PDF 재다운로드 없이 파싱만
 
 샘플 출력 데이터 (data/raw/ftc_cases/ftc_cases_parsed.json):
     {

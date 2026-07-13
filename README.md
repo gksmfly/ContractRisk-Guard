@@ -65,13 +65,13 @@ ContractRisk-Guard/
 │   ├── preprocess/                 # Text cleaning and chunking
 │   ├── labeling/seed.py            # FTC cases + standard contracts → seed data
 │   ├── training/train.py           # KoELECTRA fine-tuning on CLEAN data
-│   └── model/electra.py            # DualHeadElectra (domain + risk heads)
+│   ├── model/electra.py            # DualHeadElectra (domain + risk heads)
+│   └── scripts/                    # Law API crawler, FTC case scraper
 ├── frontend/
 │   ├── app/
 │   │   ├── page.tsx                # Landing page
 │   │   └── analyze/                # Contract analyzer UI
 │   └── components/
-├── scripts/                        # Law API crawler, FTC case scraper
 └── docker/docker-compose.yml       # PostgreSQL pgvector
 ```
 

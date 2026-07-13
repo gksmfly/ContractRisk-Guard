@@ -6,24 +6,27 @@ data/processed/chunks/*.jsonl (법령·판례·해석례 청크) 와
 data/labels/seed_labeled.jsonl (Seed 라벨 데이터) 를
 PostgreSQL에 임베딩과 함께 적재한다.
 
-임베딩 모델: text-embedding-3-large (dim=3072)
+임베딩 모델: nlpai-lab/KoE5 (dim=1024, local GPU)
+  backend/db/embedding_benchmark.py 비교 결과, 기존 openai/text-embedding-3-large
+  대비 관련/비관련 문서 분리도가 더 높고(0.1041 vs 0.0463) API 비용도 없어 채택.
+  E5 계열 컨벤션에 따라 저장 문서는 "passage: " 프리픽스를 붙여 인코딩한다
+  (검색 쿼리 임베딩 시에는 "query: " 프리픽스를 붙여야 함).
 
 사용법:
     python -m backend.db.loader              # 전체 적재
     python -m backend.db.loader --source chunks   # 청크만
     python -m backend.db.loader --source seed     # Seed만
     python -m backend.db.loader --source clean    # FB-Check CLEAN 데이터
+    python -m backend.db.loader --source noise    # FB-Check NOISE 데이터
 
 환경변수 (.env):
     DATABASE_URL  postgresql://user:pass@host:5432/dbname
-    OPENAI_API_KEY
+    EMBED_DEVICE  cuda:1 (기본값) / cuda:0 / cpu
 """
 
 import argparse
 import os
-import re
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
@@ -35,12 +38,12 @@ from backend.utils import load_logger, load_jsonl, PROJECT_ROOT
 
 logger = load_logger("db_load.log")
 
-DATABASE_URL   = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/crg")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-EMBED_MODEL    = "text-embedding-3-large"
-EMBED_DIM      = 1536  # HNSW 인덱스 최대 2000차원 제한, large 모델 dimensions 파라미터로 축소
-BATCH_SIZE     = 100   # OpenAI API 배치 크기 (precedents 평균 221 토큰 × 100 = ~22,000, TPM 40K 이내)
-UPSERT_BATCH   = 200   # DB insert 배치 크기
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/crg")
+EMBED_MODEL  = "nlpai-lab/KoE5"
+EMBED_DIM    = 1024
+EMBED_DEVICE = os.environ.get("EMBED_DEVICE", "cuda:1")
+BATCH_SIZE   = 64    # KoE5 로컬 GPU 인코딩 배치 크기
+UPSERT_BATCH = 200   # DB insert 배치 크기
 
 PROCESSED_DIR  = Path(os.environ.get("PROCESSED_DIR", str(PROJECT_ROOT / "data/processed")))
 SEED_DIR       = Path(os.environ.get("SEED_DIR",      str(PROJECT_ROOT / "data/labels")))
@@ -100,6 +103,27 @@ CREATE INDEX IF NOT EXISTS clean_domain_idx ON clean_clauses (domain);
 CREATE INDEX IF NOT EXISTS clean_embedding_idx ON clean_clauses
     USING hnsw (embedding vector_cosine_ops)
     WITH (m=16, ef_construction=64);
+
+CREATE TABLE IF NOT EXISTS noise_clauses (
+    chunk_id         TEXT        PRIMARY KEY,
+    source           VARCHAR(30),
+    doc_id           VARCHAR(200),
+    text             TEXT        NOT NULL,
+    domain           VARCHAR(20),
+    risk_level       VARCHAR(10),
+    forward_label    VARCHAR(10),
+    verify_label     VARCHAR(10),
+    noise_reason     TEXT,
+    evidence_span    TEXT,
+    reasoning        TEXT,
+    metadata         JSONB,
+    embedding        vector({dim})
+);
+CREATE INDEX IF NOT EXISTS noise_domain_idx ON noise_clauses (domain);
+CREATE INDEX IF NOT EXISTS noise_reason_idx ON noise_clauses (noise_reason);
+CREATE INDEX IF NOT EXISTS noise_embedding_idx ON noise_clauses
+    USING hnsw (embedding vector_cosine_ops)
+    WITH (m=16, ef_construction=64);
 """.format(dim=EMBED_DIM)
 
 
@@ -117,16 +141,18 @@ def _get_conn():
     return conn
 
 
-def _get_openai():
+def get_embedder():
+    """KoE5 SentenceTransformer를 로드한다.
+
+    backend.api.services.retrieval처럼 다른 모듈에서 검색 쿼리를 임베딩할 때도
+    이 함수를 재사용해, DB 적재 시점과 검색 시점의 임베딩 모델이 어긋나지 않도록 한다.
+    """
     try:
-        from openai import OpenAI
+        from sentence_transformers import SentenceTransformer
     except ImportError:
-        logger.error("openai 미설치: pip install openai")
+        logger.error("sentence-transformers 미설치: pip install sentence-transformers")
         sys.exit(1)
-    if not OPENAI_API_KEY:
-        logger.error("OPENAI_API_KEY 환경변수 없음")
-        sys.exit(1)
-    return OpenAI(api_key=OPENAI_API_KEY)
+    return SentenceTransformer(EMBED_MODEL, device=EMBED_DEVICE)
 
 
 def init_schema(conn) -> None:
@@ -136,47 +162,24 @@ def init_schema(conn) -> None:
     logger.info("  스키마 초기화 완료")
 
 
-_RATE_LIMIT_RE = re.compile(
-    r"(?:retry after|Please try again in)\s*(\d+)\s*s", re.IGNORECASE
-)
-# precedents 평균 221 토큰 × 100개 = 22,100 토큰 → 40K TPM 한도에서 배치당 최소 34s 필요
-_BATCH_INTERVAL = 35  # 초; 마지막 배치엔 대기 불필요
+def embed_texts(model, texts: list[str], on_batch=None, prefix: str = "passage: ") -> list[list[float]]:
+    """텍스트를 배치 단위로 임베딩한다 (KoE5, E5 컨벤션에 따른 프리픽스 부여).
 
-
-def _parse_retry_after(err_msg: str) -> int | None:
-    m = _RATE_LIMIT_RE.search(err_msg)
-    return int(m.group(1)) if m else None
-
-
-def embed_texts(client, texts: list[str]) -> list[list[float]]:
+    저장용 문서는 prefix="passage: "(기본값), 검색 쿼리는 prefix="query: "를 넘긴다.
+    on_batch(start_idx, batch_embeddings)가 주어지면 배치가 끝날 때마다 즉시 호출된다.
+    호출자는 이 콜백에서 해당 배치만 DB에 upsert하여, 중간에 프로세스가 끊겨도
+    이미 처리된 배치는 보존되도록 한다. KoE5의 max_seq_length(512 토큰)를 넘는
+    텍스트는 SentenceTransformer가 자동으로 잘라낸다.
+    """
     all_embeddings: list[list[float]] = []
     total = len(texts)
     for i in range(0, total, BATCH_SIZE):
-        batch = texts[i : i + BATCH_SIZE]
-        t_start = time.time()
-        for attempt in range(3):
-            try:
-                resp = client.embeddings.create(
-                    model=EMBED_MODEL, input=batch, dimensions=EMBED_DIM
-                )
-                all_embeddings.extend([d.embedding for d in resp.data])
-                break
-            except Exception as e:
-                err = str(e)
-                if "Request too large" in err or "maximum context length" in err.lower():
-                    logger.error(
-                        f"  배치 크기 초과 (idx={i}, size={len(batch)}): BATCH_SIZE를 줄이세요"
-                    )
-                    raise
-                wait = _parse_retry_after(err) or (10 * 2 ** attempt)
-                logger.warning(f"  임베딩 재시도 {attempt+1}/3 ({wait}s 대기): {err[:120]}")
-                time.sleep(wait)
-        # 마지막 배치가 아니면 TPM 초과 방지를 위해 인터벌 보장
-        if i + BATCH_SIZE < total:
-            elapsed = time.time() - t_start
-            sleep_for = max(0.0, _BATCH_INTERVAL - elapsed)
-            if sleep_for:
-                time.sleep(sleep_for)
+        batch = [f"{prefix}{t}" for t in texts[i : i + BATCH_SIZE]]
+        batch_embeddings = model.encode(batch, convert_to_numpy=True).tolist()
+
+        all_embeddings.extend(batch_embeddings)
+        if on_batch:
+            on_batch(i, batch_embeddings)
         logger.info(f"  임베딩 진행: {min(i + BATCH_SIZE, total)}/{total}")
     return all_embeddings
 
@@ -188,10 +191,24 @@ def _existing_ids(conn, table: str) -> set[str]:
         return {row[0] for row in cur.fetchall()}
 
 
+def _strip_nul(v: Any) -> Any:
+    """Postgres text 컬럼은 NUL(0x00) 문자를 저장할 수 없다 (PDF 추출 과정에서 종종 섞여 들어옴)."""
+    if isinstance(v, str):
+        return v.replace("\x00", "")
+    if isinstance(v, dict):
+        return {k: _strip_nul(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_strip_nul(x) for x in v]
+    return v
+
+
 def _upsert_chunks(conn, table: str, cols: list[str], rows: list[tuple]) -> None:
     from psycopg2.extras import execute_values, Json
     rows = [
-        tuple(Json(v) if isinstance(v, (dict, list)) else v for v in row)
+        tuple(
+            Json(_strip_nul(v)) if isinstance(v, (dict, list)) else _strip_nul(v)
+            for v in row
+        )
         for row in rows
     ]
     col_str = ", ".join(cols)
@@ -206,10 +223,31 @@ def _upsert_chunks(conn, table: str, cols: list[str], rows: list[tuple]) -> None
     conn.commit()
 
 
-def load_chunks(conn, client) -> dict[str, int]:
+def _load_incremental(
+    conn, embedder, table: str, cols: list[str], records: list[dict], row_fn, label: str,
+) -> int:
+    """레코드를 배치 단위로 임베딩 + upsert한다.
+
+    embed_texts의 on_batch 콜백을 이용해 배치가 성공할 때마다 즉시 DB에 반영하므로,
+    중간에 프로세스가 끊겨도 이미 처리된 배치는 보존된다 (재실행 시 스킵됨).
+    """
+    texts = [r["text"] for r in records]
+
+    def _on_batch(start_idx: int, batch_embeddings: list[list[float]]) -> None:
+        batch_records = records[start_idx : start_idx + len(batch_embeddings)]
+        rows = [row_fn(r, emb) for r, emb in zip(batch_records, batch_embeddings)]
+        _upsert_chunks(conn, table, cols, rows)
+
+    embed_texts(embedder, texts, on_batch=_on_batch)
+    logger.info(f"  [{label}] {len(records)}건 적재 완료")
+    return len(records)
+
+
+def load_chunks(conn, embedder) -> dict[str, int]:
     """data/processed/chunks/*.jsonl → chunks 테이블."""
     sources = ["laws", "precedents", "interpretations"]
     total_inserted = 0
+    cols = ["chunk_id", "source", "doc_id", "rec_index", "chunk_index", "text", "metadata", "embedding"]
 
     existing = _existing_ids(conn, "chunks")
     if existing:
@@ -230,26 +268,18 @@ def load_chunks(conn, client) -> dict[str, int]:
             continue
 
         logger.info(f"  [chunks/{src}] {len(records)}개 청크 임베딩 시작")
-        texts = [r["text"] for r in records]
-        embeddings = embed_texts(client, texts)
-
-        rows = [
-            (
-                r["chunk_id"], r["source"], r.get("doc_id"),
-                r.get("rec_index"), r.get("chunk_index"),
-                r["text"], r.get("metadata"), emb,
-            )
-            for r, emb in zip(records, embeddings)
-        ]
-        cols = ["chunk_id", "source", "doc_id", "rec_index", "chunk_index", "text", "metadata", "embedding"]
-        _upsert_chunks(conn, "chunks", cols, rows)
-        logger.info(f"  [chunks/{src}] {len(rows)}건 적재 완료")
-        total_inserted += len(rows)
+        row_fn = lambda r, emb: (
+            r["chunk_id"], r["source"], r.get("doc_id"),
+            r.get("rec_index"), r.get("chunk_index"),
+            r["text"], r.get("metadata"), emb,
+        )
+        n = _load_incremental(conn, embedder, "chunks", cols, records, row_fn, f"chunks/{src}")
+        total_inserted += n
 
     return {"inserted": total_inserted}
 
 
-def load_seed(conn, client) -> dict[str, int]:
+def load_seed(conn, embedder) -> dict[str, int]:
     """data/labels/seed_labeled.jsonl → seed_clauses 테이블."""
     path = SEED_DIR / "seed_labeled.jsonl"
     if not path.exists():
@@ -267,25 +297,18 @@ def load_seed(conn, client) -> dict[str, int]:
         return {"inserted": 0}
     logger.info(f"  [seed] {len(records)}건 임베딩 시작")
 
-    texts = [r["text"] for r in records]
-    embeddings = embed_texts(client, texts)
-
-    rows = [
-        (
-            r["chunk_id"], r["source"], r.get("doc_id"), r["text"],
-            r["domain"], r["risk_level"], r["risk_basis"],
-            r.get("patterns_matched", []), r.get("metadata"), emb,
-        )
-        for r, emb in zip(records, embeddings)
-    ]
+    row_fn = lambda r, emb: (
+        r["chunk_id"], r["source"], r.get("doc_id"), r["text"],
+        r["domain"], r["risk_level"], r["risk_basis"],
+        r.get("patterns_matched", []), r.get("metadata"), emb,
+    )
     cols = ["chunk_id", "source", "doc_id", "text", "domain", "risk_level",
             "risk_basis", "patterns_matched", "metadata", "embedding"]
-    _upsert_chunks(conn, "seed_clauses", cols, rows)
-    logger.info(f"  [seed] {len(rows)}건 적재 완료")
-    return {"inserted": len(rows)}
+    n = _load_incremental(conn, embedder, "seed_clauses", cols, records, row_fn, "seed")
+    return {"inserted": n}
 
 
-def load_clean(conn, client) -> dict[str, int]:
+def load_clean(conn, embedder) -> dict[str, int]:
     """data/fb_check/clean.jsonl → clean_clauses 테이블."""
     path = FB_CHECK_DIR / "clean.jsonl"
     if not path.exists():
@@ -303,51 +326,76 @@ def load_clean(conn, client) -> dict[str, int]:
         return {"inserted": 0}
     logger.info(f"  [clean] {len(records)}건 임베딩 시작")
 
-    # 8192 토큰 한도 방지: 약 6000자 이상은 잘라냄 (한국어 ~2토큰/자 기준)
-    MAX_CHARS = 6000
-    texts = [r["text"][:MAX_CHARS] for r in records]
-    embeddings = embed_texts(client, texts)
-
-    rows = [
-        (
-            r["chunk_id"], r.get("source"), r.get("doc_id"), r["text"][:MAX_CHARS],
-            r.get("forward_domain"), r.get("forward_label"), r.get("forward_label"),
-            r.get("backward_risk"), r.get("evidence_span"), r.get("reasoning"),
-            None, emb,
-        )
-        for r, emb in zip(records, embeddings)
-    ]
+    row_fn = lambda r, emb: (
+        r["chunk_id"], r.get("source"), r.get("doc_id"), r["text"],
+        r.get("forward_domain"), r.get("forward_label"), r.get("forward_label"),
+        r.get("backward_risk"), r.get("evidence_span"), r.get("reasoning"),
+        None, emb,
+    )
     cols = ["chunk_id", "source", "doc_id", "text", "domain", "risk_level",
             "forward_label", "backward_label", "evidence_span", "reasoning",
             "metadata", "embedding"]
-    _upsert_chunks(conn, "clean_clauses", cols, rows)
-    logger.info(f"  [clean] {len(rows)}건 적재 완료")
-    return {"inserted": len(rows)}
+    n = _load_incremental(conn, embedder, "clean_clauses", cols, records, row_fn, "clean")
+    return {"inserted": n}
+
+
+def load_noise(conn, embedder) -> dict[str, int]:
+    """data/fb_check/noise.jsonl → noise_clauses 테이블."""
+    path = FB_CHECK_DIR / "noise.jsonl"
+    if not path.exists():
+        logger.warning(f"  {path} 없음 — fb_check.py 먼저 실행하세요")
+        return {"inserted": 0}
+
+    all_records = load_jsonl(path)
+    existing = _existing_ids(conn, "noise_clauses")
+    records = [r for r in all_records if r["chunk_id"] not in existing]
+    skipped = len(all_records) - len(records)
+    if skipped:
+        logger.info(f"  [noise] {skipped}건 이미 적재 — 건너뜀")
+    if not records:
+        logger.info("  [noise] 모두 적재 완료 상태")
+        return {"inserted": 0}
+    logger.info(f"  [noise] {len(records)}건 임베딩 시작")
+
+    row_fn = lambda r, emb: (
+        r["chunk_id"], r.get("source"), r.get("doc_id"), r["text"],
+        r.get("forward_domain"), r.get("forward_label"), r.get("forward_label"),
+        r.get("verify_label"), r.get("noise_reason"), r.get("evidence_span"), r.get("reasoning"),
+        None, emb,
+    )
+    cols = ["chunk_id", "source", "doc_id", "text", "domain", "risk_level",
+            "forward_label", "verify_label", "noise_reason", "evidence_span", "reasoning",
+            "metadata", "embedding"]
+    n = _load_incremental(conn, embedder, "noise_clauses", cols, records, row_fn, "noise")
+    return {"inserted": n}
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="PostgreSQL+pgvector DB 적재")
     parser.add_argument("--source", default="all",
-                        choices=["all", "chunks", "seed", "clean"],
+                        choices=["all", "chunks", "seed", "clean", "noise"],
                         help="적재할 소스 (기본: all)")
     args = parser.parse_args()
 
     logger.info("========== DB 적재 시작 ==========")
 
-    conn   = _get_conn()
-    client = _get_openai()
+    conn     = _get_conn()
+    embedder = get_embedder()
     init_schema(conn)
 
     report: dict[str, Any] = {}
 
     if args.source in ("all", "chunks"):
-        report["chunks"] = load_chunks(conn, client)
+        report["chunks"] = load_chunks(conn, embedder)
 
     if args.source in ("all", "seed"):
-        report["seed"] = load_seed(conn, client)
+        report["seed"] = load_seed(conn, embedder)
 
     if args.source in ("all", "clean"):
-        report["clean"] = load_clean(conn, client)
+        report["clean"] = load_clean(conn, embedder)
+
+    if args.source in ("all", "noise"):
+        report["noise"] = load_noise(conn, embedder)
 
     conn.close()
 

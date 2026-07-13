@@ -1,4 +1,4 @@
-# scripts/crawl_law_api.py
+# backend/scripts/crawl_law_api.py
 """
 국가법령정보 API - 법령·판례·법령해석례 수집 스크립트
 
@@ -6,10 +6,10 @@
 수집 결과는 source별 디렉터리에 항목당 JSON 파일로 저장됩니다.
 
 사용법:
-    python scripts/crawl_law_api.py --source law --key <인증키>
-    python scripts/crawl_law_api.py --source precedent --key <인증키>
-    python scripts/crawl_law_api.py --source interpretation --key <인증키>
-    python scripts/crawl_law_api.py --source law --key <인증키> --query 계약
+    python backend/scripts/crawl_law_api.py --source law --key <인증키>
+    python backend/scripts/crawl_law_api.py --source precedent --key <인증키>
+    python backend/scripts/crawl_law_api.py --source interpretation --key <인증키>
+    python backend/scripts/crawl_law_api.py --source law --key <인증키> --query 계약
 
 샘플 출력 데이터:
     # 목록 파일 (data/raw/law/mst_list.json)
