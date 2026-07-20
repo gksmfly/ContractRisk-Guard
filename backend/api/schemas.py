@@ -1,3 +1,4 @@
+# backend/api/schemas.py
 from pydantic import BaseModel
 
 
@@ -27,6 +28,8 @@ class ClauseResult(BaseModel):
     legal_basis: list[LegalBasis]
     reasoning: str
     verified: bool
+    redteam_note: str = ""
+    evidence_verified: bool = True
 
 
 class AnalyzeResponse(BaseModel):
