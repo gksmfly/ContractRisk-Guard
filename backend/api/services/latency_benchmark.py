@@ -17,6 +17,9 @@ import asyncio
 import time
 
 from backend.api.services.analyze import run_analyze
+from backend.utils import load_logger
+
+logger = load_logger("latency_benchmark.log")
 
 # 실제 조항 스타일 문구를 domain·risk_level 다양하게 순환시켜 표본 계약서를 구성한다
 _CLAUSE_TEMPLATES = [
@@ -53,12 +56,12 @@ async def _measure(n_clauses: int) -> dict:
 
 
 async def main_async(sizes: list[int]) -> None:
-    print(f"{'조항 수(입력)':>12} {'조항 수(분석됨)':>14} {'총 소요(초)':>12} {'조항당(초)':>10}")
-    print("-" * 55)
+    logger.info(f"{'조항 수(입력)':>12} {'조항 수(분석됨)':>14} {'총 소요(초)':>12} {'조항당(초)':>10}")
+    logger.info("-" * 55)
     for n in sizes:
         r = await _measure(n)
-        print(f"{r['n_clauses_input']:>12} {r['n_clauses_analyzed']:>14} "
-              f"{r['elapsed_sec']:>12.2f} {r['sec_per_clause']:>10.2f}")
+        logger.info(f"{r['n_clauses_input']:>12} {r['n_clauses_analyzed']:>14} "
+                    f"{r['elapsed_sec']:>12.2f} {r['sec_per_clause']:>10.2f}")
 
 
 def main() -> None:

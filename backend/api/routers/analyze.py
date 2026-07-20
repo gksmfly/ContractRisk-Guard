@@ -1,3 +1,4 @@
+# backend/api/routers/analyze.py
 import io
 
 from fastapi import APIRouter, HTTPException, UploadFile, File
@@ -9,7 +10,7 @@ router = APIRouter()
 
 
 @router.get("/health")
-def health():
+def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
