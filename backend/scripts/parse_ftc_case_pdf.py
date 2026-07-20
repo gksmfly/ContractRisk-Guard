@@ -41,13 +41,17 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from utils import save_json, setup_logger, PROJECT_ROOT
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from backend.scripts.utils import save_json, setup_logger, PROJECT_ROOT
 
 logger = setup_logger("parse_ftc_case_pdf.log")
 
 FTC_DIR  = Path(os.environ.get("FTC_DIR",  str(PROJECT_ROOT / "data/raw/ftc_cases")))
 PDF_DIR  = FTC_DIR / "pdfs"
+# crawl_ftc_cases.py와 동일한 대표위반유형 필터. 기본값은 불공정약관(10*)이지만,
+# 인접 카테고리(전자상거래 11*, 방문판매 12*, 가맹사업 13*, 할부거래 14* 등)를
+# 크롤링할 때는 이 값을 맞춰줘야 다운로드 목록 순회가 해당 사건을 찾아낸다.
+FTC_VIOLATION_TYPE = os.environ.get("FTC_VIOLATION_TYPE", "10*")
 
 
 """ftc_cases_raw.json에서 사례 목록을 로드합니다.
@@ -105,20 +109,27 @@ Args:
     page_index (int): 조회할 페이지 번호 (1부터 시작).
 
 Returns:
-    str: caseNo=약관 필터가 적용된 목록 페이지 URL 문자열.
+    str: reprsntVioltTy=10*(대표위반유형=불공정약관) 필터가 적용된 목록 페이지 URL 문자열.
 """
 
 def build_list_url(page_index: int) -> str:
+    # crawl_ftc_cases.py와 동일한 필터를 써야 한다 — 파라미터명이 reprsntViolTy(오타)로
+    # 다르면 필터가 전혀 적용되지 않아, caseNo=약관 목록만 순회하게 되고 사건번호에
+    # "약관"이 없는(그러나 위반유형은 불공정약관인) 사건은 PDF를 못 찾는다.
+    # FTC_VIOLATION_TYPE으로 카테고리를 바꿀 수 있다 — raw.json에 다른 카테고리
+    # 사건이 섞여 있는데 이 값이 안 맞으면, 다운로드 목록 순회에서 그 사건들을
+    # 영영 못 찾고(테이블은 매번 정상 로드되니 "테이블 없음"류 에러도 없이) 조용히
+    # 남은 건수만 계속 쌓인다 — 반드시 raw.json을 만든 크롤링과 값을 맞춰야 한다.
     query = urlencode(
         {
             "pageIndex": page_index,
-            "caseNo": "약관",
+            "caseNo": "",
             "caseNm": "",
             "decsnNo": "",
             "startRceptDt": "",
             "endRceptDt": "",
             "reprsntManagtTyCd": "",
-            "reprsntViolTy": "",
+            "reprsntVioltTy": FTC_VIOLATION_TYPE,
             "searchKrwd": "",
         }
     )
@@ -203,22 +214,126 @@ Returns:
     list[str]: 20자 이상의 조항 원문 문자열 리스트 (중복 제거, 순서 유지).
 """
 
-def extract_clause_text(text: str) -> list[str]:
-    clauses: list[str] = []
+_MAX_CLAUSE_LEN = 600  # 실제 조항 하나가 이보다 길면 뒤에 다른 내용(법조문 인용, 심결 서술)이
+                        # 딸려왔을 가능성이 높음 — 뒷부분을 잘라 오염을 줄인다
 
-    # "피심인의 약관 제X조", "약관 제X조" 패턴
+# 조항 원문 뒤에는 보통 "이러한 사실은 ~증거로 인정된다", "나. 검토의견 : 무효",
+# "(2) 심사의견 : 무 효", "나. 적용 법조 '약관의 규제에 관한 법률'..." 같은 증거 인용·
+# 심결 의견·법조문 설명이 이어진다 — 이 지점부터는 잘라낸다.
+# "검토의견"과 "심사의견"은 같은 의미로 문서마다 혼용되는데, "심사의견" 누락으로 인해
+# 해당 섹션의 일반론적 위반기준 서술("사업자가 고객에게 '부당하게 과중'한 손해배상을
+# 부담시키는...")이 evidence_span으로 잘못 추출되는 오염이 확인되어 추가한다.
+_BOUNDARY_MARKERS = [
+    "이러한 사실은", "검토의견", "심사의견", "불공정성 판단", "적용 법조", "약관법",
+    "약관의 규제", "민법", "동법", "법률 제", "시행령", "판례는", "대법원",
+    "정하고 있는 조항은", "무효로 한다",
+    "공정성을 잃은 것으로 추정", "다음 각 호의 어느 하나에 해당하는",
+]
+
+# 약관규제법 제6~17조, 민법 해지(543~553조)·손해배상(750~766조) 관련 조문은 그 자체가
+# "제N조(제목)" 형태라 일반 패턴에 그대로 걸린다 — 헤더가 이 실제 조문명과 정확히
+# 일치하면 피심인의 약관이 아니라 법 조문 그 자체다. 공백 유무가 PDF 추출 결과와
+# 다를 수 있어 비교 시점에 공백을 전부 제거해서 맞춘다.
+_STATUTE_ARTICLE_TITLES = {
+    re.sub(r"\s+", "", t) for t in [
+        # 약관의 규제에 관한 법률 제6~17조
+        "제6조(일반원칙)", "제7조(면책조항의 금지)", "제8조(손해배상액의 예정)",
+        "제9조(계약의 해제ㆍ해지)", "제9조(계약의 해제·해지)", "제10조(채무의 이행)",
+        "제11조(고객의 권익 보호)", "제12조(의사표시의 의제)", "제13조(대리인의 책임 가중)",
+        "제14조(소송 제기의 금지 등)", "제15조(적용의 제한)", "제16조(일부 무효의 특칙)",
+        "제17조(불공정약관조항의 사용금지)", "제17조(시정 조치)",
+        # 민법 제543~553조 (해지·해제)
+        "제543조(해지, 해제권)", "제544조(이행지체와 해제)", "제545조(정기행위와 해제)",
+        "제546조(이행불능과 해제)", "제547조(해지, 해제권의 불가분성)",
+        "제548조(해제의 효과, 원상회복의무)", "제549조(원상회복의무와 동시이행)",
+        "제550조(해지의 효과)", "제551조(해지, 해제와 손해배상)",
+        "제552조(해제권행사여부의 최고권)", "제553조(훼손 등으로 인한 해제권의 소멸)",
+        # 민법 제750~766조 (불법행위·손해배상)
+        "제750조(불법행위의 내용)", "제751조(재산 이외의 손해의 배상)",
+        "제752조(생명침해로 인한 위자료)", "제753조(미성년자의 책임능력)",
+        "제754조(심신상실자의 책임능력)", "제755조(감독자의 책임)",
+        "제756조(사용자의 배상책임)", "제757조(도급인의 책임)",
+        "제758조(공작물등의 점유자, 소유자의 책임)", "제759조(동물의 점유자의 책임)",
+        "제760조(공동불법행위자의 책임)", "제761조(정당방위, 긴급피난)",
+        "제762조(손해배상청구권에 있어서의 태아의 지위)", "제763조(준용규정)",
+        "제764조(명예훼손의 경우의 특칙)", "제765조(배상액의 경감청구)",
+        "제766조(손해배상청구권의 소멸시효)",
+    ]
+}
+
+
+# 1990년대 PDF는 소제목을 "심 사 의 견"처럼 글자 사이에 공백을 넣어 조판하는 경우가
+# 있어 단순 substring 매칭(find)으로는 못 잡는다 — 마커의 각 글자 사이에 공백을
+# 허용하는 정규식으로 컴파일해서 매칭한다.
+_BOUNDARY_PATTERNS = [
+    re.compile(r"\s*".join(re.escape(ch) for ch in marker))
+    for marker in _BOUNDARY_MARKERS
+]
+
+
+def _truncate_at_boundary(clause: str) -> str:
+    cut = len(clause)
+    for pattern in _BOUNDARY_PATTERNS:
+        m = pattern.search(clause)
+        if m:
+            cut = min(cut, m.start())
+    return clause[:cut].strip()
+
+
+# 시정권고 사건에서는 "제N조(제목)를 이 시정권고를 받은 날부터 60일 이내에 삭제 또는
+# 수정할 것을 권고한다. / 시정권고 이유 / ... / 가. 약관조항 / [진짜 조항 원문]" 구조가
+# 흔하다 — 앞부분(제N조 헤더 + 권고 명령문 + 위반유형 요약)이 "제N조(제목)" 패턴에 걸려
+# 조항 원문인 것처럼 통째로 캡처된다. 이 경우 진짜 조항은 "가. 약관조항"류 마커 뒤에서
+# 시작하므로, 그 지점으로 시작 위치를 다시 앵커링한다(뒷부분을 자르는 _truncate_at_boundary
+# 와 반대로, 앞부분을 잘라낸다).
+_RECOMMENDATION_PREAMBLE = re.compile(r"[을를]\s*이\s*시정권고를?\s*받은\s*날")
+_CLAUSE_START_MARKER = re.compile(r"[<〈]\s*약관\s*조항\s*[>〉]|[가-힣]\s*\.\s*약관\s*조항")
+
+
+def _skip_recommendation_preamble(clause: str) -> str:
+    if not _RECOMMENDATION_PREAMBLE.search(clause[:100]):
+        return clause
+    m = _CLAUSE_START_MARKER.search(clause)
+    if not m:
+        return clause
+    return clause[m.end():].strip()
+
+
+def _is_statute_article(clause: str) -> bool:
+    header = re.match(r"제\d+조\s*[\(（][^\)）]*[\)）]", clause)
+    if not header:
+        return False
+    normalized = re.sub(r"\s+", "", header.group(0))
+    return normalized in _STATUTE_ARTICLE_TITLES
+
+
+def _is_mostly_non_korean(clause: str) -> bool:
+    korean = sum(1 for ch in clause if "가" <= ch <= "힣")
+    return korean < len(clause) * 0.3
+
+
+def extract_clause_text(text: str) -> list[str]:
+    # "피심인의 약관 제X조"가 가장 구체적이고, 뒤로 갈수록 일반적이다 (일반 패턴은
+    # 심결문 안의 법조문 인용까지 "제N조(...)"로 오매칭한다). 세 패턴 다 돌리되,
+    # 아래 필터로 오매칭을 걸러낸다 — 특정 패턴에서만 잡히는 진짜 조항도 있어서
+    # 첫 패턴에서 결과가 나와도 나머지를 건너뛰지 않는다.
     patterns = [
         r"(피심인의\s*약관\s*제\d+조[^\n]*(?:\n(?![\d]+\.)[^\n]*)*)",
         r"(약관\s*제\d+조[가-힣\s]*\([^\)]*\)[^\n]*(?:\n(?![\d]+\.)[^\n]*)*)",
         r"(제\d+조\s*[\(（][^\)）]*[\)）][^\n]*(?:\n(?!\s*제\d+조)[^\n]*)*)",
     ]
 
+    clauses: list[str] = []
     for pattern in patterns:
         matches = re.findall(pattern, text)
         for m in matches:
-            clause = m.strip()
-            if len(clause) > 20:
-                clauses.append(clause)
+            clause = _skip_recommendation_preamble(m.strip()[:_MAX_CLAUSE_LEN])
+            clause = _truncate_at_boundary(clause)
+            if len(clause) <= 20:
+                continue
+            if _is_statute_article(clause) or _is_mostly_non_korean(clause):
+                continue
+            clauses.append(clause)
 
     seen: set[str] = set()
     unique: list[str] = []
@@ -431,8 +546,16 @@ def run_download(
     case_map: dict[str, tuple[dict[str, Any], str, int]] = {}
     for i, case in enumerate(cases, 1):
         pdf_info = case.get("pdf_info", {})
-        doc_id = pdf_info.get("docId", "")
-        if not doc_id:
+        # 다운로드 목록 순회 중엔 각 행의 첫 번째 열(사건번호, 아래 row_case_no)로
+        # 대상을 찾는다 — case_map도 반드시 사건번호로 키를 잡아야 매칭된다.
+        # pdf_info의 docId는 fileId(파일 식별자)라 사건번호와 전혀 다른 값이고,
+        # 다운로드 버튼은 매칭된 행에서 CSS 선택자로 직접 찾아 클릭하므로 docId
+        # 자체는 여기서 안 쓰인다 — "PDF 정보가 있는지"만 확인하는 용도.
+        if not pdf_info.get("docId", ""):
+            no_pdf += 1
+            continue
+        case_no = str(case.get("셀_데이터", {}).get("사건번호", "")).strip()
+        if not case_no:
             no_pdf += 1
             continue
         safe_name = build_case_identifier(case, fallback_index=i)
@@ -441,7 +564,7 @@ def run_download(
             skipped += 1
             downloaded[case.get("사건명", "")] = filepath
             continue
-        case_map[doc_id] = (case, safe_name, i)
+        case_map[case_no] = (case, safe_name, i)
 
     if not case_map:
         logger.info(

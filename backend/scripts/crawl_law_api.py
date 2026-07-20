@@ -40,8 +40,8 @@ from typing import Callable
 
 import requests
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from utils import save_json, setup_logger, PROJECT_ROOT
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from backend.scripts.utils import save_json, setup_logger, PROJECT_ROOT
 
 LIST_URL = os.environ.get("LAW_LIST_URL", "https://www.law.go.kr/DRF/lawSearch.do")
 DETAIL_URL = os.environ.get("LAW_DETAIL_URL", "https://www.law.go.kr/DRF/lawService.do")
@@ -278,7 +278,11 @@ def collect_id_list(
 
     while True:
         logger.info(f"{cfg.display} 목록 조회 - 페이지 {page} (query='{query}')")
-        result = fetch_list(auth_key, cfg.target, query=query, page=page)
+        try:
+            result = fetch_list(auth_key, cfg.target, query=query, page=page)
+        except requests.RequestException as e:
+            logger.error(f"{cfg.display} 목록 조회 실패 - 페이지 {page}: {e}")
+            break
 
         wrapper = result.get(cfg.list_wrapper, {})
         items = wrapper.get(cfg.items_key, [])

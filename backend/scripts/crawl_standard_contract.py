@@ -43,8 +43,8 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from utils import save_json, setup_logger, PROJECT_ROOT
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from backend.scripts.utils import save_json, setup_logger, PROJECT_ROOT
 
 logger = setup_logger("crawl_standard_contract.log")
 

@@ -2,9 +2,13 @@
 """
 공정거래위원회 심결례 - 불공정약관 시정조치 사례 목록 수집 스크립트 (Seed 데이터)
 
-불공정약관 심결례 전체를 순회하며 사건 메타데이터와 PDF 다운로드 식별자를 수집합니다.
-사건번호에 "약관"이 포함된 케이스만 필터링합니다 (예: 2022약관0758).
-reprsntViolTy=10 은 실제로 필터링 되지 않아 caseNo=약관 으로 대체합니다.
+대표위반유형=불공정약관(reprsntVioltTy=10*) 카테고리 전체를 순회하며 사건 메타데이터와
+PDF 다운로드 식별자를 수집합니다.
+과거엔 파라미터명을 reprsntViolTy(오타, 실제 필드명은 reprsntVioltTy)로 잘못 써서 필터가
+전혀 적용되지 않았고, 이를 caseNo=약관 부분일치로 대체했었다 — 그런데 이 부분일치는
+사건번호에 "약관"이 없는(위반유형은 불공정약관이지만 사건번호 명명 규칙이 다른) 사건을
+놓쳐서 실제 사이트 590건 중 437건(74%)만 수집하고 있었다. 파라미터명을 바로잡아 정확한
+카테고리 필터로 전환한다.
 
 사용법:
     python backend/scripts/crawl_ftc_cases.py
@@ -41,8 +45,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from utils import save_json, setup_logger, PROJECT_ROOT
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from backend.scripts.utils import save_json, setup_logger, PROJECT_ROOT
 
 logger = setup_logger("crawl_ftc_cases.log")
 
@@ -86,6 +90,18 @@ def extract_pdf_info(tr: Any) -> dict[str, str]:
         data_doc_sn = element.get_attribute("data-doc-sn") or element.get_attribute("docsn") or ""
         if data_doc_id:
             return {"docId": data_doc_id, "docSn": data_doc_sn}
+
+    # 행 안에 name="fileId"/"fileSn" hidden input이 명시적으로 있으면 최우선으로 쓴다.
+    # (불공정약관 외 카테고리에서는 같은 행에 csno/blno 등 다른 hidden input이 fileId보다
+    # 먼저 나와서, 아래의 "행 안 첫 두 hidden 값" 폴백이 사건번호·의결번호를 잘못
+    # docId/docSn으로 집어가는 문제가 있었다 — 이름으로 명확히 지정해 그 오매칭을 피한다.)
+    file_id_el = tr.query_selector("input[type='hidden'][name='fileId']")
+    file_sn_el = tr.query_selector("input[type='hidden'][name='fileSn']")
+    if file_id_el:
+        doc_id = file_id_el.get_attribute("value") or ""
+        doc_sn = file_sn_el.get_attribute("value") if file_sn_el else ""
+        if doc_id:
+            return {"docId": doc_id, "docSn": doc_sn or ""}
 
     hidden_values: list[str] = []
     for hidden in tr.query_selector_all("input[type='hidden']"):
@@ -235,13 +251,13 @@ def build_list_url(page_index: int) -> str:
     query = urlencode(
         {
             "pageIndex": page_index,
-            "caseNo": "약관",
+            "caseNo": "",
             "caseNm": "",
             "decsnNo": "",
             "startRceptDt": "",
             "endRceptDt": "",
             "reprsntManagtTyCd": "",
-            "reprsntViolTy": "",
+            "reprsntVioltTy": "10*",
             "searchKrwd": "",
         }
     )
