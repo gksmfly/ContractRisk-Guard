@@ -8,7 +8,11 @@ FB-Check 오케스트레이터 (Step 6)
   backward_grounding.py      : Backward Grounding E ⊂ C 검증 + KoELECTRA 예측
   consistency_verification.py: Consistency Verify E → L' 재라벨링
 
-  Decision: L == L' AND snippet_exists AND KoELECTRA 동의 → CLEAN
+  Decision: forward_label(GPT) / verify_label(GPT) / backward_risk(KoELECTRA, 독립 모델)
+  세 신호 중 2개 이상 일치하면 CLEAN (2/3 다수결). snippet_exists(E⊂C)는 사전 조건.
+
+  예전엔 backward_risk가 계산만 되고 판정엔 안 쓰여서(forward==verify만 봄) GPT 혼자
+  일관되게 틀려도(systematic bias) 못 걸렀다 — KoELECTRA를 실제로 반영해 교차검증한다.
 
 출력:
     data/fb_check/fb_check_results.jsonl
@@ -24,15 +28,18 @@ FB-Check 오케스트레이터 (Step 6)
 import argparse
 import json
 import os
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
 import torch
 from openai import OpenAI
+from transformers import ElectraTokenizerFast
 
 from backend.fb_check.forward_labeling import run_forward
 from backend.fb_check.backward_grounding import load_model, snippet_exists, predict
 from backend.fb_check.consistency_verification import run_verify
+from backend.model.electra import DualHeadElectra
 from backend.utils import load_jsonl, load_logger, save_json, save_jsonl, PROJECT_ROOT
 
 logger = load_logger("fb_check.log")
@@ -45,8 +52,8 @@ OUT_DIR   = Path(os.environ.get("FB_OUT_DIR", str(PROJECT_ROOT / "data/fb_check"
 def run_fb_check(
     record: dict,
     client: OpenAI,
-    model,
-    tokenizer,
+    model: DualHeadElectra,
+    tokenizer: ElectraTokenizerFast,
     device: torch.device,
 ) -> dict[str, Any]:
     clause_text = record["text"]
@@ -103,12 +110,22 @@ def run_fb_check(
     verify_domain = verify.get("domain", "")
     result.update({"verify_label": verify_label, "verify_domain": verify_domain})
 
-    # --- Decision: L == L' → CLEAN (논문 정의, E⊂C는 위에서 보장) ---
-    if forward_label == verify_label:
+    # --- Decision: forward_label(GPT)·verify_label(GPT)·backward_risk(KoELECTRA, 독립 모델)
+    # 세 신호 중 2개 이상 일치하면 CLEAN. 기존엔 forward==verify(GPT vs GPT)만 봐서
+    # backward_risk가 계산은 되지만 판정에 전혀 안 쓰였다 — 이러면 GPT 혼자 일관되게
+    # 틀려도(systematic bias) 걸러내지 못한다. KoELECTRA는 별도 모델이라 GPT와 같은
+    # 편향을 공유할 가능성이 낮아, 진짜 교차검증(Forward-*Backward*-Verify)이 되게 한다.
+    votes = [v for v in (forward_label, verify_label, backward_risk) if v]
+    label, count = Counter(votes).most_common(1)[0] if votes else (None, 0)
+
+    if count >= 2:
         result["status"] = "CLEAN"
+        result["final_label"] = label
     else:
         result["status"] = "NOISE"
-        result["noise_reason"] = f"label_mismatch: {forward_label} != {verify_label}"
+        result["noise_reason"] = (
+            f"no_majority: forward={forward_label} verify={verify_label} backward={backward_risk}"
+        )
 
     return result
 
@@ -126,7 +143,9 @@ def build_report(results: list[dict]) -> tuple[dict[str, Any], list[dict], list[
         if status == "CLEAN":
             clean_n += 1
             clean.append(r)
-            v = r.get("forward_label", "unknown")
+            # 2/3 다수결로 나온 final_label이 forward_label과 다를 수 있다
+            # (예: verify+backward가 forward와 다른 라벨에 동의한 경우)
+            v = r.get("final_label", r.get("forward_label", "unknown"))
             clean_risk[v] = clean_risk.get(v, 0) + 1
             v = r.get("forward_domain", "unknown")
             clean_domain[v] = clean_domain.get(v, 0) + 1
@@ -136,7 +155,7 @@ def build_report(results: list[dict]) -> tuple[dict[str, Any], list[dict], list[
             reason = r.get("noise_reason", "")
             if reason == "snippet_not_found":
                 noise_snippet += 1
-            elif reason.startswith("label_mismatch"):
+            elif reason.startswith("no_majority") or reason.startswith("label_mismatch"):
                 noise_mismatch += 1
             elif reason == "domain_none":
                 noise_domain_none += 1
@@ -153,7 +172,7 @@ def build_report(results: list[dict]) -> tuple[dict[str, Any], list[dict], list[
         "노이즈_원인": {
             "domain_none":       noise_domain_none,
             "snippet_not_found": noise_snippet,
-            "label_mismatch":    noise_mismatch,
+            "no_majority":       noise_mismatch,
         },
         "CLEAN_risk_분포":   clean_risk,
         "CLEAN_domain_분포": clean_domain,

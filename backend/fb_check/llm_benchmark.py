@@ -31,12 +31,14 @@ FB-Check — 오픈소스 LLM 대체 가능성 비교
 import argparse
 import gc
 import json
+import os
 import re
 import time
 from pathlib import Path
 from typing import Any
 
 import torch
+from openai import OpenAI
 
 from backend.fb_check.forward_labeling import _SYSTEM as FWD_SYSTEM, _FEW_SHOT_EXAMPLES as FWD_FEWSHOT, run_forward
 from backend.fb_check.consistency_verification import _SYSTEM as VERIFY_SYSTEM, _FEW_SHOT_EXAMPLES as VERIFY_FEWSHOT, run_verify
@@ -44,8 +46,8 @@ from backend.utils import load_jsonl, load_logger, save_json, PROJECT_ROOT
 
 logger = load_logger("llm_benchmark.log")
 
-RESULTS_PATH = PROJECT_ROOT / "data/fb_check/fb_check_results.jsonl"
-OUT_DIR      = PROJECT_ROOT / "data/fb_check"
+OUT_DIR      = Path(os.environ.get("FB_OUT_DIR", str(PROJECT_ROOT / "data/fb_check")))
+RESULTS_PATH = OUT_DIR / "fb_check_results.jsonl"
 
 # 로컬 GPU에서 transformers로 돌리는 후보
 CANDIDATES = {
@@ -104,7 +106,7 @@ def _load_samples(mode: str, n: int) -> list[dict]:
     return records[:n]
 
 
-def _load_model(model_id: str, device: str):
+def _load_model(model_id: str, device: str) -> tuple[Any, Any]:
     from transformers import AutoModelForCausalLM, AutoTokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
@@ -114,7 +116,7 @@ def _load_model(model_id: str, device: str):
     return model, tokenizer
 
 
-def _generate(model, tokenizer, device: str, cfg: dict, input_text: str) -> dict | None:
+def _generate(model: Any, tokenizer: Any, device: str, cfg: dict[str, Any], input_text: str) -> dict | None:
     messages = [{"role": "system", "content": cfg["system"]}]
     messages.extend(cfg["fewshot"])
     messages.append({"role": "user", "content": f"{cfg['user_prefix']}{input_text[:cfg['max_chars']]}"})
@@ -130,7 +132,7 @@ def _generate(model, tokenizer, device: str, cfg: dict, input_text: str) -> dict
     return _extract_json(text)
 
 
-def _generate_openai(client, model_id: str, mode: str, input_text: str) -> dict | None:
+def _generate_openai(client: OpenAI, model_id: str, mode: str, input_text: str) -> dict | None:
     if mode == "full":
         return run_forward(client, input_text, model=model_id)
     return run_verify(client, input_text, model=model_id)
@@ -142,8 +144,6 @@ def evaluate_candidate(name: str, model_id: str, mode: str, samples: list[dict],
     logger.info(f"[{name}/{mode}] {model_id} {'(OpenAI API)' if is_openai else '로드 중...'}")
 
     if is_openai:
-        import os
-        from openai import OpenAI
         client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     else:
         model, tokenizer = _load_model(model_id, device)

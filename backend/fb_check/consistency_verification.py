@@ -14,7 +14,11 @@ import time
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from backend.utils import load_logger
+
 load_dotenv()
+
+logger = load_logger("consistency_verification.log")
 
 VERIFY_MODEL = os.environ["VERIFY_MODEL"]
 
@@ -85,6 +89,8 @@ def run_verify(client: OpenAI, evidence_span: str, retries: int = 3, model: str 
             )
             return json.loads(resp.choices[0].message.content)
         except Exception as e:
+            logger.warning(f"  Consistency Verify 호출 실패 ({attempt + 1}/{retries}): {e}")
             if attempt < retries - 1:
                 time.sleep(2 ** attempt)
+    logger.error(f"  Consistency Verify 최종 실패 (재시도 {retries}회 소진)")
     return None

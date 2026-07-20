@@ -26,11 +26,13 @@ from pathlib import Path
 from typing import Any
 
 import torch
+from transformers import ElectraTokenizerFast
 
 from backend.fb_check.backward_grounding import load_model, snippet_exists, predict
 from backend.fb_check.oss_experiment.local_labeling import (
     MODELS, load_local_model, run_forward_local, run_verify_local,
 )
+from backend.model.electra import DualHeadElectra
 from backend.utils import load_jsonl, load_logger, save_json, save_jsonl, PROJECT_ROOT
 
 logger = load_logger("fb_check_oss.log")
@@ -42,8 +44,8 @@ OUT_BASE    = Path(os.environ.get("FB_OSS_OUT_DIR", str(PROJECT_ROOT / "data/fb_
 
 def run_fb_check_oss(
     record: dict,
-    local_model, local_tokenizer, local_device: str,
-    koelectra_model, koelectra_tokenizer, koelectra_device: torch.device,
+    local_model: Any, local_tokenizer: Any, local_device: str,
+    koelectra_model: DualHeadElectra, koelectra_tokenizer: ElectraTokenizerFast, koelectra_device: torch.device,
 ) -> dict[str, Any]:
     clause_text = record["text"]
     result: dict[str, Any] = {

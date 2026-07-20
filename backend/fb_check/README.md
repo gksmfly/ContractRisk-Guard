@@ -114,3 +114,45 @@ Qwen(40→60%)·Llama(40→70%)는 개선됐지만, **EXAONE만 오히려 악화
 쓸만하지만(domain 90%, risk 60~70%), gpt-4o-mini가 비용도 더 싸고 품질도 더 좋아서 오픈소스를
 쓸 이유가 없다. **FB-Check 전체 재실행은 `FORWARD_MODEL=gpt-4o-mini`, `VERIFY_MODEL=gpt-4o-mini`로
 설정해서 진행하는 것을 권장한다.**
+
+---
+
+## 정량 평가 — FTC 확정 판정 대비 실제 성능 (2026-07-13)
+
+지금까지의 모든 수치(검증 F1 93.9% 등)는 **GPT가 자기 자신과 일관되는지**를 잰 것이지,
+**실제로 법적으로 맞는 판단인지**를 잰 게 아니었다 — CLEAN 판정 자체가 `forward_label ==
+verify_label`(GPT vs GPT)만 비교하고, `seed_risk`(원본 정답)는 비교에 안 쓰인다.
+
+그런데 `seed_labeled.jsonl`의 `risk_level`은 사실 GPT가 만든 게 아니다
+(`backend/labeling/seed.py` 참고):
+- **FTC 시정조치 사례** → `risk_level=High` **하드코딩** (공정거래위원회가 이미 공식적으로
+  위반 판정을 내린 사건 — GPT의 추측이 아니라 정부 기관의 실제 법적 판단)
+- **표준계약서** → 정규식 패턴 기반 (GPT 미사용)
+
+즉 `seed_risk`는 GPT와 독립적인 정답으로 쓸 수 있다. FTC 시정조치 499건(전부 확정 High)을
+기준으로 실제 성능을 측정했다.
+
+| | High 정답과 일치 |
+|---|---|
+| GPT-4o-mini (forward_label) | 241/499 (48.3%) |
+| KoELECTRA v2 (evidence_span 있음, 304건) | 183/304 (**60.2%**) |
+| KoELECTRA v2 (evidence_span 없음→원문 대체, 195건) | 23/195 (11.8%) |
+| KoELECTRA v2 (전체 499건 블렌드) | 206/499 (41.3%) |
+
+**핵심 결론**:
+1. v2 자체는 학습 때와 같은 입력 형태(evidence_span)를 받으면 60.2% — 3지선다 랜덤(33%)보다는
+   낫지만 자기일관성 지표(93.9%)와는 거리가 멀다.
+2. 더 심각한 문제: FTC 확정 위반 499건 중 **195건(39%)은 GPT-4o-mini가 Forward Labeling
+   단계에서 evidence_span도 못 뽑고 "해당없음"으로 처리**했다 — KoELECTRA까지 가지도 못하고
+   그 앞에서 누락된다.
+3. 이 195건을 직접 읽어보니 상당수가 실제로는 **약관규제법 조문 자체나 심결 절차 서술문이
+   조항 원문으로 잘못 추출**된 것이었다 — `backend/scripts/parse_ftc_case_pdf.py`의 정규식이
+   너무 느슨해서, 피심인의 실제 약관뿐 아니라 법 조문·증거 인용까지 "조항 원문"으로 섞어
+   추출하고 있었다(자세한 내용과 수정은 `backend/scripts/README.md` 참고).
+4. **즉 39% 누락의 상당 부분은 GPT나 KoELECTRA의 판단 문제가 아니라, 그보다 훨씬 앞
+   단계(Step 0 PDF 파싱)의 데이터 품질 문제였다.**
+
+**주의**: 파싱 로직은 수정했지만(`backend/scripts/parse_ftc_case_pdf.py`), 이미 만들어진
+`seed_labeled.jsonl`/FB-Check 결과/KoELECTRA v2는 이 수정 이전 데이터로 만들어진 것이라
+아직 반영 안 됐다. 실제로 성능이 얼마나 개선되는지 확인하려면 PDF 재파싱 → seed 재라벨링 →
+FB-Check 재실행 → 재학습까지 전체 파이프라인을 다시 돌려야 한다.

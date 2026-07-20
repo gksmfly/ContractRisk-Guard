@@ -17,6 +17,7 @@ Forward/Verify 둘 다 로컬 모델로 대체해 전체 파이프라인을 실�
 
 import json
 import re
+from typing import Any
 
 import torch
 
@@ -41,7 +42,7 @@ def _extract_json(text: str) -> dict | None:
         return None
 
 
-def load_local_model(model_key: str, device: str):
+def load_local_model(model_key: str, device: str) -> tuple[Any, Any]:
     from transformers import AutoModelForCausalLM, AutoTokenizer
     model_id = MODELS[model_key]
     tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
@@ -53,7 +54,7 @@ def load_local_model(model_key: str, device: str):
 
 
 def _generate(
-    model, tokenizer, device: str, system: str, fewshot: list[dict],
+    model: Any, tokenizer: Any, device: str, system: str, fewshot: list[dict],
     user_content: str, max_new_tokens: int,
 ) -> dict | None:
     messages = [{"role": "system", "content": system}]
@@ -71,13 +72,13 @@ def _generate(
     return _extract_json(text)
 
 
-def run_forward_local(model, tokenizer, device: str, clause_text: str) -> dict | None:
+def run_forward_local(model: Any, tokenizer: Any, device: str, clause_text: str) -> dict | None:
     """forward_labeling.run_forward()의 로컬 모델 버전 (C → L + evidence_span)."""
     content = f"계약 조항:\n{clause_text[:3000]}"
     return _generate(model, tokenizer, device, FWD_SYSTEM, FWD_FEWSHOT, content, max_new_tokens=300)
 
 
-def run_verify_local(model, tokenizer, device: str, evidence_span: str) -> dict | None:
+def run_verify_local(model: Any, tokenizer: Any, device: str, evidence_span: str) -> dict | None:
     """consistency_verification.run_verify()의 로컬 모델 버전 (E → L')."""
     content = f"근거 문구:\n{evidence_span}"
     return _generate(model, tokenizer, device, VERIFY_SYSTEM, VERIFY_FEWSHOT, content, max_new_tokens=100)
