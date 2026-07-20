@@ -26,6 +26,7 @@ KoELECTRA 분류 모델 학습 스크립트
 
 import argparse
 import os
+import random
 from pathlib import Path
 from typing import Any
 
@@ -48,7 +49,7 @@ CLEAN_PATH = Path(os.environ.get("CLEAN_PATH", str(PROJECT_ROOT / "data/fb_check
 BASE_MODEL = os.environ.get("BASE_MODEL", "monologg/koelectra-base-v3-discriminator")
 
 
-def load_records(data_source: str) -> list[dict]:
+def load_records(data_source: str, fulltext_augment: bool = True) -> list[dict]:
     """학습 레코드를 로드하고 {text, domain, risk_level} 형태로 정규화한다."""
     if data_source == "seed":
         return load_jsonl(SEED_PATH)
@@ -59,11 +60,33 @@ def load_records(data_source: str) -> list[dict]:
         evidence_span = r.get("evidence_span", "")
         if not evidence_span:
             continue
+        # 드물게 GPT가 domain 문자열을 깨뜨려 반환한다(예: "해 책임제한_조항") — 유효하지
+        # 않은 값은 DOMAIN_MAP에서 KeyError를 내므로 학습 대상에서 제외한다.
+        domain = r["forward_domain"]
+        if domain not in DOMAIN_MAP:
+            continue
+        risk_level = r.get("final_label", r["forward_label"])
         records.append({
             "text":       evidence_span,
-            "domain":     r["forward_domain"],
-            "risk_level": r["forward_label"],
+            "domain":     domain,
+            # final_label은 forward/verify/backward 2/3 다수결 결과 (forward_label과 다를 수 있음).
+            # 옛 clean.jsonl(다수결 로직 반영 전)엔 final_label이 없어 forward_label로 폴백한다.
+            "risk_level": risk_level,
         })
+        if not fulltext_augment:
+            continue
+        # evidence_span(평균 40자)만 학습하면 실서비스에서 evidence_span을 못 뽑은 조항엔
+        # 원문(평균 230자+)이 그대로 들어가는데, 모델이 그 길이의 입력을 한 번도 본 적이
+        # 없어 정확도가 폭락한다(ground truth 평가에서 evidence_span 69.6% vs 원문
+        # 대체 23.0%로 확인됨) — 같은 라벨로 원문도 별도 학습 예시로 추가해 두 길이
+        # 분포 모두에 대응하게 한다.
+        full_text = r.get("text", "")
+        if full_text and full_text != evidence_span:
+            records.append({
+                "text":       full_text,
+                "domain":     domain,
+                "risk_level": risk_level,
+            })
     return records
 
 
@@ -166,7 +189,17 @@ def main() -> None:
     parser.add_argument("--max-len",    type=int,   default=256,  help="최대 토큰 길이")
     parser.add_argument("--test-ratio", type=float, default=0.2,  help="검증 세트 비율")
     parser.add_argument("--gpu",        type=int,   default=1,    help="사용할 GPU 인덱스 (기본 1)")
+    parser.add_argument("--seed",       type=int,   default=42,   help="재현성을 위한 랜덤 시드")
+    parser.add_argument("--no-fulltext-augment", action="store_true",
+                        help="evidence_span 외 원문(full text) 증강 학습 예시를 추가하지 않음 (v4 등 이전 버전 재현용)")
     args = parser.parse_args()
+
+    # 분류기 헤드 초기화·배치 셔플·dropout이 전부 랜덤이라, 시드를 고정 안 하면
+    # 같은 데이터로 다시 학습해도 결과가 달라진다 (특히 데이터가 작을수록 크게 흔들림).
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
 
     default_dir = "models/v2" if args.data_source == "clean" else "models/v1"
     MODEL_DIR = Path(args.model_dir or os.environ.get("MODEL_DIR", str(PROJECT_ROOT / default_dir)))
@@ -174,13 +207,13 @@ def main() -> None:
     device = torch.device(f"cuda:{args.gpu}") if torch.cuda.is_available() else torch.device("cpu")
     if torch.cuda.is_available():
         torch.cuda.set_device(device)
-    logger.info(f"========== KoELECTRA 학습 시작 | device={device} | data_source={args.data_source} ==========")
+    logger.info(f"========== KoELECTRA 학습 시작 | device={device} | data_source={args.data_source} | seed={args.seed} ==========")
 
-    records = load_records(args.data_source)
+    records = load_records(args.data_source, fulltext_augment=not args.no_fulltext_augment)
     logger.info(f"  데이터: {len(records)}건 로드 (source={args.data_source})")
 
     train_recs, val_recs = train_test_split(
-        records, test_size=args.test_ratio, random_state=42,
+        records, test_size=args.test_ratio, random_state=args.seed,
         stratify=[r["risk_level"] for r in records],
     )
     logger.info(f"  학습: {len(train_recs)}건 | 검증: {len(val_recs)}건")
