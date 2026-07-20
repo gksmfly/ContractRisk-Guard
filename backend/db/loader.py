@@ -51,6 +51,7 @@ FB_CHECK_DIR   = Path(os.environ.get("FB_CHECK_DIR",  str(PROJECT_ROOT / "data/f
 
 DDL = """
 CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE TABLE IF NOT EXISTS chunks (
     chunk_id    TEXT        PRIMARY KEY,
@@ -66,6 +67,10 @@ CREATE INDEX IF NOT EXISTS chunks_source_idx ON chunks (source);
 CREATE INDEX IF NOT EXISTS chunks_embedding_idx ON chunks
     USING hnsw (embedding vector_cosine_ops)
     WITH (m=16, ef_construction=64);
+-- Retrieval Strategy Agent의 Sparse(어휘) 검색용 — 형태소 분석 없이 문자 3-gram
+-- 중복도로 유사도를 매기는 방식이라 한국어에도 별도 토크나이저 없이 바로 쓸 수 있다.
+CREATE INDEX IF NOT EXISTS chunks_text_trgm_idx ON chunks
+    USING gin (text gin_trgm_ops);
 
 CREATE TABLE IF NOT EXISTS seed_clauses (
     chunk_id        TEXT        PRIMARY KEY,
@@ -127,7 +132,7 @@ CREATE INDEX IF NOT EXISTS noise_embedding_idx ON noise_clauses
 """.format(dim=EMBED_DIM)
 
 
-def _get_conn():
+def _get_conn() -> Any:
     try:
         import psycopg2
     except ImportError:
@@ -141,7 +146,7 @@ def _get_conn():
     return conn
 
 
-def get_embedder():
+def get_embedder() -> Any:
     """KoE5 SentenceTransformer를 로드한다.
 
     backend.api.services.retrieval처럼 다른 모듈에서 검색 쿼리를 임베딩할 때도

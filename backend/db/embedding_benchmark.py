@@ -34,9 +34,11 @@ from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
 
 from backend.domain.config import DOMAIN_DIR, PREC_DIR
-from backend.utils import PROJECT_ROOT
+from backend.utils import PROJECT_ROOT, load_logger
 
 load_dotenv()
+
+logger = load_logger("embedding_benchmark.log")
 
 DOMAIN_PREC_DIR = DOMAIN_DIR / "case"
 
@@ -114,21 +116,21 @@ def _make_result(name: str, max_sim: np.ndarray, n_rel: int, elapsed: float, n_t
     }
 
 
-def _print_result(result: dict) -> None:
-    print(f"속도:   {result['speed']} docs/sec ({result['elapsed']:.1f}s)")
-    print(f"[관련] 평균={result['relevant']['mean']:.4f} ± {result['relevant']['std']:.4f}")
-    print(f"[랜덤] 평균={result['random']['mean']:.4f} ± {result['random']['std']:.4f}")
-    print(f"분리도: {result['separation']:.4f}")
-    print(f"{'threshold':>10}  {'관련통과%':>9}  {'랜덤통과%':>9}")
+def _log_result(result: dict) -> None:
+    logger.info(f"속도:   {result['speed']} docs/sec ({result['elapsed']:.1f}s)")
+    logger.info(f"[관련] 평균={result['relevant']['mean']:.4f} ± {result['relevant']['std']:.4f}")
+    logger.info(f"[랜덤] 평균={result['random']['mean']:.4f} ± {result['random']['std']:.4f}")
+    logger.info(f"분리도: {result['separation']:.4f}")
+    logger.info(f"{'threshold':>10}  {'관련통과%':>9}  {'랜덤통과%':>9}")
     for t, s in result["thresholds"].items():
-        print(f"{t:>10}  {s['relevant_pct']:>8.1f}%  {s['random_pct']:>8.1f}%")
+        logger.info(f"{t:>10}  {s['relevant_pct']:>8.1f}%  {s['random_pct']:>8.1f}%")
 
 
 def _eval_bgem3(relevant: list[str], random_docs: list[str]) -> dict:
     from FlagEmbedding import BGEM3FlagModel
     name = "bge-m3"
-    print(f"\n{'='*60}")
-    print(f"[후보] {name} (8,192 tokens)")
+    logger.info(f"\n{'='*60}")
+    logger.info(f"[후보] {name} (8,192 tokens)")
     model = BGEM3FlagModel("BAAI/bge-m3", use_fp16=True, device=DEVICE)
     all_texts = relevant + random_docs
 
@@ -138,16 +140,16 @@ def _eval_bgem3(relevant: list[str], random_docs: list[str]) -> dict:
     elapsed    = time.time() - t0
 
     result = _make_result(name, _compute_scores(doc_embs, query_embs), len(relevant), elapsed, len(all_texts))
-    _print_result(result)
+    _log_result(result)
     del model; gc.collect(); torch.cuda.empty_cache()
-    print("GPU 메모리 해제 완료")
+    logger.info("GPU 메모리 해제 완료")
     return result
 
 
 def _eval_kure(relevant: list[str], random_docs: list[str]) -> dict:
     name = "KURE-v1"
-    print(f"\n{'='*60}")
-    print(f"[후보] {name} (한국어 Retrieval 특화, BGE-M3 기반)")
+    logger.info(f"\n{'='*60}")
+    logger.info(f"[후보] {name} (한국어 Retrieval 특화, BGE-M3 기반)")
     model = SentenceTransformer("nlpai-lab/KURE-v1", device=DEVICE)
     all_texts = relevant + random_docs
 
@@ -168,16 +170,16 @@ def _eval_kure(relevant: list[str], random_docs: list[str]) -> dict:
     elapsed = time.time() - t0
 
     result = _make_result(name, _compute_scores(doc_embs, query_embs), len(relevant), elapsed, len(all_texts))
-    _print_result(result)
+    _log_result(result)
     del model; gc.collect(); torch.cuda.empty_cache()
-    print("GPU 메모리 해제 완료")
+    logger.info("GPU 메모리 해제 완료")
     return result
 
 
 def _eval_koe5(relevant: list[str], random_docs: list[str]) -> dict:
     name = "KoE5"
-    print(f"\n{'='*60}")
-    print(f"[후보] {name} (한국어 특화 E5)")
+    logger.info(f"\n{'='*60}")
+    logger.info(f"[후보] {name} (한국어 특화 E5)")
     model = SentenceTransformer("nlpai-lab/KoE5", device=DEVICE)
     all_texts = relevant + random_docs
     docs_prefixed    = [f"passage: {t}" for t in all_texts]
@@ -189,9 +191,9 @@ def _eval_koe5(relevant: list[str], random_docs: list[str]) -> dict:
     elapsed    = time.time() - t0
 
     result = _make_result(name, _compute_scores(doc_embs, query_embs), len(relevant), elapsed, len(all_texts))
-    _print_result(result)
+    _log_result(result)
     del model; gc.collect(); torch.cuda.empty_cache()
-    print("GPU 메모리 해제 완료")
+    logger.info("GPU 메모리 해제 완료")
     return result
 
 
@@ -200,28 +202,32 @@ def _eval_openai(relevant: list[str], random_docs: list[str]) -> dict:
     from backend.db.loader import embed_texts, EMBED_MODEL, EMBED_DIM
 
     name = f"openai/{EMBED_MODEL} (dim={EMBED_DIM}, 운영 중)"
-    print(f"\n{'='*60}")
-    print(f"[현재 운영 모델] {name}")
-    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    logger.info(f"\n{'='*60}")
+    logger.info(f"[현재 운영 모델] {name}")
     all_texts = relevant + random_docs
 
-    t0 = time.time()
-    doc_embs   = np.array(embed_texts(client, all_texts))
-    query_embs = np.array(embed_texts(client, DENSE_QUERIES))
-    elapsed    = time.time() - t0
+    try:
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        t0 = time.time()
+        doc_embs   = np.array(embed_texts(client, all_texts))
+        query_embs = np.array(embed_texts(client, DENSE_QUERIES))
+        elapsed    = time.time() - t0
+    except Exception as e:
+        logger.error(f"OpenAI 임베딩 API 호출 실패: {e}")
+        raise
 
     result = _make_result(name, _compute_scores(doc_embs, query_embs), len(relevant), elapsed, len(all_texts))
-    _print_result(result)
+    _log_result(result)
     return result
 
 
 def main() -> None:
     random.seed(42)
-    print(f"샘플 로딩 중 (관련 {SAMPLE_N}건 + 랜덤 {SAMPLE_N}건)...")
-    print(f"관련 출처: {DOMAIN_PREC_DIR}")
-    print(f"쿼리: DENSE_QUERIES ({len(DENSE_QUERIES)}개)")
+    logger.info(f"샘플 로딩 중 (관련 {SAMPLE_N}건 + 랜덤 {SAMPLE_N}건)...")
+    logger.info(f"관련 출처: {DOMAIN_PREC_DIR}")
+    logger.info(f"쿼리: DENSE_QUERIES ({len(DENSE_QUERIES)}개)")
     relevant, random_docs = _load_sample(SAMPLE_N)
-    print(f"관련 {len(relevant)}건 / 랜덤 {len(random_docs)}건 로드 완료")
+    logger.info(f"관련 {len(relevant)}건 / 랜덤 {len(random_docs)}건 로드 완료")
 
     results = [
         _eval_bgem3(relevant, random_docs),
@@ -230,26 +236,26 @@ def main() -> None:
         _eval_openai(relevant, random_docs),
     ]
 
-    print(f"\n{'='*60}")
-    print("최종 비교")
-    print(f"{'모델':<45} {'분리도':>8} {'관련평균':>8} {'랜덤평균':>8} {'속도(d/s)':>10}")
-    print("-" * 85)
+    logger.info(f"\n{'='*60}")
+    logger.info("최종 비교")
+    logger.info(f"{'모델':<45} {'분리도':>8} {'관련평균':>8} {'랜덤평균':>8} {'속도(d/s)':>10}")
+    logger.info("-" * 85)
     for r in results:
-        print(
+        logger.info(
             f"{r['model']:<45} {r['separation']:>8.4f} "
             f"{r['relevant']['mean']:>8.4f} {r['random']['mean']:>8.4f} "
             f"{r['speed']:>10.1f}"
         )
 
     best = max(results, key=lambda x: x["separation"])
-    print(f"\n추천 모델: {best['model']} (분리도 {best['separation']:.4f})")
+    logger.info(f"\n추천 모델: {best['model']} (분리도 {best['separation']:.4f})")
 
     out_path = PROJECT_ROOT / "data" / "embedding_benchmark_result.json"
     out_path.write_text(
         json.dumps({"추천_모델": best["model"], "결과": results}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    print(f"\n결과 저장: {out_path}")
+    logger.info(f"\n결과 저장: {out_path}")
 
 
 if __name__ == "__main__":
