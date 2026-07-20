@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Any
 
 from backend.utils import load_logger, save_json, PROJECT_ROOT
-
 from backend.preprocess.cleaner import split_chunks
 from backend.preprocess.extractor import EXTRACTORS
 
@@ -33,6 +32,25 @@ SOURCE_DIRS = {
     "precedent":      DOMAIN_DIR / "case",
     "interpretation": DOMAIN_DIR / "commentary",
 }
+
+
+def build_chunk_record(
+    source: str,
+    doc_id: str,
+    rec_idx: int,
+    chunk_idx: int,
+    text: str,
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "chunk_id":    f"{source}:{doc_id}:{rec_idx}:{chunk_idx}",
+        "source":      source,
+        "doc_id":      doc_id,
+        "rec_index":   rec_idx,
+        "chunk_index": chunk_idx,
+        "text":        text,
+        "metadata":    metadata,
+    }
 
 
 def process_source(
@@ -64,15 +82,7 @@ def process_source(
                         continue
                     if source == "law":
                         # 법령 조문: 청킹 없이 조문 단위 그대로 저장
-                        record = {
-                            "chunk_id":    f"{source}:{fp.stem}:{rec_idx}:0",
-                            "source":      source,
-                            "doc_id":      fp.stem,
-                            "rec_index":   rec_idx,
-                            "chunk_index": 0,
-                            "text":        text,
-                            "metadata":    meta,
-                        }
+                        record = build_chunk_record(source, fp.stem, rec_idx, 0, text, meta)
                         out_f.write(json.dumps(record, ensure_ascii=False) + "\n")
                         chunk_count += 1
                         doc_chunk_count += 1
@@ -80,15 +90,7 @@ def process_source(
                         # 판례·해석례: 문장 경계 청킹 + min_chunk 필터
                         chunks = split_chunks(text, chunk_size, overlap, min_chunk)
                         for chunk_idx, chunk_text in enumerate(chunks):
-                            record = {
-                                "chunk_id":    f"{source}:{fp.stem}:{rec_idx}:{chunk_idx}",
-                                "source":      source,
-                                "doc_id":      fp.stem,
-                                "rec_index":   rec_idx,
-                                "chunk_index": chunk_idx,
-                                "text":        chunk_text,
-                                "metadata":    meta,
-                            }
+                            record = build_chunk_record(source, fp.stem, rec_idx, chunk_idx, chunk_text, meta)
                             out_f.write(json.dumps(record, ensure_ascii=False) + "\n")
                             chunk_count += 1
                             doc_chunk_count += 1

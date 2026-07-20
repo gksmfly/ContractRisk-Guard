@@ -4,7 +4,6 @@ import json
 from typing import Any
 
 from backend.utils import save_json
-
 from backend.domain.common import logger
 from backend.domain.config import LAW_DIR, PREC_DIR, EXPC_DIR, DOMAIN_DIR
 from backend.domain.filter_law import filter_laws
