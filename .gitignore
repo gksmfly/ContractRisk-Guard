@@ -48,11 +48,13 @@ Claude.md
 .env
 .env.*
 
-# ===== Data (민감·대용량) =====
-data/
+# ===== Data (민감·대용량) — README.md만 커밋 =====
+data/*
+!data/README.md
 
-# ===== Models =====
-models/
+# ===== Models — README.md만 커밋 =====
+models/*
+!models/README.md
 
 # ===== User =====
 temp/

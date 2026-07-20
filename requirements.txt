@@ -44,6 +44,9 @@ psycopg2-binary>=2.9.0
 # LLM
 openai>=1.30.0                  # GPT-4o-mini LLM Zero-shot 분류 (domain_filter 3단계)
 
+# Agent 오케스트레이션
+langgraph>=0.2.0
+
 # 개발/테스트
 pytest>=7.4.0
 pytest-asyncio>=0.23.0
