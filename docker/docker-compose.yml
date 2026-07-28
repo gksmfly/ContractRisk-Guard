@@ -14,5 +14,36 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  api:
+    build:
+      context: ..
+      dockerfile: docker/backend.Dockerfile
+    container_name: contractrisk-guard-api
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      # .env의 DATABASE_URL은 호스트에서 uvicorn을 직접 띄우는 로컬 개발용
+      # (localhost:5432)이라, 컨테이너 네트워크 안에서는 서비스명으로 덮어써야
+      # postgres 컨테이너에 닿는다.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-contractrisk-guard-db}:${POSTGRES_PASSWORD:-1234}@postgres:5432/${POSTGRES_DB:-contractrisk-guard-db}
+    ports:
+      - "8000:8000"
+    volumes:
+      # models/, data/는 git에 없는 아티팩트라 이미지에 안 굽고 호스트에서 마운트한다.
+      - ../models:/app/models:ro
+      - ../data:/app/data:ro
+    depends_on:
+      - postgres
+    # GPU(KoE5 임베더, KoELECTRA 판단)를 쓰려면 호스트에 nvidia-container-toolkit이
+    # 필요하고, 아래 주석을 풀어야 실제로 컨테이너에 GPU가 보인다.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
 volumes:
   pgdata:
