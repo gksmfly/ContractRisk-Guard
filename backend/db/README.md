@@ -4,6 +4,31 @@ PostgreSQL(pgvector) 적재와 임베딩 모델 검증을 담당하는 모듈입
 
 ---
 
+## 스키마 마이그레이션 (`migrations/`)
+
+`chunks`/`seed_clauses`/`clean_clauses`/`noise_clauses` 테이블 스키마는 이제
+[Alembic](https://alembic.sqlalchemy.org/)으로 관리합니다(저장소 루트의
+`alembic.ini`, `backend/db/migrations/`). ORM 모델 없이 raw SQL DDL을
+`op.execute()`로 적는 방식이라, `autogenerate`(`alembic revision --autogenerate`)는
+쓸 수 없습니다 — 새 마이그레이션은 `alembic revision -m "설명"`으로 빈 파일을
+만든 뒤 `upgrade()`/`downgrade()`에 직접 DDL을 적습니다.
+
+```bash
+alembic upgrade head        # 최신 스키마로 적용
+alembic current              # 현재 적용된 리비전 확인
+alembic history               # 리비전 목록
+alembic revision -m "설명"   # 새 마이그레이션 파일 생성
+```
+
+접속 정보는 `alembic.ini`에 평문으로 두지 않고, `env.py`가 `backend/db/connection.DATABASE_URL`
+(.env → docker-compose 기본값 순)을 그대로 씁니다.
+
+`loader.py`의 `init_schema()`는 여전히 남아있지만(빈 DB에 바로 붙여 쓰는 부트스트랩용,
+`CREATE ... IF NOT EXISTS`라 안전) 새 스키마 변경은 이제 여기가 아니라 alembic
+revision으로 관리합니다.
+
+---
+
 ## 파일 목록
 
 ### `loader.py`

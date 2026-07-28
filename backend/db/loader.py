@@ -34,11 +34,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from backend.db.connection import DATABASE_URL
 from backend.utils import load_logger, load_jsonl, PROJECT_ROOT
 
 logger = load_logger("db_load.log")
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/crg")
 EMBED_MODEL  = "nlpai-lab/KoE5"
 EMBED_DIM    = 1024
 EMBED_DEVICE = os.environ.get("EMBED_DEVICE", "cuda:1")
@@ -161,6 +161,10 @@ def get_embedder() -> Any:
 
 
 def init_schema(conn) -> None:
+    """빈 DB에 바로 붙여 쓰는 부트스트랩용 — 새 스키마 변경은 이제 alembic
+    revision으로 관리한다(backend/db/migrations/, alembic.ini 참고). 이 함수는
+    CREATE ... IF NOT EXISTS라 alembic이 이미 관리 중인 DB에 실행해도 안전하다.
+    """
     with conn.cursor() as cur:
         cur.execute(DDL)
     conn.commit()
