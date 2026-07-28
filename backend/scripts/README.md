@@ -104,6 +104,40 @@
 
 ---
 
+### `rebuild_ftc_ground_truth.py`
+**Low/Medium 정답 데이터가 없는 문제를 수작업 라벨링 없이 해결하는 evaluation ground-truth 재구축**
+
+- **배경**: 기존 883/534건 평가는 FTC High 케이스 재현율만 측정 — Low/Medium 정답이 없었음. `seed_labeled.jsonl`의 Medium/Low는 정규식(`seed.py`의 `assess_risk()`)이라 그대로 정답으로 쓰면 순환논리(모델이 정규식보다 똑똑해도 "틀렸다"고 채점됨).
+- **1차 시도(기각)**: FTC `대표조치유형`(시정명령→High, 시정권고→Medium) 가설 — 스팟체크 결과 시정권고 쪽이 오히려 위반유형·근거법령 수가 더 많아(평균 2.2 vs 1.0) 기각.
+- **채택**: 케이스별 `위반_유형` 개수(2개+ → High, 1개 → Medium)를 심각도 프록시로 사용. FTC가 공식 부여한 등급이 아니라 이 프로젝트가 만든 추정치임에 유의(스팟체크 중 반례 1건 확인됨: "사전통지 없이 해지" 표현이 있는데도 위반유형 1개라 Medium 분류).
+- **Low**: `data/raw/contract/`(공정위 공식 표준계약서 6종)에서 조문 패턴으로 시작하는(=크롤링 노이즈 아닌) 문서만 추출 — "정부가 공식 발행한 공정 계약 템플릿"이라는 외부 권위를 근거로 삼음(정규식 위험도 판정 안 씀)
+- **재결기각**(이의제기로 뒤집힌 4건) 등 미확정 케이스는 제외
+- `data/fb_check/clean.jsonl`(학습 데이터)과 겹치는 `chunk_id`는 제외해 평가 누출 방지
+- `extract_precedent_ground_truth.py`(아래) 결과와 병합해 최종 산출
+- **출력**: `data/eval/ground_truth_3class.jsonl`(High 460 / Medium 98 / Low 485 + 판례 9건 = 총 1,052건), `data/eval/candidates/rebuild_report.json`
+- **실행**:
+  ```bash
+  python -m backend.scripts.rebuild_ftc_ground_truth
+  ```
+
+---
+
+### `extract_precedent_ground_truth.py`
+**법원 판례의 무효/유효 판결 — 제3의(사법부) ground-truth 보강**
+
+- **배경**: FTC(행정부, 시정조치·표준계약서)만으로는 Medium 신호가 약함. 완전히 독립된 권위 있는 기관(법원)의 판결을 추가로 활용.
+- **방식**: `data/domain/case/`(1,995건) 중 약관규제법을 직접 다루고, 해지·책임제한 도메인 키워드가 있고, "무효" 여부가 쟁점인 판례 23건을 사람이 직접 읽고 판별 — 자동 정규식 판별을 시도했으나(무효/유효 부정 표현 탐지) 23건 중 1건만 잡혀서, 이 표본 크기에서는 일반화된 파서보다 수작업이 낫다고 판단
+- **수작업 기준**: 파기환송(최종 확정 아님)이나 한 판례에 조항이 여러 개라 결론이 갈리는 케이스는 제외. 무효 확정 → Medium(개별 사건 판단이라 FTC 확정 위반만큼 광범위하지 않다고 보수적으로 잡음, 연 60% 연체료처럼 심각해 보이는 케이스도 예외 없이 적용), 유효 확정(무효 아님) → Low
+- **재현성**: 수작업 판별 결과를 `_CURATED_VERDICTS` 딕셔너리(case_id → risk_level, 조항 텍스트, 비고)에 하드코딩 — 코드만 재실행해도 같은 결과가 나옴
+- **출력**: `data/eval/candidates/precedent_candidates.jsonl` (Low 3 / Medium 6, 총 9건)
+- **실행**:
+  ```bash
+  python -m backend.scripts.extract_precedent_ground_truth
+  ```
+- **참고**: `rebuild_ftc_ground_truth.py`를 나중에 실행하면 이 출력 파일을 자동으로 읽어 최종 ground truth에 합침 — 실행 순서는 이 스크립트 먼저.
+
+---
+
 ### `utils.py`
 **공통 유틸리티**
 

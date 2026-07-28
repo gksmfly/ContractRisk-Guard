@@ -109,20 +109,27 @@ def build_record(
     }
 
 
+_DISMISSED_ACTION_TYPES = {"재결기각"}  # 이의제기로 뒤집힌 케이스 — 위반이 확정된 게 아니므로 Seed에서 제외
+
+
 def extract_ftc_records(ftc_path: Path) -> tuple[list[dict], dict]:
     """FTC 시정조치에서 해지·책임제한 조항 레코드를 추출한다."""
     with open(ftc_path, encoding="utf-8") as f:
         raw = json.load(f)
     cases   = raw.get("사례", [])
     records: list[dict] = []
-    stats   = {"total": len(cases), "해지_조항": 0, "책임제한_조항": 0, "skipped": 0}
+    stats   = {"total": len(cases), "해지_조항": 0, "책임제한_조항": 0, "skipped": 0, "dismissed_excluded": 0}
 
     for case in cases:
+        cell = case.get("셀_데이터", {})
+        if cell.get("대표조치유형") in _DISMISSED_ACTION_TYPES:
+            # 이의제기로 뒤집힌(재결기각) 케이스는 확정 위반이 아니므로 High 라벨 부착 대상에서 제외한다.
+            stats["dismissed_excluded"] += 1
+            continue
         clauses = case.get("조항_원문", [])
         if not clauses:
             stats["skipped"] += 1
             continue
-        cell   = case.get("셀_데이터", {})
         meta   = {"사건명": case.get("사건명", ""), "사건번호": cell.get("사건번호", ""), "의결일": cell.get("의결일", "")}
         doc_id = cell.get("사건번호", case.get("사건명", ""))
         risk_level = case.get("risk_level", "High")
@@ -161,7 +168,7 @@ def extract_contract_records(contract_dir: Path) -> tuple[list[dict], dict]:
             meta   = {"제목": case.get("제목", ""), "카테고리": category}
             doc_id = case.get("파일ID", case.get("제목", ""))
 
-            for art_idx, (title, body) in enumerate(_split_articles(full_text, article_pat)):
+            for art_idx, (title, body) in enumerate(split_articles(full_text, article_pat)):
                 text = f"{title} {body}".strip()
                 stats["total_articles"] += 1
                 domain = classify_domain(text)
@@ -175,7 +182,7 @@ def extract_contract_records(contract_dir: Path) -> tuple[list[dict], dict]:
     return records, stats
 
 
-def _split_articles(text: str, pattern: re.Pattern) -> list[tuple[str, str]]:
+def split_articles(text: str, pattern: re.Pattern) -> list[tuple[str, str]]:
     """텍스트를 조문 단위로 분리한다."""
     parts = pattern.split(text)
     return [(h.strip(), b.strip()) for h, b in zip(parts[1::2], parts[2::2])]
