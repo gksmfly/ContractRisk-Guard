@@ -1,7 +1,6 @@
 // frontend/app/api/analyze-pdf/route.ts
 import { NextRequest, NextResponse } from "next/server";
-
-const FASTAPI_URL = process.env.FASTAPI_URL ?? "http://localhost:8000";
+import { FASTAPI_URL } from "@/lib/config";
 
 export async function POST(req: NextRequest) {
   const form = await req.formData();
@@ -9,6 +8,7 @@ export async function POST(req: NextRequest) {
   try {
     const upstream = await fetch(`${FASTAPI_URL}/api/analyze-pdf`, {
       method: "POST",
+      headers: process.env.BACKEND_API_KEY ? { "X-API-Key": process.env.BACKEND_API_KEY } : undefined,
       body: form,
     });
 

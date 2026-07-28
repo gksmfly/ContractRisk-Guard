@@ -1,6 +1,7 @@
 // frontend/app/api/analyze-full/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import type { RiskLevel, Domain } from "@/types";
+import { FASTAPI_URL } from "@/lib/config";
 
 interface ClauseResult {
   id: number;
@@ -11,6 +12,9 @@ interface ClauseResult {
   evidence_spans: { text: string; start: number; end: number }[];
   legal_basis: { law: string; article: string; description: string }[];
   reasoning: string;
+  verified: boolean;
+  redteam_note: string;
+  evidence_verified: boolean;
 }
 
 export interface FullAnalyzeResult {
@@ -20,8 +24,6 @@ export interface FullAnalyzeResult {
   low_count: number;
   clauses: ClauseResult[];
 }
-
-const FASTAPI_URL = process.env.FASTAPI_URL ?? "http://localhost:8000";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -36,7 +38,10 @@ export async function POST(req: NextRequest) {
   try {
     const upstream = await fetch(`${FASTAPI_URL}/api/analyze`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(process.env.BACKEND_API_KEY ? { "X-API-Key": process.env.BACKEND_API_KEY } : {}),
+      },
       body: JSON.stringify({ text: body.text }),
     });
 

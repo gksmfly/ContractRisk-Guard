@@ -3,7 +3,6 @@ import dynamic from "next/dynamic";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Shield, ChevronLeft } from "lucide-react";
-import { ScrollToTop } from "@/components/ScrollToTop";
 
 export const metadata: Metadata = {
   title: "계약서 분석 — ContractRisk Guard",
@@ -26,8 +25,8 @@ export default function AnalyzePage() {
   return (
     <div className="min-h-screen bg-white">
       {/* Dark sticky header */}
-      <header className="border-b border-slate-800/60 bg-[#0a0f1e]/95 backdrop-blur-md sticky top-0 z-40">
-        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
+      <header className="border-b border-slate-800/60 bg-[#0a0f1e]/95 backdrop-blur-md sticky top-0 z-40 print:hidden">
+        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
           <Link
             href="/"
             className="flex items-center gap-1.5 text-slate-400 hover:text-white text-sm transition-colors"
@@ -50,9 +49,9 @@ export default function AnalyzePage() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-10 space-y-8">
+      <main className="max-w-5xl mx-auto px-4 py-10 space-y-8">
         {/* Page header */}
-        <div className="space-y-2">
+        <div className="space-y-2 max-w-2xl mx-auto print:hidden">
           <h1 className="text-2xl font-bold text-slate-900">계약서 전체 분석</h1>
           <p className="text-slate-500 text-sm leading-relaxed">
             계약서 전문을 업로드하거나 붙여넣으면 AI가 조항을 자동으로 분리하고
@@ -64,13 +63,11 @@ export default function AnalyzePage() {
         <ContractAnalyzer />
 
         {/* Disclaimer */}
-        <p className="text-xs text-slate-400 text-center pb-6 leading-relaxed">
+        <p className="text-xs text-slate-400 text-center pb-6 leading-relaxed max-w-2xl mx-auto print:hidden">
           본 서비스의 분석 결과는 법적 조언을 대체하지 않으며 참고용으로만 활용하시기 바랍니다.
           최종 계약서 검토는 반드시 법률 전문가와 함께 진행하세요.
         </p>
       </main>
-
-      <ScrollToTop />
     </div>
   );
 }
