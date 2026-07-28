@@ -11,6 +11,7 @@ olefile>=0.47
 
 # PDF 파싱
 pdfplumber>=0.10.0
+pypdf>=4.0.0           # backend/api/routers/analyze.py의 /api/analyze-pdf 업로드 파싱
 
 # 토픽 모델링 (EDA)
 bertopic>=0.16.0
@@ -36,10 +37,11 @@ python-dotenv>=1.0.0
 fastapi
 uvicorn[standard]
 pydantic
+python-multipart      # UploadFile/Form(PDF 업로드, /api/analyze-pdf)에 필수
 
 # 데이터베이스
-sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.0
+alembic>=1.13.0        # 스키마 마이그레이션 — backend/db/migrations/, alembic.ini 참고
 
 # LLM
 openai>=1.30.0                  # GPT-4o-mini LLM Zero-shot 분류 (domain_filter 3단계)
