@@ -9,6 +9,7 @@ const NAV_LINKS = [
   { href: "/#how-to-use", label: "이용 방법" },
   { href: "/#examples",   label: "분석 사례" },
   { href: "/#trust",      label: "신뢰 근거" },
+  { href: "/#faq",        label: "자주 묻는 질문" },
 ];
 
 export function Navbar() {

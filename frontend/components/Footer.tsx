@@ -19,6 +19,7 @@ export function Footer() {
             <a href="#how-to-use" className="hover:text-slate-700 transition-colors">이용 방법</a>
             <a href="#examples" className="hover:text-slate-700 transition-colors">분석 사례</a>
             <a href="#trust" className="hover:text-slate-700 transition-colors">신뢰 근거</a>
+            <a href="#faq" className="hover:text-slate-700 transition-colors">자주 묻는 질문</a>
           </nav>
 
           <p className="text-xs text-slate-400 text-center md:text-right">
