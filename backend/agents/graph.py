@@ -1,12 +1,22 @@
 # backend/agents/graph.py
 """6-agent 파이프라인의 LangGraph 배선.
 
-Analysis → Retrieval Strategy → Evidence Selection → Judgment → Red-team →
-Evidence Verification 순서로 6개 노드가 모두 연결되어 있다. domain이
-"해당없음"이면 검색·판단 단계를 거치지 않고 바로 끝나고, Evidence Verification이
-근거가 부족하다고 판단하면 Retrieval Strategy로 최대 3회 되돌아간다(매회 다른
-전략으로 검색 범위를 넓힘 — retrieval_strategy_agent.py 참고). 이 재검색 루프가
-애초에 LangGraph를 선택한 이유다.
+Analysis 이후 두 브랜치가 병렬로 실행된다:
+  - 판단 브랜치: Judgment → Red-team
+  - 근거 브랜치: Retrieval Strategy → Evidence Selection → Evidence Verification
+                (근거 부족 시 Retrieval Strategy로 최대 3회 재검색)
+
+이 둘은 서로 상태 의존성이 없다 — Judgment는 evidence_span/clause만 읽고
+retrieval_candidates·legal_basis를 쓰지 않고, Evidence Verification은
+legal_basis·evidence_agreement만 읽고 risk_level·redteam_note를 쓰지 않는다
+(state.py 필드별 read/write 주석 참고). 원래는 이 둘을 한 줄로 억지로 이어붙여서
+직렬 실행했는데, 실제 의존성이 없으므로 fan-out(Analysis에서 두 브랜치로 분기)
+시켜도 결과가 달라지지 않는다 — KoELECTRA GPU 추론과 DB 벡터 검색이 동시에
+돌아가 지연시간이 줄어든다. 두 브랜치는 길이가 달라도(판단 브랜치는 고정 2단계,
+근거 브랜치는 재검색 루프로 가변) 문제없다 — LangGraph는 각 브랜치가 독립적으로
+END에 도달하는 걸 허용하고, 전체 invoke()는 모든 브랜치가 끝날 때까지 기다린다.
+
+domain이 "해당없음"이면 두 브랜치 모두 건너뛰고 바로 끝난다.
 """
 
 from langgraph.graph import END, START, StateGraph
@@ -22,8 +32,10 @@ from backend.agents.state import ClauseState
 _compiled_graph = None
 
 
-def _route_after_analysis(state: ClauseState) -> str:
-    return END if state.get("domain") == "해당없음" else "retrieval_strategy"
+def _route_after_analysis(state: ClauseState) -> list[str]:
+    if state.get("domain") == "해당없음":
+        return [END]
+    return ["judgment", "retrieval_strategy"]  # 판단·근거 브랜치로 동시 분기(fan-out)
 
 
 def _route_after_verification(state: ClauseState) -> str:
@@ -43,12 +55,16 @@ def build_graph():
     graph.add_conditional_edges(
         "analysis",
         _route_after_analysis,
-        {"retrieval_strategy": "retrieval_strategy", END: END},
+        ["judgment", "retrieval_strategy", END],
     )
-    graph.add_edge("retrieval_strategy", "evidence_selection")
-    graph.add_edge("evidence_selection", "judgment")
+
+    # 판단 브랜치 — 근거 브랜치와 독립적으로 끝까지 실행됨
     graph.add_edge("judgment", "red_team")
-    graph.add_edge("red_team", "evidence_verification")
+    graph.add_edge("red_team", END)
+
+    # 근거 브랜치 — 재검색 루프 후 종료
+    graph.add_edge("retrieval_strategy", "evidence_selection")
+    graph.add_edge("evidence_selection", "evidence_verification")
     graph.add_conditional_edges(
         "evidence_verification",
         _route_after_verification,

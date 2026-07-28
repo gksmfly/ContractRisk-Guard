@@ -1,4 +1,5 @@
 # backend/api/services/analyze.py
+import asyncio
 import os
 import re
 from typing import Any
@@ -12,6 +13,16 @@ from backend.api.schemas import AnalyzeResponse, ClauseResult, EvidenceSpan
 def _get_openai() -> Any:
     from openai import OpenAI
     return OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+
+
+# 요청 하나가 조항을 순차 처리하는 동안 to_thread 워커 하나를 계속 점유한다
+# (동시에 여러 개를 쓰지 않음). 동시 요청 수를 안 막으면 기본 스레드풀
+# (min(32, cpu+4))이 고갈되거나 OpenAI rate limit에 한꺼번에 부딪힐 수 있어,
+# 요청 단위로 동시 처리 개수를 제한한다. 큐가 너무 길어지면 무한정 기다리게
+# 두지 않고 503으로 명확히 알린다.
+_MAX_CONCURRENT_ANALYSES = int(os.environ.get("MAX_CONCURRENT_ANALYSES", "4"))
+_QUEUE_TIMEOUT_SECONDS = 30
+_analyze_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_ANALYSES)
 
 
 def split_clauses(text: str) -> list[str]:
@@ -68,13 +79,27 @@ async def run_analyze(text: str) -> AnalyzeResponse:
     if not clauses:
         raise HTTPException(status_code=400, detail="조항을 분리할 수 없습니다.")
 
-    client  = _get_openai()
-    results: list[ClauseResult] = []
+    try:
+        await asyncio.wait_for(_analyze_semaphore.acquire(), timeout=_QUEUE_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=503,
+            detail="현재 처리 중인 분석 요청이 많습니다. 잠시 후 다시 시도해주세요.",
+        )
 
-    for i, clause in enumerate(clauses):
-        result = _process_clause(client, clause, i)
-        if result is not None:
-            results.append(result)
+    try:
+        client  = _get_openai()
+        results: list[ClauseResult] = []
+
+        for i, clause in enumerate(clauses):
+            # graph.invoke는 동기 호출(OpenAI/DB 왕복 포함)이라 그대로 부르면
+            # 이 async 핸들러가 이벤트 루프를 막아 다른 요청을 전부 지연시킨다.
+            # 스레드로 넘겨 이벤트 루프는 그동안 다른 요청을 계속 처리하게 한다.
+            result = await asyncio.to_thread(_process_clause, client, clause, i)
+            if result is not None:
+                results.append(result)
+    finally:
+        _analyze_semaphore.release()
 
     high   = sum(1 for r in results if r.risk_level == "High")
     medium = sum(1 for r in results if r.risk_level == "Medium")

@@ -25,19 +25,12 @@ Evidence Selection Agent 구축 전 사전 실험(clean_clauses 478건, 정답 �
 가 담당한다.
 """
 
-import os
-
-from dotenv import load_dotenv
-
-load_dotenv()
-
 from backend.api.schemas import LegalBasis
+from backend.db.connection import get_conn
 from backend.db.loader import embed_texts, get_embedder
 from backend.utils import load_logger
 
 logger = load_logger("retrieval.log")
-
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/crg")
 
 # RRF 등 랭킹 융합 단계에서 후보를 넉넉히 확보하기 위한 Dense/Sparse 각각의 기본 후보 수.
 # top_k(최종 반환 개수)보다 넉넉히 크게 잡아야 두 검색 결과가 겹치지 않을 때도
@@ -52,11 +45,6 @@ def _get_cached_embedder():
     if _embedder is None:
         _embedder = get_embedder()
     return _embedder
-
-
-def _get_conn():
-    import psycopg2
-    return psycopg2.connect(DATABASE_URL)
 
 
 def _truncate(text: str, max_len: int = 100) -> str:
@@ -188,25 +176,21 @@ def fetch_candidates(
         query_vec = embed_texts(embedder, [query_text], prefix="query: ")[0]
         vec_literal = "[" + ",".join(repr(x) for x in query_vec) + "]"
 
-        conn = _get_conn()
-        try:
-            with conn.cursor() as cur:
-                if unified:
-                    sources = ["law", "precedent"]
-                    dense  = _search_dense(cur, sources, vec_literal, top_k_per_source)
-                    sparse = _search_sparse(cur, sources, query_text, top_k_per_source, sparse_similarity_threshold)
-                    fused = _reciprocal_rank_fusion(dense, sparse)
-                    result = {"law": [], "precedent": []}
-                    for c in fused:
-                        result.setdefault(c["source"], []).append(c)
-                else:
-                    result = {}
-                    for source in ("law", "precedent"):
-                        dense  = _search_dense(cur, [source], vec_literal, top_k_per_source)
-                        sparse = _search_sparse(cur, [source], query_text, top_k_per_source, sparse_similarity_threshold)
-                        result[source] = _reciprocal_rank_fusion(dense, sparse)
-        finally:
-            conn.close()
+        with get_conn() as conn, conn.cursor() as cur:
+            if unified:
+                sources = ["law", "precedent"]
+                dense  = _search_dense(cur, sources, vec_literal, top_k_per_source)
+                sparse = _search_sparse(cur, sources, query_text, top_k_per_source, sparse_similarity_threshold)
+                fused = _reciprocal_rank_fusion(dense, sparse)
+                result = {"law": [], "precedent": []}
+                for c in fused:
+                    result.setdefault(c["source"], []).append(c)
+            else:
+                result = {}
+                for source in ("law", "precedent"):
+                    dense  = _search_dense(cur, [source], vec_literal, top_k_per_source)
+                    sparse = _search_sparse(cur, [source], query_text, top_k_per_source, sparse_similarity_threshold)
+                    result[source] = _reciprocal_rank_fusion(dense, sparse)
     except Exception as e:
         logger.warning(f"법령/판례 후보 검색 실패, 빈 결과 반환: {e}")
         return {"law": [], "precedent": []}
@@ -244,24 +228,20 @@ def search_similar_labeled_clauses(
         query_vec = embed_texts(embedder, [query_text], prefix="query: ")[0]
         vec_literal = "[" + ",".join(repr(x) for x in query_vec) + "]"
 
-        conn = _get_conn()
-        try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT chunk_id, domain, risk_level,
-                           COALESCE(NULLIF(evidence_span, ''), text) AS span,
-                           1 - (embedding <=> %s::vector) AS similarity
-                    FROM clean_clauses
-                    WHERE chunk_id != %s
-                    ORDER BY embedding <=> %s::vector
-                    LIMIT %s
-                    """,
-                    (vec_literal, exclude_chunk_id or "", vec_literal, top_k),
-                )
-                rows = cur.fetchall()
-        finally:
-            conn.close()
+        with get_conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT chunk_id, domain, risk_level,
+                       COALESCE(NULLIF(evidence_span, ''), text) AS span,
+                       1 - (embedding <=> %s::vector) AS similarity
+                FROM clean_clauses
+                WHERE chunk_id != %s
+                ORDER BY embedding <=> %s::vector
+                LIMIT %s
+                """,
+                (vec_literal, exclude_chunk_id or "", vec_literal, top_k),
+            )
+            rows = cur.fetchall()
     except Exception as e:
         logger.warning(f"유사 라벨 조항 검색 실패, 빈 결과 반환: {e}")
         return []

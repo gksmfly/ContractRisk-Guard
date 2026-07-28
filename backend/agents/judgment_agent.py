@@ -38,7 +38,7 @@ def _get_electra() -> tuple[DualHeadElectra, ElectraTokenizerFast, Any]:
     return _electra_model, _electra_tokenizer, _electra_device
 
 
-def _electra_predict(text: str) -> tuple[str, str]:
+def electra_predict(text: str) -> tuple[str, str]:
     model, tokenizer, device = _get_electra()
     enc = tokenizer(text, max_length=256, padding="max_length", truncation=True, return_tensors="pt")
     with torch.no_grad():
@@ -57,6 +57,6 @@ def judgment_node(state: ClauseState) -> dict:
     # 대신 evidence_span을 그대로 넣어야 학습·추론 입력 분포가 맞는다
     # (evidence_span이 없으면 전체 조항으로 폴백).
     query = state.get("evidence_span") or state["clause"]
-    electra_domain, risk_level = _electra_predict(query)
+    electra_domain, risk_level = electra_predict(query)
     verified = (electra_domain == state.get("domain"))
     return {"risk_level": risk_level, "verified": verified}
