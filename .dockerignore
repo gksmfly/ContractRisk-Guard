@@ -1,4 +1,4 @@
-# Dockerfile은 backend/와 requirements-serve.txt만 COPY하지만,
+# Dockerfile은 backend/와 requirements.txt만 COPY하지만,
 # 빌드 컨텍스트(docker-compose.yml의 context: ..)는 이 파일 기준으로 정해진다.
 # 아래를 안 걷어내면 .venv/data/models/frontend의 대용량 파일까지 데몬으로
 # 매번 업로드돼 빌드가 느려진다.

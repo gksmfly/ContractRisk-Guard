@@ -1,55 +1,32 @@
-# HTTP 요청
-requests
+# requirements.txt
+# 서버를 실제로 기동할 수 있는 최소 세트 (backend/api, backend/agents, backend/db가
+# 쓰는 전부 + sentence-transformers). `pip install -r requirements.txt` 후
+# `uvicorn backend.api.server:app`이 바로 뜬다 — server.py의 lifespan이 기동 시
+# KoE5 임베더(sentence-transformers)를 미리 로드하므로 이게 빠지면 기동 자체가
+# sys.exit(1)로 죽는다(README "Getting Started"가 이 파일 하나만 설치하므로
+# 반드시 여기 포함되어야 함).
+#
+# requirements-dev.txt/requirements-ci.txt가 이 파일을 `-r`로 상속하고, 각자
+# 필요한 패키지만 추가로 얹는다. 버전은 여기서만 관리한다 — 다른
+# requirements-*.txt에는 따로 적지 않는다. Docker(requirements-serve.txt)는
+# 더 이상 없음 — 이 파일 자체가 곧 서빙 최소 세트라 Dockerfile도 이 파일을
+# 직접 쓴다.
+#
+# 데이터 수집·전처리·토픽모델링(크롤링, EDA)까지 포함한 전체 개발 환경이 필요하면
+# requirements-dev.txt를 쓸 것.
 
-# 웹 크롤링 (JS 렌더링)
-playwright>=1.40.0
-
-# 데이터 처리
-pandas>=2.1.0
-numpy>=1.26.0
-olefile>=0.47
-
-# PDF 파싱
-pdfplumber>=0.10.0
-pypdf>=4.0.0           # backend/api/routers/analyze.py의 /api/analyze-pdf 업로드 파싱
-
-# 토픽 모델링 (EDA)
-bertopic>=0.16.0
-sentence-transformers>=2.7.0
-umap-learn>=0.5.6
-hdbscan>=0.8.33
-top2vec>=1.0.27
-contextualized-topic-models>=2.5.0
-
-# 자연어 처리 (계약서 분석용)
-transformers>=4.36.0
-torch>=2.1.0
-sentencepiece>=0.1.99
-konlpy>=0.6.0
-
-# ML 모델
-scikit-learn>=1.3.0
-
-# 환경 변수 관리
-python-dotenv>=1.0.0
-
-# 백엔드 API (FastAPI)
 fastapi
 uvicorn[standard]
 pydantic
 python-multipart      # UploadFile/Form(PDF 업로드, /api/analyze-pdf)에 필수
-
-# 데이터베이스
+pypdf>=4.0.0           # backend/api/routers/analyze.py의 /api/analyze-pdf 업로드 파싱
+python-dotenv>=1.0.0
 psycopg2-binary>=2.9.0
-alembic>=1.13.0        # 스키마 마이그레이션 — backend/db/migrations/, alembic.ini 참고
-
-# LLM
 openai>=1.30.0                  # GPT-4o-mini LLM Zero-shot 분류 (domain_filter 3단계)
-
-# Agent 오케스트레이션
 langgraph>=0.2.0
-
-# 개발/테스트
-pytest>=7.4.0
-pytest-asyncio>=0.23.0
-httpx>=0.26.0
+torch>=2.1.0
+transformers>=4.36.0
+sentencepiece>=0.1.99
+sentence-transformers>=2.7.0    # KoE5 임베더 — server.py lifespan이 기동 시 워밍업(backend/db/loader.py get_embedder())
+scikit-learn>=1.3.0
+pandas>=2.1.0

@@ -1,0 +1,40 @@
+# requirements-dev.txt
+# 전체 개발 환경(데이터 수집·전처리·라벨링·토픽모델링 포함). API 서빙 공통
+# 패키지는 requirements.txt에서 상속받는다.
+#
+# backend/scripts(크롤링), backend/preprocess, 토픽모델링 EDA 노트북 등
+# backend/api·agents·db 바깥의 파이프라인 단계를 작업할 때만 필요하다 —
+# 서버만 띄우거나 CI/배포만 할 거면 requirements.txt/-ci/-serve로 충분하다.
+
+-r requirements.txt
+
+# HTTP 요청
+requests
+
+# 웹 크롤링 (JS 렌더링)
+playwright>=1.40.0
+
+# 데이터 처리
+numpy>=1.26.0
+olefile>=0.47
+
+# PDF 파싱 (파이프라인 전처리용, API 서빙은 requirements.txt의 pypdf만 씀)
+pdfplumber>=0.10.0
+
+# 토픽 모델링 (EDA) — sentence-transformers는 requirements.txt에 이미 있음
+bertopic>=0.16.0
+umap-learn>=0.5.6
+hdbscan>=0.8.33
+top2vec>=1.0.27
+contextualized-topic-models>=2.5.0
+
+# 자연어 처리 (형태소 분석)
+konlpy>=0.6.0
+
+# 데이터베이스 스키마 마이그레이션 — backend/db/migrations/, alembic.ini 참고
+alembic>=1.13.0
+
+# 로컬 개발용 테스트 도구 (CI는 requirements-ci.txt를 따로 씀)
+pytest>=7.4.0
+pytest-asyncio>=0.23.0
+httpx>=0.26.0
