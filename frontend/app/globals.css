@@ -10,24 +10,20 @@
     --card-foreground: #0f172a;
     --popover: #ffffff;
     --popover-foreground: #0f172a;
-    --primary: #2563eb;
+    --primary: #0f1e3d;
     --primary-foreground: #ffffff;
     --secondary: #f1f5f9;
     --secondary-foreground: #0f172a;
     --muted: #f8fafc;
     --muted-foreground: #64748b;
-    --accent: #eff6ff;
-    --accent-foreground: #1d4ed8;
+    --accent: #e7edf3;
+    --accent-foreground: #0f1e3d;
     --destructive: #ef4444;
     --destructive-foreground: #ffffff;
     --border: #e2e8f0;
     --input: #f1f5f9;
-    --ring: #2563eb;
+    --ring: #0f1e3d;
     --radius: 0.625rem;
-
-    /* Dark navbar */
-    --nav-bg: #0a0f1e;
-    --nav-border: rgba(255,255,255,0.08);
   }
 
   * {
@@ -36,6 +32,7 @@
 
   html {
     scroll-behavior: smooth;
+    scroll-padding-top: 5rem;
   }
 
   body {

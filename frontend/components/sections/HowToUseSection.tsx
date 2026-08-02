@@ -6,11 +6,11 @@ const STEPS = [
   {
     num: "01",
     icon: Upload,
-    iconColor: "text-blue-600",
-    borderColor: "border-blue-200",
-    bgColor: "bg-blue-50/60",
-    stepBadgeBg: "bg-blue-100 border-blue-200 text-blue-700",
-    iconWrap: "bg-blue-100",
+    iconColor: "text-navy",
+    borderColor: "border-navy/20",
+    bgColor: "bg-navy-soft",
+    stepBadgeBg: "bg-navy-soft border-navy/20 text-navy",
+    iconWrap: "bg-navy-soft",
     title: "계약서를 업로드하세요",
     desc: "계약서 파일(.txt)을 드래그하거나, 텍스트를 직접 붙여넣으세요. AI가 조항을 자동으로 분리합니다.",
   },
@@ -47,7 +47,7 @@ export function HowToUseSection() {
     >
       <div className="max-w-5xl mx-auto">
         <div className="text-center mb-14 space-y-3">
-          <p className="text-blue-600 text-xs font-semibold tracking-widest uppercase">
+          <p className="text-navy text-xs font-semibold tracking-widest uppercase">
             이용 방법
           </p>
           <h2
@@ -63,7 +63,7 @@ export function HowToUseSection() {
 
         <div className="grid md:grid-cols-3 gap-6 relative">
           {/* Connector lines (desktop) */}
-          <div className="hidden md:block absolute top-10 left-[calc(33.33%+1rem)] right-[calc(33.33%+1rem)] h-px bg-gradient-to-r from-blue-200 via-violet-200 to-emerald-200" />
+          <div className="hidden md:block absolute top-10 left-[calc(33.33%+1rem)] right-[calc(33.33%+1rem)] h-px bg-gradient-to-r from-navy/20 via-navy/40 to-navy/20" />
 
           {STEPS.map((step) => (
             <div
@@ -97,7 +97,7 @@ export function HowToUseSection() {
         <div className="mt-10 text-center">
           <Link
             href="/analyze"
-            className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium transition-colors text-sm shadow-sm"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-navy hover:opacity-90 text-white rounded-xl font-medium transition-colors text-sm shadow-sm"
           >
             지금 무료로 분석해보기
           </Link>

@@ -1,9 +1,17 @@
 // frontend/components/sections/ExamplesSection.tsx
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, CheckCircle2, Shield, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Shield,
+  ChevronDown,
+  ChevronUp,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 
 interface ExampleResult {
   domain: string;
@@ -84,29 +92,30 @@ const EXAMPLES: Example[] = [
   },
 ];
 
+// /analyze 실제 결과 화면(ContractAnalyzer.tsx의 RISK_CONFIG)과 동일한 seal/ochre/forest 토큰을 사용한다.
 const RISK_CONFIG = {
   High: {
-    badgeClass: "bg-red-100 text-red-700 border-red-200",
+    badgeClass: "bg-seal-soft text-seal border-seal/20",
     icon: AlertTriangle,
-    iconClass: "text-red-500",
-    ringClass: "ring-red-200",
-    metricText: "text-red-600",
+    iconClass: "text-seal",
+    ringClass: "ring-seal/20",
+    metricText: "text-seal",
     label: "고위험",
   },
   Medium: {
-    badgeClass: "bg-amber-100 text-amber-700 border-amber-200",
+    badgeClass: "bg-ochre-soft text-ochre border-ochre/20",
     icon: AlertTriangle,
-    iconClass: "text-amber-500",
-    ringClass: "ring-amber-200",
-    metricText: "text-amber-600",
+    iconClass: "text-ochre",
+    ringClass: "ring-ochre/20",
+    metricText: "text-ochre",
     label: "중위험",
   },
   Low: {
-    badgeClass: "bg-emerald-100 text-emerald-700 border-emerald-200",
+    badgeClass: "bg-forest-soft text-forest border-forest/20",
     icon: CheckCircle2,
-    iconClass: "text-emerald-500",
-    ringClass: "ring-emerald-200",
-    metricText: "text-emerald-600",
+    iconClass: "text-forest",
+    ringClass: "ring-forest/20",
+    metricText: "text-forest",
     label: "저위험",
   },
 };
@@ -142,7 +151,7 @@ function HighlightedClause({
         p.hi ? (
           <mark
             key={i}
-            className="bg-amber-100 text-amber-800 rounded px-0.5 not-italic font-medium"
+            className="text-seal font-semibold underline decoration-wavy decoration-seal/70 underline-offset-4 rounded px-0.5 not-italic bg-transparent"
           >
             {p.t}
           </mark>
@@ -232,7 +241,7 @@ function ExampleCard({ ex }: { ex: Example }) {
                 key={lb.article}
                 className="flex items-start gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs"
               >
-                <span className="text-blue-600 font-mono font-semibold shrink-0">
+                <span className="text-navy font-mono font-semibold shrink-0">
                   {lb.law} {lb.article}
                 </span>
                 <span className="text-slate-600">{lb.desc}</span>
@@ -241,7 +250,7 @@ function ExampleCard({ ex }: { ex: Example }) {
           </div>
 
           {/* Summary */}
-          <p className="text-xs text-slate-600 leading-relaxed bg-blue-50 border border-blue-100 rounded-lg p-3">
+          <p className="text-xs text-slate-600 leading-relaxed bg-navy-soft border border-navy/10 rounded-lg p-3">
             {ex.result.summary}
           </p>
         </div>
@@ -251,6 +260,24 @@ function ExampleCard({ ex }: { ex: Example }) {
 }
 
 export function ExamplesSection() {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState(0);
+
+  const scrollToIndex = (i: number) => {
+    const track = trackRef.current;
+    if (!track) return;
+    const card = track.children[i] as HTMLElement | undefined;
+    card?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
+  };
+
+  const handleScroll = () => {
+    const track = trackRef.current;
+    if (!track) return;
+    const cardWidth = (track.firstElementChild as HTMLElement | null)?.offsetWidth ?? 1;
+    const gap = 20; // gap-5
+    setActive(Math.round(track.scrollLeft / (cardWidth + gap)));
+  };
+
   return (
     <section
       id="examples"
@@ -259,7 +286,7 @@ export function ExamplesSection() {
     >
       <div className="max-w-5xl mx-auto">
         <div className="text-center mb-14 space-y-3">
-          <p className="text-blue-600 text-xs font-semibold tracking-widest uppercase">
+          <p className="text-navy text-xs font-semibold tracking-widest uppercase">
             분석 사례
           </p>
           <h2
@@ -273,9 +300,52 @@ export function ExamplesSection() {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-5">
-          {EXAMPLES.map((ex) => (
-            <ExampleCard key={ex.id} ex={ex} />
+        {/* Carousel */}
+        <div className="relative">
+          <div
+            ref={trackRef}
+            onScroll={handleScroll}
+            className="flex gap-5 overflow-x-auto snap-x snap-mandatory scroll-smooth pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {EXAMPLES.map((ex) => (
+              <div key={ex.id} className="snap-start shrink-0 w-full sm:w-[calc(50%-0.625rem)] md:w-[calc(33.333%-0.834rem)]">
+                <ExampleCard ex={ex} />
+              </div>
+            ))}
+          </div>
+
+          {/* Arrow controls */}
+          <button
+            type="button"
+            onClick={() => scrollToIndex(Math.max(active - 1, 0))}
+            disabled={active === 0}
+            aria-label="이전 사례"
+            className="hidden md:flex absolute -left-4 top-1/2 -translate-y-1/2 items-center justify-center w-9 h-9 rounded-full bg-white border border-slate-200 shadow-md text-slate-500 hover:text-navy hover:border-navy/30 disabled:opacity-0 disabled:pointer-events-none transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy focus-visible:ring-offset-2"
+          >
+            <ChevronLeft className="h-4 w-4" aria-hidden />
+          </button>
+          <button
+            type="button"
+            onClick={() => scrollToIndex(Math.min(active + 1, EXAMPLES.length - 1))}
+            disabled={active === EXAMPLES.length - 1}
+            aria-label="다음 사례"
+            className="hidden md:flex absolute -right-4 top-1/2 -translate-y-1/2 items-center justify-center w-9 h-9 rounded-full bg-white border border-slate-200 shadow-md text-slate-500 hover:text-navy hover:border-navy/30 disabled:opacity-0 disabled:pointer-events-none transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy focus-visible:ring-offset-2"
+          >
+            <ChevronRight className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
+
+        {/* Dot indicators (mobile) */}
+        <div className="flex md:hidden justify-center gap-1.5 mt-4">
+          {EXAMPLES.map((ex, i) => (
+            <button
+              key={ex.id}
+              onClick={() => scrollToIndex(i)}
+              aria-label={`${i + 1}번째 사례 보기`}
+              className={`h-1.5 rounded-full transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy focus-visible:ring-offset-2 ${
+                i === active ? "w-6 bg-navy" : "w-1.5 bg-slate-300"
+              }`}
+            />
           ))}
         </div>
 

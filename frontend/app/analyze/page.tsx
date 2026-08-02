@@ -2,10 +2,11 @@
 import dynamic from "next/dynamic";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Shield, ChevronLeft } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
+import { Logo } from "@/components/Logo";
 
 export const metadata: Metadata = {
-  title: "계약서 분석 — ContractRisk Guard",
+  title: "계약서 분석 — Verilex",
   description: "계약서 전문을 업로드하거나 붙여넣어 조항별 법적 리스크를 AI로 분석합니다.",
 };
 
@@ -15,7 +16,7 @@ const ContractAnalyzer = dynamic(
     ssr: false,
     loading: () => (
       <div className="flex items-center justify-center py-20">
-        <div className="w-6 h-6 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+        <div className="w-6 h-6 rounded-full border-2 border-navy border-t-transparent animate-spin" />
       </div>
     ),
   }
@@ -25,7 +26,7 @@ export default function AnalyzePage() {
   return (
     <div className="min-h-screen bg-white">
       {/* Dark sticky header */}
-      <header className="border-b border-slate-800/60 bg-[#0a0f1e]/95 backdrop-blur-md sticky top-0 z-40 print:hidden">
+      <header className="border-b border-slate-800/60 bg-navy/95 backdrop-blur-md sticky top-0 z-40 print:hidden">
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
           <Link
             href="/"
@@ -36,14 +37,14 @@ export default function AnalyzePage() {
             <span>홈</span>
           </Link>
 
-          <div className="flex items-center gap-2">
-            <div className="p-1 bg-blue-500/10 rounded-md border border-blue-500/20">
-              <Shield className="h-3.5 w-3.5 text-blue-400" />
+          <Link href="/" className="flex items-center gap-2 group" aria-label="Verilex 홈으로 이동">
+            <div className="p-1 bg-navy/40 rounded-md border border-navy-soft/20 group-hover:bg-navy/60 transition-colors">
+              <Logo className="h-3.5 w-3.5 text-navy-soft" />
             </div>
             <span className="font-bold text-white text-sm">
-              Contract<span className="text-blue-400">Risk</span> Guard
+              Veri<span className="text-navy-soft">lex</span>
             </span>
-          </div>
+          </Link>
 
           <div className="w-14" aria-hidden />
         </div>

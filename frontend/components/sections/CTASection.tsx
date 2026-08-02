@@ -10,11 +10,11 @@ export function CTASection() {
     >
       <div className="max-w-3xl mx-auto text-center space-y-8">
         <div className="relative">
-          <div className="absolute inset-0 bg-blue-100/60 rounded-3xl blur-3xl" />
-          <div className="relative bg-gradient-to-br from-blue-50 to-white border border-blue-200 rounded-3xl px-8 py-14 space-y-6 shadow-sm">
+          <div className="absolute inset-0 bg-navy-soft rounded-3xl blur-3xl" />
+          <div className="relative bg-gradient-to-br from-navy-soft to-white border border-navy/20 rounded-3xl px-8 py-14 space-y-6 shadow-sm">
             <div className="flex justify-center">
-              <div className="p-3 bg-blue-100 border border-blue-200 rounded-2xl">
-                <Shield className="h-7 w-7 text-blue-600" aria-hidden />
+              <div className="p-3 bg-navy-soft border border-navy/20 rounded-2xl">
+                <Shield className="h-7 w-7 text-navy" aria-hidden />
               </div>
             </div>
 
@@ -35,7 +35,7 @@ export function CTASection() {
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <Link
                 href="/analyze"
-                className="inline-flex items-center justify-center gap-2 px-8 py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold transition-colors text-sm shadow-lg shadow-blue-500/20"
+                className="inline-flex items-center justify-center gap-2 px-8 py-3.5 bg-navy hover:opacity-90 text-white rounded-xl font-semibold transition-colors text-sm shadow-lg shadow-navy/20"
               >
                 무료로 분석 시작하기
                 <ArrowRight className="h-4 w-4" aria-hidden />

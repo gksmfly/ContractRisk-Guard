@@ -112,3 +112,68 @@ async def run_analyze(text: str) -> AnalyzeResponse:
         low_count     = low,
         clauses       = results,
     )
+
+
+async def run_analyze_stream(text: str):
+    """조항이 하나씩 끝날 때마다 진행 상황을 흘려보내는 스트리밍 버전.
+
+    프론트가 "6단계 파이프라인을 도는 척" 타이머로 꾸며낸 진행률을 보여주고
+    있었는데, 실제로는 조항을 순차 처리한다는 사실 자체는 진짜다. 그래서
+    가짜 애니메이션 대신 "조항 N/M 처리 완료"를 실제로 스트리밍한다 — 그래프
+    내부(Analysis→Judgment/Retrieval fan-out, 최대 3회 재검색 루프)는 조항
+    하나 안에서 병렬·가변 경로라 노드 단위로는 깔끔하게 스트리밍할 수 없어서,
+    조항 단위를 진행률의 최소 단위로 삼는다.
+
+    검증(빈 조항, 세마포어 타임아웃)은 이 함수가 즉시 await되는 시점에 끝내고,
+    실제 스트리밍은 내부 제너레이터가 맡는다 — StreamingResponse가 시작된
+    뒤에는 HTTP 상태 코드를 바꿀 수 없으므로, 실패할 수 있는 경로는 첫 바이트가
+    나가기 전에 전부 해치워야 한다.
+    """
+    clauses = split_clauses(text)
+    if not clauses:
+        raise HTTPException(status_code=400, detail="조항을 분리할 수 없습니다.")
+
+    try:
+        await asyncio.wait_for(_analyze_semaphore.acquire(), timeout=_QUEUE_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=503,
+            detail="현재 처리 중인 분석 요청이 많습니다. 잠시 후 다시 시도해주세요.",
+        )
+
+    async def _events():
+        try:
+            client = _get_openai()
+            results: list[ClauseResult] = []
+            total = len(clauses)
+
+            for i, clause in enumerate(clauses):
+                result = await asyncio.to_thread(_process_clause, client, clause, i)
+                if result is not None:
+                    results.append(result)
+                    yield {
+                        "type": "progress",
+                        "index": i + 1,
+                        "total": total,
+                        "risk_level": result.risk_level,
+                        "domain": result.domain,
+                    }
+                else:
+                    yield {"type": "progress", "index": i + 1, "total": total, "skipped": True}
+
+            high   = sum(1 for r in results if r.risk_level == "High")
+            medium = sum(1 for r in results if r.risk_level == "Medium")
+            low    = sum(1 for r in results if r.risk_level == "Low")
+
+            final = AnalyzeResponse(
+                total_clauses = len(results),
+                high_count    = high,
+                medium_count  = medium,
+                low_count     = low,
+                clauses       = results,
+            )
+            yield {"type": "done", "result": final.model_dump()}
+        finally:
+            _analyze_semaphore.release()
+
+    return _events()

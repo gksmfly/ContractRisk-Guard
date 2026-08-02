@@ -24,7 +24,7 @@ const config: Config = {
         // 방향 A(심결 문서) 팔레트 — /analyze 결과 화면 전용
         paper: "#f4f5f0",
         rule: "#d8d3c2",
-        navy: { DEFAULT: "#1e3a5f", soft: "#e7edf3" },
+        navy: { DEFAULT: "#0f1e3d", soft: "#e7edf3" },
         seal: { DEFAULT: "#9c2a3a", soft: "#f7e9ea" },
         ochre: { DEFAULT: "#96661c", soft: "#f5eedd" },
         forest: { DEFAULT: "#3f6b4f", soft: "#e9f0ea" },

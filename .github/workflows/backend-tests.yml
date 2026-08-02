@@ -16,13 +16,16 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
-          cache-dependency-path: requirements-ci.txt
+          cache-dependency-path: |
+            requirements-ci.txt
+            requirements.txt
 
       - name: Install dependencies
         run: |
-          # requirements.txt 전체(playwright/bertopic/topic-modeling 스택)는
+          # requirements-dev.txt 전체(playwright/bertopic/topic-modeling 스택)는
           # CI에 불필요하게 무겁다. pytest -m "not integration"이 실제로 import하는
-          # 범위(backend/api, backend/agents, backend/db)만 requirements-ci.txt로 추린다.
+          # 범위(backend/api, backend/agents, backend/db)는 requirements.txt(서버
+          # 기동 최소 세트)뿐이라, 이를 상속하는 requirements-ci.txt로 추린다.
           # torch는 GPU가 필요 없는 unit test라 CPU 전용 wheel을 쓴다.
           pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements-ci.txt
 

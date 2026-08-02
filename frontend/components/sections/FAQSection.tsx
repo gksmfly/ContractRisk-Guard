@@ -39,9 +39,9 @@ function FaqItem({ q, a, defaultOpen }: { q: string; a: string; defaultOpen?: bo
       <button
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="w-full flex items-start gap-3 px-5 py-4 text-left"
+        className="w-full flex items-start gap-3 px-5 py-4 text-left rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy focus-visible:ring-offset-2"
       >
-        <span className="mt-0.5 shrink-0 w-5 h-5 rounded-full bg-blue-50 text-blue-600 text-xs font-bold flex items-center justify-center">
+        <span className="mt-0.5 shrink-0 w-5 h-5 rounded-full bg-navy-soft text-navy text-xs font-bold flex items-center justify-center">
           Q
         </span>
         <span className="flex-1 text-sm font-medium text-slate-900">{q}</span>
@@ -74,7 +74,7 @@ export function FAQSection() {
     <section id="faq" aria-labelledby="faq-heading" className="py-24 px-4 bg-white">
       <div className="max-w-2xl mx-auto">
         <div className="text-center mb-10 space-y-3">
-          <p className="text-blue-600 text-xs font-semibold tracking-widest uppercase">
+          <p className="text-navy text-xs font-semibold tracking-widest uppercase">
             자주 묻는 질문
           </p>
           <h2 id="faq-heading" className="text-3xl md:text-4xl font-bold text-slate-900">

@@ -1,11 +1,13 @@
 // frontend/components/sections/TrustSection.tsx
 import { Scale, BookOpen, Database, ShieldCheck } from "lucide-react";
+import { CountUp } from "@/components/CountUp";
+import { ScrollReveal } from "@/components/ScrollReveal";
 
 const STATS = [
   {
     icon: ShieldCheck,
-    iconColor: "text-blue-600",
-    iconBg: "bg-blue-50",
+    iconColor: "text-navy",
+    iconBg: "bg-navy-soft",
     value: "2,488건",
     label: "학습 기반",
     desc: "공정위 시정조치 사례를 직접 학습한 Ground Truth 데이터",
@@ -53,7 +55,7 @@ export function TrustSection() {
       <div className="max-w-5xl mx-auto space-y-14">
         {/* Header */}
         <div className="text-center space-y-3">
-          <p className="text-blue-600 text-xs font-semibold tracking-widest uppercase">
+          <p className="text-navy text-xs font-semibold tracking-widest uppercase">
             신뢰 근거
           </p>
           <h2
@@ -69,27 +71,28 @@ export function TrustSection() {
 
         {/* Stats grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {STATS.map((s) => (
-            <div
-              key={s.label}
-              className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-sm"
-            >
-              <div className={`p-2 rounded-lg ${s.iconBg} w-fit`}>
-                <s.icon className={`h-4 w-4 ${s.iconColor}`} aria-hidden />
+          {STATS.map((s, i) => (
+            <ScrollReveal key={s.label} delay={i * 80}>
+              <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-sm h-full">
+                <div className={`p-2 rounded-lg ${s.iconBg} w-fit`}>
+                  <s.icon className={`h-4 w-4 ${s.iconColor}`} aria-hidden />
+                </div>
+                <div>
+                  <p className="text-2xl font-extrabold text-slate-900">
+                    <CountUp value={s.value} />
+                  </p>
+                  <p className={`text-xs font-semibold ${s.iconColor} mt-0.5`}>{s.label}</p>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed">{s.desc}</p>
               </div>
-              <div>
-                <p className="text-2xl font-extrabold text-slate-900">{s.value}</p>
-                <p className={`text-xs font-semibold ${s.iconColor} mt-0.5`}>{s.label}</p>
-              </div>
-              <p className="text-xs text-slate-500 leading-relaxed">{s.desc}</p>
-            </div>
+            </ScrollReveal>
           ))}
         </div>
 
         {/* Legal coverage */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm">
           <h3 className="text-slate-900 font-semibold mb-5 flex items-center gap-2">
-            <Scale className="h-4 w-4 text-blue-600" aria-hidden />
+            <Scale className="h-4 w-4 text-navy" aria-hidden />
             분석 적용 법령
           </h3>
           <div className="grid md:grid-cols-2 gap-3">
@@ -99,7 +102,7 @@ export function TrustSection() {
                 className="flex items-start gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4"
               >
                 <div className="shrink-0 mt-0.5">
-                  <span className="inline-flex items-center gap-1 text-[10px] font-mono bg-blue-50 text-blue-600 border border-blue-200 px-2 py-0.5 rounded">
+                  <span className="inline-flex items-center gap-1 text-[10px] font-mono bg-navy-soft text-navy border border-navy/20 px-2 py-0.5 rounded">
                     {l.law} {l.articles}
                   </span>
                 </div>

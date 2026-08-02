@@ -62,4 +62,4 @@ LLM 미호출. `clean_clauses`(FB-Check 검증 478건) 임베딩 최근접 이�
 
 ## 테스트
 
-노드별 유닛 테스트: `tests/test_retrieval_strategy_agent.py`, `test_evidence_selection_agent.py`, `test_evidence_verification_agent.py`, `test_red_team_agent.py`. 그래프 전체(실제 GPT+GPU+DB) 통합 테스트는 `tests/test_analyze_integration.py`(`-m integration`). 자세한 실행법은 `tests/README.md` 참고.
+노드별 유닛 테스트: `tests/agents/test_retrieval_strategy_agent.py`, `test_evidence_selection_agent.py`, `test_evidence_verification_agent.py`, `test_red_team_agent.py`. 그래프 전체(실제 GPT+GPU+DB) 통합 테스트는 `tests/analyze/test_analyze_integration.py`(`-m integration`). 자세한 실행법은 `tests/README.md` 참고.

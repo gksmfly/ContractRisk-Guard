@@ -1,12 +1,14 @@
 # backend/api/routers/analyze.py
 import io
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, File
+from fastapi.responses import StreamingResponse
 
 from backend.api.auth import require_api_key
 from backend.api.rate_limit import enforce_rate_limit
 from backend.api.schemas import AnalyzeRequest, AnalyzeResponse
-from backend.api.services.analyze import run_analyze
+from backend.api.services.analyze import run_analyze, run_analyze_stream
 from backend.db.connection import get_conn
 
 router = APIRouter()
@@ -41,8 +43,34 @@ async def analyze(body: AnalyzeRequest):
     return await run_analyze(body.text)
 
 
-@router.post("/api/analyze-pdf", response_model=AnalyzeResponse, dependencies=_protected)
-async def analyze_pdf(file: UploadFile = File(...)):
+@router.post("/api/analyze/stream", dependencies=_protected)
+async def analyze_stream(body: AnalyzeRequest):
+    if not body.text or len(body.text.strip()) < 20:
+        raise HTTPException(status_code=400, detail="계약서 내용이 너무 짧습니다.")
+
+    # 검증·세마포어 획득은 여기서 끝낸다 — 실패 시 여기서 HTTPException이
+    # 터져야 정상적인 4xx/5xx 응답이 나간다. StreamingResponse가 일단
+    # 시작되면 상태 코드를 더 이상 바꿀 수 없다.
+    events = await run_analyze_stream(body.text)
+
+    async def sse():
+        # 클라이언트가 스트리밍 도중 연결을 끊으면 Starlette은 이 바깥
+        # 제너레이터의 aclose()만 호출한다 — async for가 GeneratorExit로 그냥
+        # 중단되면 안쪽 제너레이터(events)의 aclose()는 자동으로 안 불려서,
+        # 세마포어를 반납하는 events의 finally가 GC 타이밍까지 안 돈다
+        # (직접 재현: aclose() 직후엔 반납 안 됨). 명시적으로 닫아서 세마포어가
+        # 그 자리에서 바로 반납되게 한다.
+        try:
+            async for event in events:
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        finally:
+            await events.aclose()
+
+    return StreamingResponse(sse(), media_type="text/event-stream")
+
+
+async def _extract_pdf_text(file: UploadFile) -> str:
+    """PDF 업로드에서 텍스트를 뽑아낸다. /api/analyze-pdf와 스트리밍 버전이 공유한다."""
     if not file.filename or not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="PDF 파일만 지원합니다.")
     try:
@@ -72,4 +100,30 @@ async def analyze_pdf(file: UploadFile = File(...)):
 
     if len(text) < 20:
         raise HTTPException(status_code=400, detail="PDF에서 텍스트를 추출할 수 없습니다.")
+    return text
+
+
+@router.post("/api/analyze-pdf", response_model=AnalyzeResponse, dependencies=_protected)
+async def analyze_pdf(file: UploadFile = File(...)):
+    text = await _extract_pdf_text(file)
     return await run_analyze(text)
+
+
+@router.post("/api/analyze-pdf/stream", dependencies=_protected)
+async def analyze_pdf_stream(file: UploadFile = File(...)):
+    text = await _extract_pdf_text(file)
+
+    # 검증(확장자·크기·파싱)과 세마포어 획득은 여기서 끝낸다 — StreamingResponse가
+    # 시작되면 상태 코드를 더 이상 바꿀 수 없으므로 실패 경로는 첫 바이트 전에 처리한다.
+    events = await run_analyze_stream(text)
+
+    async def sse():
+        # analyze_stream과 동일한 이유 — 연결 끊김 시 세마포어를 즉시 반납하려면
+        # 안쪽 제너레이터를 명시적으로 닫아야 한다.
+        try:
+            async for event in events:
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        finally:
+            await events.aclose()
+
+    return StreamingResponse(sse(), media_type="text/event-stream")
