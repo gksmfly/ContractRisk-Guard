@@ -22,7 +22,41 @@ Evidence Selection Agent 구축 전 사전 실험(clean_clauses 478건, 정답 �
 적중률 기준)에서 Cross-Encoder(BAAI/bge-reranker-v2-m3) 재랭킹이 RRF-only보다
 오히려 낮은 결과(10.7% vs 20.1%)를 보여 채택하지 않았다 — 이 모듈은 RRF까지만
 하고, 그 이상의 재랭킹(법원 심급 가중치 등)은 backend.agents.evidence_selection_agent
-가 담당한다.
+가 담당한다. (주의: 이 실험 스크립트는 레포에 안 남아있어 재현 불가 — 아래
+LightRAG 비교가 훨씬 신뢰도 높은 재현 가능한 수치.)
+
+**LightRAG 대안 비교(2026-08-05, `backend/eval/lightrag_compare*.py`, 법령 전체
+확정)**: 원래 설계는 LightRAG였는데 Mecab 의존성 때문에 성능 비교 없이 Hybrid
+RRF로 대체됐다. FTC 근거_법령(공정위 실제 인용 법조문, 981케이스 2,444건, 100%
+파싱·매칭 확인)을 ground truth로 재현 가능한 비교를 진행. 법령 전체 3,323청크
+(민법 포함, 100% 인덱싱 완료) 대상 최종 100건 평가:
+RRF 12/100(12.0%) vs LightRAG 20/100(20.0%) — LightRAG만 맞은 14건, RRF만 맞은
+6건, 둘 다 맞은 6건, 둘 다 못 맞춘 74건. McNemar 정확검정 p=0.115로 100건
+표본에서는 통계적 유의성 미확보(discordant pair 20건 중 14:6). 절대 적중률
+자체도 두 방식 다 낮다(20% 이하) — "LightRAG가 낫다"보다 "RRF의 법조문 검색
+자체가 이 코퍼스에서 전반적으로 약하다"는 해석이 더 정확할 수 있음.
+(참고: 1,500/3,323청크만 인덱싱했던 예산 제약 하의 이전 예비 결과는 RRF
+10.0% vs LightRAG 35.0%였으나, 쿼리 표본 자체가 달라 이 최종 결과와 직접
+비교 불가 — 이 최종 수치로 대체됨.) 결과는
+`data/eval/lightrag_vs_rrf_report_final.json`. 아키텍처 전환 여부는 미결정
+— 유의성 부족·전면 재인덱싱 비용(그래프 추출 LLM 호출) 대비 이득이 작아
+현재는 Hybrid RRF 유지, 판례 코퍼스(30,154청크)는 LightRAG 미검증.
+
+**검색 아키텍처 대안 13종 실측(2026-08-06, `backend/eval/*_compare.py`,
+`backend/eval/retrieval_alternatives_survey.md`)**: LightRAG의 실패 원인(코퍼스
+확장 시 그래프 희석)을 근거로 그래프 없는 대안·그래프 스코핑 대안·모델/임베딩
+교체까지 전부 같은 100건 ground truth로 비교했다(GraphRAG 스코핑·SEAL-RAG도
+"판단만 하고 넘어가지 말라"는 요청에 따라 실제 구현). 최고 성능은 로컬
+EXAONE-3.5-7.8B-Instruct(OpenAI 비용 0)로 쿼리를 재구성(LegalMALR-lite)하거나
+법령을 먼저 라우팅(RAPTOR-lite)하는 두 방법, 둘 다 RRF 8%→33%(p<0.0001, LightRAG
+20%를 크게 앞섬). **의외의 발견**: 이 두 기법 + 재랭킹까지 전부 합친 "종합 콤보"는
+28%로 오히려 개별 최고보다 낮았고, 더 큰 모델(Qwen2.5-14B)로 교체해도 26~28%로
+EXAONE(7.8B, 한국어 특화)보다 낮았다 — "더 합치면/더 크면 좋다"는 가정이 이
+태스크에서는 성립하지 않음. 그래프도 LLM도 없는 방법 중에는 도메인 파티션별
+후보 확보+Cross-Encoder 재랭킹 조합만 유의성을 확보했다(8%→17%, p=0.0225).
+운영 반영 여부는 미결정 — LegalMALR-lite/RAPTOR-lite는 쿼리마다 로컬 LLM
+추론이 추가로 필요하다(레이턴시·GPU 상주 비용 트레이드오프). 상세 결과·caveat는
+survey 문서 참고.
 """
 
 from backend.api.schemas import LegalBasis
@@ -38,6 +72,7 @@ logger = load_logger("retrieval.log")
 _CANDIDATE_K = 8
 
 _embedder = None
+_law_names_cache: list[str] | None = None
 
 
 def _get_cached_embedder():
@@ -45,6 +80,20 @@ def _get_cached_embedder():
     if _embedder is None:
         _embedder = get_embedder()
     return _embedder
+
+
+def get_law_names() -> list[str]:
+    """chunks 테이블(source='law')에 실제로 존재하는 법령명 목록(캐싱).
+
+    backend.agents.query_router.route_law_names()가 EXAONE에게 "이 목록 중에서
+    골라라"는 선택지로 넘긴다 — DB에 없는 법령명을 예측해서 필터가 텅 비는 걸 방지.
+    """
+    global _law_names_cache
+    if _law_names_cache is None:
+        with get_conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT DISTINCT metadata->>'law_name' FROM chunks WHERE source = 'law'")
+            _law_names_cache = [row[0] for row in cur.fetchall() if row[0]]
+    return _law_names_cache
 
 
 def _truncate(text: str, max_len: int = 100) -> str:
@@ -116,6 +165,63 @@ def _search_sparse(
     return cur.fetchall()
 
 
+def _search_dense_one_law(cur, law_name: str, vec_literal: str, top_k: int) -> list[tuple[str, str, dict, str, float]]:
+    """단일 law_name 파티션 안에서만 dense 검색 — 실제 코사인 유사도 점수도 같이 반환한다
+    (파티션을 넘어 병합할 때 순위가 아니라 점수로 비교해야 하기 때문, 아래 docstring 참고)."""
+    cur.execute(
+        """
+        SELECT chunk_id, source, metadata, text, 1 - (embedding <=> %s::vector) AS score
+        FROM chunks
+        WHERE source = 'law' AND metadata->>'law_name' = %s
+        ORDER BY embedding <=> %s::vector
+        LIMIT %s
+        """,
+        (vec_literal, law_name, vec_literal, top_k),
+    )
+    return cur.fetchall()
+
+
+def _search_sparse_one_law(cur, law_name: str, query_text: str, top_k: int, similarity_threshold: float = 0.1) -> list[tuple[str, str, dict, str, float]]:
+    cur.execute("SET pg_trgm.similarity_threshold = %s", (similarity_threshold,))
+    cur.execute(
+        """
+        SELECT chunk_id, source, metadata, text, similarity(text, %s) AS score
+        FROM chunks
+        WHERE source = 'law' AND metadata->>'law_name' = %s AND text %% %s
+        ORDER BY score DESC
+        LIMIT %s
+        """,
+        (query_text, law_name, query_text, top_k),
+    )
+    return cur.fetchall()
+
+
+def _search_law_partitioned(
+    cur, vec_literal: str, query_text: str, top_k: int, sparse_similarity_threshold: float, law_names: list[str],
+) -> tuple[list[tuple], list[tuple]]:
+    """법령별로 따로 top_k를 확보한 뒤 실제 유사도 점수로 재병합한다.
+
+    law_names 전체를 하나의 SQL IN절로 묶어 공통 top_k를 나눠 쓰게 하면, 법령
+    코퍼스가 43청크(약관규제법)~1,305청크(민법)로 불균형해서 정답이 소수 법령에
+    있어도 대형 법령 후보에 밀려난다 — 도메인 필터링 없는 RRF와 똑같은 문제를
+    법령 2개 규모로 재현할 뿐이다. 그래서 법령마다 **독립적으로** top_k를 확보해
+    희소 법령도 반드시 후보 풀에 들어오게 보장한 뒤, 파티션 경계 없이 실제
+    코사인/trigram 점수로 다시 정렬한다(순위가 아니라 점수 — 파티션마다 밀도가
+    달라 순위만으론 비교가 안 됨). 이 방식으로 실측된 결과는
+    `backend/eval/retrieval_alternatives_survey.md`의 RAPTOR-lite(RRF 8%→33%,
+    p<0.0001) — 이 함수는 그 실험(raptor_lite_compare.py)의 로직을 프로덕션에
+    그대로 옮긴 것이다.
+    """
+    all_dense, all_sparse = [], []
+    for law_name in law_names:
+        all_dense.extend(_search_dense_one_law(cur, law_name, vec_literal, top_k))
+        all_sparse.extend(_search_sparse_one_law(cur, law_name, query_text, top_k, sparse_similarity_threshold))
+
+    dense_sorted  = [row[:4] for row in sorted(all_dense, key=lambda r: r[4], reverse=True)]
+    sparse_sorted = [row[:4] for row in sorted(all_sparse, key=lambda r: r[4], reverse=True)]
+    return dense_sorted, sparse_sorted
+
+
 def _reciprocal_rank_fusion(
     dense_rows: list[tuple[str, str, dict, str]],
     sparse_rows: list[tuple[str, str, dict, str]],
@@ -160,6 +266,7 @@ def fetch_candidates(
     top_k_per_source: int = _CANDIDATE_K,
     sparse_similarity_threshold: float = 0.1,
     unified: bool = False,
+    law_names: list[str] | None = None,
 ) -> dict[str, list[dict]]:
     """법령·판례 검색 후보 풀을 소스별로 반환한다(Evidence Selection Agent가 재랭킹할 원본).
 
@@ -167,6 +274,14 @@ def fetch_candidates(
     unified=True면 law/precedent를 나누지 않고 한 번에 검색한 뒤 소스별로 재분류한다
     (Evidence Verification의 마지막 재검색 단계 — 소스를 나눠서 못 찾았으면 안 나눠서라도
     찾아본다는 전략).
+
+    law_names가 주어지면 law 소스 검색만 그 법령들로 제한한다(unified 모드에선 무시 —
+    통합 재검색은 범위를 넓히는 마지막 시도이므로 좁히는 필터와 상충한다).
+    backend.agents.query_router.route_law_names()가 예측한 값을 넘긴다 — 법령
+    코퍼스가 43청크(약관규제법)~1,305청크(민법)로 극단적으로 불균형해서, 필터
+    없이 전체를 한 풀에서 경쟁시키면 소수 법령이 밀리는 문제를 완화한다
+    (`backend/eval/retrieval_alternatives_survey.md`의 RAPTOR-lite 실측:
+    RRF 8%→33%, McNemar p<0.0001).
     """
     if not query_text.strip():
         return {"law": [], "precedent": []}
@@ -188,8 +303,13 @@ def fetch_candidates(
             else:
                 result = {}
                 for source in ("law", "precedent"):
-                    dense  = _search_dense(cur, [source], vec_literal, top_k_per_source)
-                    sparse = _search_sparse(cur, [source], query_text, top_k_per_source, sparse_similarity_threshold)
+                    if source == "law" and law_names:
+                        dense, sparse = _search_law_partitioned(
+                            cur, vec_literal, query_text, top_k_per_source, sparse_similarity_threshold, law_names,
+                        )
+                    else:
+                        dense  = _search_dense(cur, [source], vec_literal, top_k_per_source)
+                        sparse = _search_sparse(cur, [source], query_text, top_k_per_source, sparse_similarity_threshold)
                     result[source] = _reciprocal_rank_fusion(dense, sparse)
     except Exception as e:
         logger.warning(f"법령/판례 후보 검색 실패, 빈 결과 반환: {e}")

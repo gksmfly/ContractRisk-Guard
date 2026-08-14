@@ -12,8 +12,19 @@ Evidence Verification Agent가 "재검색이 필요하다"고 판단해 되돌�
   1회차(retry_count=1): evidence_span 대신 조항 전체로 쿼리 확대, top_k 6→10
   2회차(retry_count=2): top_k 10→16, pg_trgm 임계값 0.1→0.05로 낮춰 Sparse 재현율 확보
   3회차(retry_count=3): law/precedent 구분 없이 통합 검색, top_k 24(마지막 시도라 재현율 최우선)
+
+첫 시도(retry_count=0)에서는 검색 전에 query_router.route_law_names()로 이 조항이
+어느 법령에 해당할지 로컬 LLM(EXAONE)이 먼저 판단해 법령 검색 범위를 좁힌다 —
+법령 코퍼스가 43청크~1,305청크로 극단적으로 불균형해서 필터 없이 전체를 경쟁시키면
+소수 법령의 정답 조문이 밀려난다(`backend/eval/retrieval_alternatives_survey.md`
+실측: RRF 8%→33%, McNemar p<0.0001). 재시도(1~3회차)는 라우팅을 다시 쓰지 않고
+필터 없이 검색한다 — 1회차 라우팅이 틀렸을 가능성이 있는 상황이라, 재시도의
+"범위를 넓힌다"는 원래 취지와 좁히는 필터가 상충하기 때문. 라우팅 실패(모델 오류·
+JSON 파싱 실패 등)는 route_law_names()가 None을 반환해 필터 없이 검색되므로
+검색 자체가 막히지 않는다.
 """
 
+from backend.agents.query_router import route_law_names
 from backend.agents.state import ClauseState
 from backend.api.services.retrieval import fetch_candidates
 
@@ -31,9 +42,12 @@ def _search_params(retry_count: int) -> dict:
 
 
 def retrieval_strategy_node(state: ClauseState) -> dict:
-    params = _search_params(state.get("retry_count", 0))
+    retry_count = state.get("retry_count", 0)
+    params = _search_params(retry_count)
     use_full_clause = params.pop("use_full_clause")
     query = state["clause"] if use_full_clause else (state.get("evidence_span") or state["clause"])
 
-    candidates = fetch_candidates(query, **params)
+    law_names = route_law_names(state["clause"]) if retry_count == 0 else None
+
+    candidates = fetch_candidates(query, law_names=law_names, **params)
     return {"retrieval_candidates": candidates}

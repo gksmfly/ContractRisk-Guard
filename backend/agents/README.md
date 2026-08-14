@@ -38,13 +38,19 @@ Analysis(GPT-4o) ───┤                                          ├─→
 GPT-4o Forward Labeling(`backend.fb_check.forward_labeling.run_forward()`) 재사용 — 조항 유형(domain)·근거 문구(evidence_span)·판단 이유(reasoning) 1차 분석. FB-Check 파이프라인과 동일 프롬프트로 일관성 유지. `config["configurable"]["client"]`로 OpenAI 클라이언트를 주입받는다.
 
 ### `retrieval_strategy_node` (`retrieval_strategy_agent.py`)
-`backend.api.services.retrieval.fetch_candidates()` 호출부. 재검색 시도마다(`retry_count`) 다른 전략 사용:
-| 회차 | top_k | pg_trgm 임계값 | 검색 범위 |
-|---|---|---|---|
-| 0(최초) | 6 | 0.10 | evidence_span, law/precedent 분리 |
-| 1 | 10 | 0.10 | 조항 전체로 확대 |
-| 2 | 16 | 0.05 | Sparse 재현율 확보 |
-| 3(마지막) | 24 | 0.05 | law/precedent 통합 검색 |
+`backend.api.services.retrieval.fetch_candidates()` 호출부. 최초 시도(`retry_count=0`)에서는
+검색 전에 `query_router.route_law_names()`(로컬 EXAONE-3.5-7.8B, API 비용 0)로 조항이
+어느 법령에 해당할지 먼저 예측해 법령 검색을 그 법령들로 좁힌다 — 법령 코퍼스가
+43청크(약관규제법)~1,305청크(민법)로 불균형해서 필터 없이 전체를 경쟁시키면 소수
+법령이 밀리는 문제를 완화한다(`backend/eval/retrieval_alternatives_survey.md`의
+RAPTOR-lite 실측: RRF 8%→33%, McNemar p<0.0001). 재검색 시도마다(`retry_count`) 다른
+전략 사용:
+| 회차 | top_k | pg_trgm 임계값 | 검색 범위 | 법령 라우팅 |
+|---|---|---|---|---|
+| 0(최초) | 6 | 0.10 | evidence_span, law/precedent 분리 | 있음 |
+| 1 | 10 | 0.10 | 조항 전체로 확대 | 없음(필터 해제 — 1회차 라우팅이 틀렸을 수 있어 넓게 재검색) |
+| 2 | 16 | 0.05 | Sparse 재현율 확보 | 없음 |
+| 3(마지막) | 24 | 0.05 | law/precedent 통합 검색 | 없음 |
 
 ### `evidence_selection_node` (`evidence_selection_agent.py`)
 후보 풀을 top-2로 재랭킹. RRF 순위를 그대로 쓰되 판례에 한해 법원 심급 가중치(대법원 +0.10, 고등법원 +0.05) 가산. Cross-Encoder 재랭킹은 사전 실험(10.7% vs 20.1% 정답 적중률)에서 성능 저하로 미채택. 후보가 없으면 `LEGAL_BASIS_FALLBACK`(도메인별 하드코딩 법조문) 사용.

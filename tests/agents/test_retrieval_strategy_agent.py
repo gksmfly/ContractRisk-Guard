@@ -1,13 +1,17 @@
 # tests/test_retrieval_strategy_agent.py
 """
-backend/api/services/retrieval.py의 _reciprocal_rank_fusion() 단위 테스트.
+backend/api/services/retrieval.py의 _reciprocal_rank_fusion() 단위 테스트 +
+backend/agents/retrieval_strategy_agent.py의 법령 라우팅 통합(1회차만 라우팅,
+재시도는 필터 해제) 단위 테스트.
 
 Dense/Sparse 검색 자체는 DB가 있어야 하지만, 두 랭킹을 합치는 RRF 융합 로직은
-순수 함수라 DB 없이도 검증할 수 있다.
+순수 함수라 DB 없이도 검증할 수 있다. 라우팅 통합 테스트는 route_law_names/
+fetch_candidates를 monkeypatch로 대체해 GPU·DB 없이 노드의 분기 로직만 검증한다.
 
 실행: pytest tests/test_retrieval_strategy_agent.py
 """
 
+import backend.agents.retrieval_strategy_agent as retrieval_strategy_agent
 from backend.api.services.retrieval import _reciprocal_rank_fusion
 
 
@@ -70,3 +74,50 @@ class TestReciprocalRankFusion:
         dense = [_row("a", source="precedent")]
         fused = _reciprocal_rank_fusion(dense, [])
         assert fused[0]["source"] == "precedent"
+
+
+class TestRetrievalStrategyNodeRouting:
+    """법령 라우팅은 1회차(retry_count=0)에서만 쓰고, 재시도에서는 안 쓴다
+    (재시도는 검색 범위를 넓히는 게 목적이라 좁히는 필터와 상충하기 때문)."""
+
+    def _patch(self, monkeypatch, route_return: list[str] | None = ["약관의 규제에 관한 법률"]):
+        calls = {"route": [], "fetch": []}
+
+        def fake_route(clause):
+            calls["route"].append(clause)
+            return route_return
+
+        def fake_fetch(query, law_names=None, **kwargs):
+            calls["fetch"].append({"query": query, "law_names": law_names, **kwargs})
+            return {"law": [], "precedent": []}
+
+        monkeypatch.setattr(retrieval_strategy_agent, "route_law_names", fake_route)
+        monkeypatch.setattr(retrieval_strategy_agent, "fetch_candidates", fake_fetch)
+        return calls
+
+    def test_first_attempt_calls_router_and_passes_law_names(self, monkeypatch):
+        calls = self._patch(monkeypatch)
+        state = {"clause": "제9조 계약 해지 조항", "evidence_span": "해지 조항", "retry_count": 0}
+
+        retrieval_strategy_agent.retrieval_strategy_node(state)
+
+        assert calls["route"] == ["제9조 계약 해지 조항"]
+        assert calls["fetch"][0]["law_names"] == ["약관의 규제에 관한 법률"]
+
+    def test_retry_does_not_call_router_and_passes_no_filter(self, monkeypatch):
+        calls = self._patch(monkeypatch)
+        state = {"clause": "제9조 계약 해지 조항", "evidence_span": "해지 조항", "retry_count": 1}
+
+        retrieval_strategy_agent.retrieval_strategy_node(state)
+
+        assert calls["route"] == []
+        assert calls["fetch"][0]["law_names"] is None
+
+    def test_router_failure_returns_none_and_search_proceeds_unfiltered(self, monkeypatch):
+        calls = self._patch(monkeypatch, route_return=None)
+        state = {"clause": "제9조 계약 해지 조항", "evidence_span": "해지 조항", "retry_count": 0}
+
+        result = retrieval_strategy_agent.retrieval_strategy_node(state)
+
+        assert calls["fetch"][0]["law_names"] is None
+        assert result == {"retrieval_candidates": {"law": [], "precedent": []}}
