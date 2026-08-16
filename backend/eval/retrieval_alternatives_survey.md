@@ -112,10 +112,20 @@ Dense-only: 프리픽스 없음 12% → 있음 17%, p=0.125.
 
 ---
 
-## 다음 결정 (사용자 확인 필요)
+## 최종 결정: RAPTOR-lite(법령 라우팅) 채택, LightRAG는 최종 기각
 
-최고 성능은 여전히 RAPTOR-lite/LegalMALR-lite(EXAONE, 33%)다. 운영 반영 시 쿼리마다
-로컬 LLM 추론(EXAONE 7.8B, GPU 상주 필요)이 추가되는 트레이드오프는 그대로 남아있다.
-1+2 조합(17%, LLM 없음)이 유일하게 통계적으로 유의하면서 운영 부담이 거의 없는 대안이다.
-아키텍처 전환 여부는 아직 결정되지 않았다 — memory `project_lightrag_vs_rrf.md`,
-`project_retrieval_alternatives_eval.md` 참고.
+최고 성능은 RAPTOR-lite/LegalMALR-lite(EXAONE, 둘 다 33%)로 동률이었다. 이 중
+**RAPTOR-lite(법령 라우팅)를 선택**해 `backend/agents/query_router.py`(신규)와
+`retrieval_strategy_agent.py`/`retrieval.py`에 실제로 반영했다 — LegalMALR-lite(쿼리
+재구성)가 아닌 이유는 종합 콤보 실험에서 EXAONE에게 두 가지 일(재구성+라우팅)을 한
+번에 시키면 오히려 성능이 떨어졌기 때문(28% < 개별 33%) — 라우팅이 원래
+`retrieval_strategy_node`의 역할("검색 파라미터 결정")에 더 자연스럽게 들어맞기도
+했다. 상세 구현은 `backend/agents/README.md`의 `retrieval_strategy_node` 절 참고.
+
+이로써 이 문서 배경에 있던 **LightRAG(20%)는 공식적으로 기각** — RAPTOR-lite가
+LightRAG보다 수치상 우수(33% > 20%)할 뿐 아니라, LightRAG의 구조적 약점(코퍼스가
+커질수록 성능 저하, `project_lightrag_vs_rrf.md` 참고)도 없다. 1+2 조합(17%, LLM
+없음, 유일하게 유의)은 RAPTOR-lite/LegalMALR-lite보다 정확도가 크게 낮아 채택하지
+않음 — 운영 비용(로컬 EXAONE 추론)을 감수할 가치가 있다고 판단.
+
+관련 memory: `project_lightrag_vs_rrf.md`, `project_retrieval_alternatives_eval.md`.
