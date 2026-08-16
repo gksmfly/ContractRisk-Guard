@@ -59,7 +59,7 @@ RAPTOR-lite 실측: RRF 8%→33%, McNemar p<0.0001). 재검색 시도마다(`ret
 `models/v4` KoELECTRA 로드 → domain·risk_level 최종 판단. `evidence_span`(없으면 `clause`로 폴백)을 입력으로 씀 — v4가 evidence_span 길이(평균 40자대) 위주로 학습됐기 때문. 검색 기반 방식(KoE5+GPT-4o-mini)으로 교체할지는 미결정 — `models/README.md` 참고.
 
 ### `red_team_node` (`red_team_agent.py`)
-LLM 미호출. `clean_clauses`(FB-Check 검증 478건) 임베딩 최근접 이웃 중 유사도 0.75 이상인데 risk_level이 다른 사례가 있으면 편향 의심 노트를 남긴다. 임계값은 leave-one-out 실험으로 검증(탐지율 2.3%, 표본 확인 결과 실제 의미 있는 차이 포착).
+충돌 사례 탐색은 LLM 미호출 — `clean_clauses`(FB-Check 검증 478건) 임베딩 최근접 이웃 중 유사도 0.75 이상인데 risk_level이 다른 사례가 있으면 편향 의심으로 간주한다. 임계값은 leave-one-out 실험으로 검증(탐지율 2.3%, 표본 확인 결과 실제 의미 있는 차이 포착). 탐지된 경우에만(전체의 2.3%) LLM(`gpt-4o-mini`)을 호출해 왜 재고가 필요한지 반박 근거를 생성 — 출력 스키마에 `risk_level`이 없어 LLM이 판단 자체를 못 바꾸도록 구조적으로 막아둠. LLM 호출 실패 시 이전 버전의 템플릿 문구로 폴백.
 
 ### `evidence_verification_node` (`evidence_verification_agent.py`)
 `legal_basis`가 있고 `evidence_agreement`(Dense·Sparse 양쪽 다 찾은 근거인지)가 True면 충분하다고 판단. 아니면 `retry_count`를 올리고 재검색 라우팅(`MAX_RETRIES=3`). 코사인 유사도 기반 신뢰도 신호는 사전 실험에서 정답 적중률과 상관관계가 거의 없어(hit 0.567 vs miss 0.559) 채택 안 함.
