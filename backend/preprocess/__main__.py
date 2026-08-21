@@ -60,6 +60,7 @@ def process_source(
     chunk_size: int,
     overlap: int,
     min_chunk: int,
+    law_chunk_size: int = 800,
 ) -> dict[str, int]:
     extractor = EXTRACTORS[source]
     files = sorted(src_dir.glob("*.json"))
@@ -81,11 +82,22 @@ def process_source(
                     if not text.strip():
                         continue
                     if source == "law":
-                        # 법령 조문: 청킹 없이 조문 단위 그대로 저장
-                        record = build_chunk_record(source, fp.stem, rec_idx, 0, text, meta)
-                        out_f.write(json.dumps(record, ensure_ascii=False) + "\n")
-                        chunk_count += 1
-                        doc_chunk_count += 1
+                        # 법령 조문: 조문 단위 유지가 원칙. 다만 항·호·목까지 담게 되면서
+                        # 일부 조문(민법·상법의 긴 조문 등 2.4%)이 KoE5의 512토큰을 넘는다.
+                        # 넘는 텍스트는 SentenceTransformer가 조용히 잘라내므로 — 뒤쪽 호가
+                        # 통째로 색인에서 사라진다 — 넘는 것만 나눠 담는다.
+                        pieces = ([text] if len(text) <= law_chunk_size
+                                  else split_chunks(text, law_chunk_size, overlap, min_chunk=1))
+                        head = meta.get("article_head", "")
+                        for chunk_idx, piece in enumerate(pieces):
+                            # 2번째 조각부터는 "제N조(제목)" 머리말을 다시 붙인다.
+                            # 조각만 검색돼도 몇 조인지 알 수 있어야 근거로 인용할 수 있다.
+                            if chunk_idx and head and not piece.startswith(head[:20]):
+                                piece = f"{head}\n{piece}"
+                            record = build_chunk_record(source, fp.stem, rec_idx, chunk_idx, piece, meta)
+                            out_f.write(json.dumps(record, ensure_ascii=False) + "\n")
+                            chunk_count += 1
+                            doc_chunk_count += 1
                     else:
                         # 판례·해석례: 문장 경계 청킹 + min_chunk 필터
                         chunks = split_chunks(text, chunk_size, overlap, min_chunk)
@@ -110,6 +122,8 @@ def main() -> None:
     parser.add_argument("--chunk-size", type=int, default=512,  help="청크당 최대 문자 수 (기본 512)")
     parser.add_argument("--overlap",    type=int, default=50,   help="청크 간 오버랩 문자 수 (기본 50)")
     parser.add_argument("--min-chunk",  type=int, default=100,  help="최소 청크 길이, 미만 버림 (기본 100)")
+    parser.add_argument("--law-chunk-size", type=int, default=800,
+                        help="법령 조문을 나누기 시작하는 길이 (기본 800자 ≈ 480토큰, KoE5 상한 512 아래)")
     args = parser.parse_args()
 
     logger.info("========== 전처리 시작 ==========")
@@ -129,7 +143,7 @@ def main() -> None:
             continue
         report[source] = process_source(
             source, src_dir, PROCESSED_DIR / f"{source}s.jsonl",
-            args.chunk_size, args.overlap, args.min_chunk,
+            args.chunk_size, args.overlap, args.min_chunk, args.law_chunk_size,
         )
 
     save_json({"preprocess_result": report}, PROCESSED_DIR / "preprocess_report.json")

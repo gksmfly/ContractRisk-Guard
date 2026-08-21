@@ -90,8 +90,8 @@ def build_record(
     source: str,
     doc_id: str,
     idx: int,
-    domain: str,
-    risk_level: str,
+    domain: str | None,
+    risk_level: str | None,
     risk_basis: str,
     patterns: list[str],
     meta: dict[str, Any],
@@ -113,12 +113,18 @@ _DISMISSED_ACTION_TYPES = {"재결기각"}  # 이의제기로 뒤집힌 케이�
 
 
 def extract_ftc_records(ftc_path: Path) -> tuple[list[dict], dict]:
-    """FTC 시정조치에서 해지·책임제한 조항 레코드를 추출한다."""
+    """FTC 시정조치에서 조항 레코드를 추출한다(도메인 무관 — 전량).
+
+    예전에는 `classify_domain()`이 None을 주면 조항을 버렸다. 그 결과 공정위가 불공정으로
+    확정한 조항 중 해지·면책 키워드가 없는 것(전속관할·급부 일방변경·의사표시 의제 등)이
+    통째로 빠졌다. 도메인 판정은 LLM 단계로 미룬다.
+    """
     with open(ftc_path, encoding="utf-8") as f:
         raw = json.load(f)
     cases   = raw.get("사례", [])
     records: list[dict] = []
-    stats   = {"total": len(cases), "해지_조항": 0, "책임제한_조항": 0, "skipped": 0, "dismissed_excluded": 0}
+    stats   = {"total": len(cases), "해지_조항": 0, "책임제한_조항": 0, "미판정": 0,
+               "too_short": 0, "skipped": 0, "dismissed_excluded": 0}
 
     for case in cases:
         cell = case.get("셀_데이터", {})
@@ -137,11 +143,14 @@ def extract_ftc_records(ftc_path: Path) -> tuple[list[dict], dict]:
         added  = False
         for idx, clause in enumerate(clauses):
             text   = str(clause).strip()
-            domain = classify_domain(text)
-            if not domain or len(text) < 30:
+            if len(text) < 30:
+                stats["too_short"] += 1
                 continue
+            # 도메인은 여기서 확정하지 않는다 — 키워드로 못 맞히는 유형(제10·11·12·14조 등)을
+            # 통째로 버리게 되기 때문. 약관규제법 유형 판정은 LLM(Forward Labeling)이 한다.
+            domain = classify_domain(text)
             records.append(build_record(text, "ftc_case", doc_id, idx, domain, risk_level, risk_basis, [], meta))
-            stats[domain] += 1
+            stats[domain or "미판정"] += 1
             added = True
         if not added:
             stats["skipped"] += 1
@@ -153,7 +162,8 @@ def extract_contract_records(contract_dir: Path) -> tuple[list[dict], dict]:
     """표준계약서에서 조문 단위로 분리하여 레코드를 추출한다."""
     article_pat = re.compile(r"(제\s*\d+\s*조\s*(?:\([^)]*\))?)", re.MULTILINE)
     records: list[dict] = []
-    stats: dict[str, Any] = {"file_count": 0, "total_articles": 0, "해지_조항": 0, "책임제한_조항": 0, "skipped": 0}
+    stats: dict[str, Any] = {"file_count": 0, "total_articles": 0, "해지_조항": 0,
+                             "책임제한_조항": 0, "미판정": 0, "too_short": 0, "skipped": 0}
 
     for path in sorted(contract_dir.glob("contracts_표준*.json")):
         stats["file_count"] += 1
@@ -171,13 +181,20 @@ def extract_contract_records(contract_dir: Path) -> tuple[list[dict], dict]:
             for art_idx, (title, body) in enumerate(split_articles(full_text, article_pat)):
                 text = f"{title} {body}".strip()
                 stats["total_articles"] += 1
-                domain = classify_domain(text)
-                if not domain or len(text) < 30:
-                    stats["skipped"] += 1
+                if len(text) < 30:
+                    stats["too_short"] += 1
                     continue
-                risk_level, matched = assess_risk(domain, text)
-                records.append(build_record(text, "standard_contract", doc_id, art_idx, domain, risk_level, "pattern_match", matched, meta))
-                stats[domain] += 1
+                domain = classify_domain(text)
+                if domain:
+                    risk_level, matched = assess_risk(domain, text)
+                    basis = "pattern_match"
+                else:
+                    # 정규식 판정은 해지·책임제한 도메인 전용이다. 그 밖의 유형은 seed 단계에서
+                    # risk를 정하지 않고 LLM 판정에 맡긴다 — 임의로 Low를 붙이면
+                    # "표준계약서면 Low"라는 출처 지름길이 오히려 강화된다.
+                    risk_level, matched, basis = None, [], "llm_pending"
+                records.append(build_record(text, "standard_contract", doc_id, art_idx, domain, risk_level, basis, matched, meta))
+                stats[domain or "미판정"] += 1
 
     return records, stats
 

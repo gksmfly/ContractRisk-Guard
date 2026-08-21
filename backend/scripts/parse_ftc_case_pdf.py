@@ -214,6 +214,7 @@ Returns:
     list[str]: 20자 이상의 조항 원문 문자열 리스트 (중복 제거, 순서 유지).
 """
 
+_MIN_CLAUSE_LEN = 20   # 이보다 짧으면 조항으로 보지 않는다(extract_clause_text의 하한과 동일)
 _MAX_CLAUSE_LEN = 600  # 실제 조항 하나가 이보다 길면 뒤에 다른 내용(법조문 인용, 심결 서술)이
                         # 딸려왔을 가능성이 높음 — 뒷부분을 잘라 오염을 줄인다
 
@@ -228,6 +229,13 @@ _BOUNDARY_MARKERS = [
     "약관의 규제", "민법", "동법", "법률 제", "시행령", "판례는", "대법원",
     "정하고 있는 조항은", "무효로 한다",
     "공정성을 잃은 것으로 추정", "다음 각 호의 어느 하나에 해당하는",
+    # --- 2026-08-21 추가 ---
+    # 라벨링 파일럿에서 조항 2,093건 중 767건(36.6%)이 약관 조항이 아니라 의결서 본문·
+    # 주문·PDF 잔해였다. LLM에게 "이 조항이 어느 조 위반인가"를 물으면서 공정위의
+    # 판단문을 입력으로 준 셈이라, 아래 표지를 만나면 그 앞까지만 조항으로 본다.
+    "해당됨", "해당된다", "해당한다", "해당되므로", "해당하므로",
+    "시정권고", "시정명령", "시정조치", "공정거래위원회", "피심인",
+    "위 약관조항은", "이 사건 약관", "심결", "의결한다", "권고한다", "명한다",
 ]
 
 # 약관규제법 제6~17조, 민법 해지(543~553조)·손해배상(750~766조) 관련 조문은 그 자체가
@@ -289,14 +297,39 @@ def _truncate_at_boundary(clause: str) -> str:
 _RECOMMENDATION_PREAMBLE = re.compile(r"[을를]\s*이\s*시정권고를?\s*받은\s*날")
 _CLAUSE_START_MARKER = re.compile(r"[<〈]\s*약관\s*조항\s*[>〉]|[가-힣]\s*\.\s*약관\s*조항")
 
+# PDF 조판 잔해. pdfplumber가 페이지 바닥글("- 1 -")과 표/도형 마커를 본문에 섞어 넣는다.
+# 조항 한복판에 끼어들기 때문에 경계 마커로는 못 자르고 따로 지워야 한다.
+_PDF_ARTIFACTS = [
+    re.compile(r"[-–—]\s*\d{1,3}\s*[-–—]"),      # 페이지 번호 "- 1 -"
+    re.compile(r"[<〈]\s*약관\s*조항\s*[>〉]?"),   # 남은 섹션 마커
+    re.compile(r"[<〈]\s*(?=$|\s)"),                # 끝에 매달린 여는 괄호
+    re.compile(r"\u3000+"),                          # 전각 공백
+]
+
+
+def _strip_pdf_artifacts(clause: str) -> str:
+    for pat in _PDF_ARTIFACTS:
+        clause = pat.sub(" ", clause)
+    return re.sub(r"\s+", " ", clause).strip(" <>〈〉·.,")
+
 
 def _skip_recommendation_preamble(clause: str) -> str:
-    if not _RECOMMENDATION_PREAMBLE.search(clause[:100]):
-        return clause
+    """조항 앞에 붙은 주문·권고문을 잘라낸다.
+
+    예전에는 "~을 이 시정권고를 받은 날" 문구가 앞 100자에 있을 때만 앵커링했는데,
+    의결서 문형이 다양해 상당수를 놓쳤다(깨진 마크업 274건). `<약관조항>` 마커는
+    그 자체로 "여기부터가 진짜 조항"을 뜻하므로, 마커가 조항 앞부분에 있으면
+    권고문 여부와 무관하게 그 뒤부터 취한다.
+    """
     m = _CLAUSE_START_MARKER.search(clause)
     if not m:
         return clause
-    return clause[m.end():].strip()
+    # 위치 비율로 판단하지 않는다 — 조각이 짧으면 마커가 뒤쪽에 오는 게 정상이라
+    # 비율 조건이 오히려 진짜 조항을 버렸다. 기준은 "마커 뒤에 실질 내용이 남는가"다.
+    rest = clause[m.end():].strip()
+    if len(rest) < _MIN_CLAUSE_LEN:
+        return clause
+    return rest
 
 
 def _is_statute_article(clause: str) -> bool:
@@ -305,6 +338,48 @@ def _is_statute_article(clause: str) -> bool:
         return False
     normalized = re.sub(r"\s+", "", header.group(0))
     return normalized in _STATUTE_ARTICLE_TITLES
+
+
+# 경계 마커로 앞부분을 잘라내도, 조항이 아예 없이 의결서 서술만 캡처된 경우가 남는다
+# (예: "제102조(과실의 취득)가 정하는 법정 과실은 ... 부당하게 불리한 조항으로 ...").
+# 약관 조항은 사업자·고객의 권리의무를 규정하는 문장이지 제3자 시점의 판단문이 아니다.
+_DECISION_PROSE = re.compile(
+    r"부당하게\s*불리한\s*조항|불공정약관조항에?\s*해당|무효라고\s*할\s*것|"
+    r"위반된다고?\s*(볼|할|판단)|것으로\s*판단된다|라고\s*할\s*것이다|"
+    r"규정에\s*반할|살피건대|따라서\s*이\s*사건"
+)
+
+
+def _is_decision_prose(clause: str) -> bool:
+    return bool(_DECISION_PROSE.search(clause))
+
+
+# 의결서 주문은 "제3조(월 임대료)제2호, 제4조(관리비)제3호, 제16조(합의관할)를 이 시정권고를
+# 받은 날부터 60일 이내에 삭제 또는 수정하고..." 처럼 **고칠 조문을 나열**한다. 경계 마커로
+# "시정권고" 앞까지 자르면 "제3조(월 임대료)제2호, ... 제16조(합의관할)를 이"라는 조문 번호
+# 나열만 남는데, 길이 필터(20자)를 통과해 조항인 척 들어온다 — 실제로 이 필터를 넣기 전
+# 표본 검수에서 12건 중 3건이 이런 조각이었다.
+#
+# 조항 원문은 그 자체로 규범 문장이어야 한다. 조문 참조(제N조·제N항·제N호)와 구분자를
+# 걷어냈을 때 실질 내용이 남지 않으면 인용 목록이지 조항이 아니다.
+_ARTICLE_REF = re.compile(r"제\s*\d+\s*조(?:\s*[\(（][^\)）]*[\)）])?|제\s*\d+\s*[항호]|약관")
+_REF_SEPARATORS = re.compile(r"[,、·ㆍ및\s\(\)（）]|이상|등|를|을|는|은|와|과|의|이")
+
+
+# 주문 문장은 "…제16조(합의관할)를 이 시정권고를 받은 날부터…"로 이어진다. "시정권고"
+# 앞에서 자르면 조사만 남아 "…를 이"로 끝나는데, 나열된 조문 제목에 일반 명사가 섞여
+# 있으면(예: "입주계약서", "부대사항") 아래 잔여 한글 수 기준을 통과해버린다.
+# 규범 문장은 "~한다/없다/있다"로 끝나지 조사로 끝나지 않으므로 별도 표지로 쓴다.
+_DANGLING_PARTICLE = re.compile(r"[을를는은]\s*이$")
+
+
+def _is_article_reference_list(clause: str) -> bool:
+    if _DANGLING_PARTICLE.search(clause):
+        return True
+    residue = _ARTICLE_REF.sub(" ", clause)
+    residue = _REF_SEPARATORS.sub("", residue)
+    korean = sum(1 for ch in residue if "가" <= ch <= "힣")
+    return korean < 10
 
 
 def _is_mostly_non_korean(clause: str) -> bool:
@@ -329,9 +404,12 @@ def extract_clause_text(text: str) -> list[str]:
         for m in matches:
             clause = _skip_recommendation_preamble(m.strip()[:_MAX_CLAUSE_LEN])
             clause = _truncate_at_boundary(clause)
-            if len(clause) <= 20:
+            clause = _strip_pdf_artifacts(clause)
+            if len(clause) <= _MIN_CLAUSE_LEN:
                 continue
             if _is_statute_article(clause) or _is_mostly_non_korean(clause):
+                continue
+            if _is_decision_prose(clause) or _is_article_reference_list(clause):
                 continue
             clauses.append(clause)
 

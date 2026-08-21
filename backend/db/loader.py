@@ -252,8 +252,17 @@ def _load_incremental(
     return len(records)
 
 
-def load_chunks(conn, embedder) -> dict[str, int]:
-    """data/processed/chunks/*.jsonl → chunks 테이블."""
+def load_chunks(conn, embedder, refresh: tuple[str, ...] = ()) -> dict[str, int]:
+    """data/processed/chunks/*.jsonl → chunks 테이블.
+
+    기본은 증분 적재 — 이미 있는 `chunk_id`는 건너뛴다. 그래서 **텍스트가 바뀌어도
+    반영되지 않는다**. 전처리 규칙을 고쳐 같은 chunk_id의 내용이 달라졌다면
+    `refresh`에 그 소스를 넣어야 다시 임베딩·upsert된다
+    (예: 법령 조문에 항·호·목을 추가한 변경 — `--refresh laws`).
+
+    upsert 자체는 `ON CONFLICT (chunk_id) DO UPDATE`라 덮어쓰기가 되고, 없어진
+    chunk_id는 남으므로 필요하면 `--purge`로 먼저 지운다.
+    """
     sources = ["laws", "precedents", "interpretations"]
     total_inserted = 0
     cols = ["chunk_id", "source", "doc_id", "rec_index", "chunk_index", "text", "metadata", "embedding"]
@@ -261,6 +270,8 @@ def load_chunks(conn, embedder) -> dict[str, int]:
     existing = _existing_ids(conn, "chunks")
     if existing:
         logger.info(f"  [chunks] 이미 적재된 chunk_id {len(existing)}개 — 건너뜀")
+    if refresh:
+        logger.info(f"  [chunks] 재적재 대상 소스: {', '.join(refresh)} (기존 chunk_id도 다시 임베딩)")
 
     for src in sources:
         path = PROCESSED_DIR / f"{src}.jsonl"
@@ -269,7 +280,8 @@ def load_chunks(conn, embedder) -> dict[str, int]:
             continue
 
         all_records = load_jsonl(path)
-        records = [r for r in all_records if r["chunk_id"] not in existing]
+        skip_ids = set() if src in refresh else existing
+        records = [r for r in all_records if r["chunk_id"] not in skip_ids]
         skipped = len(all_records) - len(records)
         if skipped:
             logger.info(f"  [chunks/{src}] {skipped}건 이미 적재 — 건너뜀")
@@ -384,6 +396,14 @@ def main() -> None:
     parser.add_argument("--source", default="all",
                         choices=["all", "chunks", "seed", "clean", "noise"],
                         help="적재할 소스 (기본: all)")
+    parser.add_argument("--refresh", nargs="*", default=[],
+                        choices=["laws", "precedents", "interpretations"],
+                        help="이미 적재된 chunk_id도 다시 임베딩할 소스 "
+                             "(전처리 규칙이 바뀌어 같은 id의 텍스트가 달라졌을 때)")
+    parser.add_argument("--purge", nargs="*", default=[],
+                        choices=["law", "precedent", "interpretation"],
+                        help="적재 전에 해당 source의 기존 청크를 삭제 "
+                             "(청크 분할 방식이 바뀌어 없어진 chunk_id가 남을 때)")
     args = parser.parse_args()
 
     logger.info("========== DB 적재 시작 ==========")
@@ -394,8 +414,15 @@ def main() -> None:
 
     report: dict[str, Any] = {}
 
+    if args.purge:
+        with conn.cursor() as cur:
+            for s in args.purge:
+                cur.execute("DELETE FROM chunks WHERE source = %s", (s,))
+                logger.info(f"  [purge] chunks source={s} {cur.rowcount}건 삭제")
+        conn.commit()
+
     if args.source in ("all", "chunks"):
-        report["chunks"] = load_chunks(conn, embedder)
+        report["chunks"] = load_chunks(conn, embedder, refresh=tuple(args.refresh))
 
     if args.source in ("all", "seed"):
         report["seed"] = load_seed(conn, embedder)
