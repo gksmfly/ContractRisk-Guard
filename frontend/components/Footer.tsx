@@ -28,10 +28,16 @@ export function Footer() {
           </p>
         </div>
 
-        <div className="mt-6 pt-5 border-t border-slate-200 text-center">
+        <div className="mt-6 pt-5 border-t border-slate-200 text-center space-y-2">
           <p className="text-xs text-slate-400 leading-relaxed">
             본 서비스의 분석 결과는 법적 조언을 대체하지 않으며 참고용으로만 활용하시기 바랍니다.
             최종 계약서 검토는 반드시 법률 전문가와 함께 진행하세요.
+          </p>
+          <p className="text-xs text-slate-400">
+            기업 도입을 검토 중이신가요?{" "}
+            <a href="mailto:contact@verilex.example" className="text-slate-500 hover:text-navy underline transition-colors">
+              도입 문의하기 →
+            </a>
           </p>
         </div>
       </div>

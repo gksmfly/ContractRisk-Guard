@@ -7,9 +7,9 @@ import { CheckCircle2 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 
 const CHECKLIST = [
-  "약관규제법 제9조·10조 직접 인용",
-  "공정거래위원회 시정조치 판례 대조",
-  "고위험 조항 즉시 식별 및 수정 제안",
+  "분석한 계약서 기록이 저장돼요",
+  "언제든 다시 열어서 확인할 수 있어요",
+  "로그인 없이도 분석 자체는 항상 무료예요",
 ];
 
 function GoogleIcon() {
@@ -40,12 +40,12 @@ export default function LoginPage() {
         </Link>
 
         <h1 className="text-3xl md:text-4xl font-extrabold leading-tight mb-4">
-          개인도, 기업 법무팀도
+          확인했던 조항,
           <br />
-          하나의 계정으로
+          나중에도 다시 볼 수 있게
         </h1>
         <p className="text-navy-soft/80 text-sm mb-8">
-          법령 근거 기반 판단 · 6단계 AI 검증 · PDF 감사 리포트
+          로그인은 분석 기록을 저장하기 위한 선택 기능입니다 — 분석 자체는 로그인 없이 이미 완결됩니다.
         </p>
 
         <ul className="space-y-3">
@@ -66,7 +66,7 @@ export default function LoginPage() {
           <div>
             <h2 className="text-xl font-bold text-slate-900">로그인</h2>
             <p className="text-sm text-slate-500 mt-1.5">
-              개인 소비자와 기업 법무팀 모두 Google 계정으로 바로 시작할 수 있습니다.
+              분석 기록을 저장하려면 Google 계정으로 로그인하세요.
             </p>
           </div>
 
@@ -77,6 +77,12 @@ export default function LoginPage() {
             <GoogleIcon />
             Google로 계속하기
           </button>
+
+          <p className="text-sm text-center">
+            <Link href="/analyze" className="text-navy font-medium hover:underline">
+              로그인 없이 바로 분석하기 →
+            </Link>
+          </p>
 
           <p className="text-xs text-slate-500 text-center pt-2 border-t border-rule">
             기업 도입 관련 문의는{" "}

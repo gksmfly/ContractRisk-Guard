@@ -13,6 +13,7 @@ const STEPS = [
     iconWrap: "bg-navy-soft",
     title: "계약서를 업로드하세요",
     desc: "계약서 파일(.txt)을 드래그하거나, 텍스트를 직접 붙여넣으세요. AI가 조항을 자동으로 분리합니다.",
+    chips: [],
   },
   {
     num: "02",
@@ -24,6 +25,7 @@ const STEPS = [
     iconWrap: "bg-violet-100",
     title: "AI가 조항별로 분석합니다",
     desc: "공정위 시정조치 2,488건을 학습한 AI가 각 조항의 유형과 위험도를 판단합니다.",
+    chips: ["6단계 AI 파이프라인", "위험도 미니맵"],
   },
   {
     num: "03",
@@ -35,6 +37,7 @@ const STEPS = [
     iconWrap: "bg-emerald-100",
     title: "리스크 레포트를 확인하세요",
     desc: "위험도·분류·관련 법령·위험 문구 하이라이트가 담긴 조항별 분석 결과를 바로 확인합니다.",
+    chips: ["법령 원문 직접 인용", "근거 하이라이트 연결"],
   },
 ];
 
@@ -57,7 +60,7 @@ export function HowToUseSection() {
             3단계로 끝납니다
           </h2>
           <p className="text-slate-500 max-w-xl mx-auto">
-            회원가입도 설치도 필요 없습니다. 지금 바로 시작하세요.
+            &ldquo;예쁘다&rdquo;가 아니라 &ldquo;이거 진짜 근거 있네&rdquo;가 이겨야 합니다 — 회원가입도 설치도 필요 없습니다.
           </p>
         </div>
 
@@ -90,6 +93,19 @@ export function HowToUseSection() {
               <p className="text-slate-600 text-sm leading-relaxed">
                 {step.desc}
               </p>
+
+              {step.chips.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {step.chips.map((chip) => (
+                    <span
+                      key={chip}
+                      className="text-[11px] font-mono bg-slate-100 text-slate-500 rounded-md px-2 py-1"
+                    >
+                      {chip}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>

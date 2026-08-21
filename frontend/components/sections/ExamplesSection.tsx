@@ -13,10 +13,14 @@ import {
   ChevronRight,
 } from "lucide-react";
 
+// 랜딩 페이지 데모용 정적 데이터의 타입 — 백엔드 `ClauseResult`와 별개다(API를 부르지 않음).
+// 그래서 어긋나도 타입 검사·테스트에 안 걸리니, 실제 시스템이 낼 수 있는 형태만 담을 것.
+// 이전엔 `confidence: 0.93` 같은 값을 보여줬는데 당시 백엔드는 1.0/0.7 두 값만 생성할 수
+// 있었고, 실제 분석 화면은 신뢰도를 표시하지도 않았다 — 데모만 제품보다 정밀해 보였다.
+// 지금 백엔드는 구간(높음/중간/낮음)만 내보내며(judgment_agent.py), 화면 표시는 미채택.
 interface ExampleResult {
   domain: string;
   riskLevel: "High" | "Medium" | "Low";
-  confidence: number;
   highlights: { text: string }[];
   legalBasis: { law: string; article: string; desc: string }[];
   summary: string;
@@ -38,7 +42,6 @@ const EXAMPLES: Example[] = [
     result: {
       domain: "해지_조항",
       riskLevel: "High",
-      confidence: 0.93,
       highlights: [
         { text: "사전 통지 없이" },
         { text: "즉시 해지" },
@@ -60,7 +63,6 @@ const EXAMPLES: Example[] = [
     result: {
       domain: "책임제한_조항",
       riskLevel: "High",
-      confidence: 0.91,
       highlights: [
         { text: "귀책사유 유무에 관계없이" },
         { text: "일체의 배상 책임을 부담하지 아니합니다" },
@@ -81,7 +83,6 @@ const EXAMPLES: Example[] = [
     result: {
       domain: "해지_조항",
       riskLevel: "Low",
-      confidence: 0.88,
       highlights: [],
       legalBasis: [
         { law: "민법", article: "§543", desc: "해지권 행사의 일반 원칙" },
@@ -221,12 +222,6 @@ function ExampleCard({ ex }: { ex: Example }) {
             <div className="flex-1 bg-slate-50 rounded-lg p-3 text-center border border-slate-100">
               <p className="text-[10px] text-slate-400 mb-0.5">위험도</p>
               <p className={`text-sm font-bold ${cfg.metricText}`}>{cfg.label}</p>
-            </div>
-            <div className="flex-1 bg-slate-50 rounded-lg p-3 text-center border border-slate-100">
-              <p className="text-[10px] text-slate-400 mb-0.5">신뢰도</p>
-              <p className="text-sm font-semibold text-slate-900">
-                {Math.round(ex.result.confidence * 100)}%
-              </p>
             </div>
           </div>
 

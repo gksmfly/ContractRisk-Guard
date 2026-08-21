@@ -4,8 +4,6 @@ import { Footer } from "@/components/Footer";
 import { ScrollReveal } from "@/components/ScrollReveal";
 import { HeroSection } from "@/components/sections/HeroSection";
 import { ProductPreviewSection } from "@/components/sections/ProductPreviewSection";
-import { FeaturesSection } from "@/components/sections/FeaturesSection";
-import { AudienceSection } from "@/components/sections/AudienceSection";
 import { HowToUseSection } from "@/components/sections/HowToUseSection";
 import { TrustSection } from "@/components/sections/TrustSection";
 import { FAQSection } from "@/components/sections/FAQSection";
@@ -20,12 +18,6 @@ export default function Home() {
         <HeroSection />
         <ScrollReveal>
           <ProductPreviewSection />
-        </ScrollReveal>
-        <ScrollReveal>
-          <FeaturesSection />
-        </ScrollReveal>
-        <ScrollReveal>
-          <AudienceSection />
         </ScrollReveal>
         <ScrollReveal>
           <HowToUseSection />
