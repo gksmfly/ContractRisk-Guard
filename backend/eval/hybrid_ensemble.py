@@ -68,7 +68,7 @@ def get_predictions(records: list[dict], client: OpenAI) -> list[dict]:
     with open(PRED_CACHE_PATH, "a", encoding="utf-8") as f:
         for i, r in enumerate(records):
             span = span_cache.get(r["chunk_id"]) or r["text"]
-            _, koelectra_pred = electra_predict(span)
+            _, koelectra_pred, _ = electra_predict(span)
 
             cached = pred_cache.get(r["chunk_id"])
             if cached is not None:

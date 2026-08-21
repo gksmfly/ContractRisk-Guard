@@ -15,6 +15,7 @@ OpenAI API 대신 로컬 GPU에서 도는 오픈 모델로 짧은 분류·재구
 """
 
 import json
+import os
 import re
 from typing import Any
 
@@ -29,7 +30,8 @@ _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 _models: dict[str, Any] = {}
 _tokenizers: dict[str, Any] = {}
-_device = "cuda:0" if torch.cuda.is_available() else "cpu"
+# 프로젝트 규칙상 GPU는 cuda:1 고정(`Claude.md`).
+_device = os.environ.get("LOCAL_LLM_DEVICE", "cuda:1" if torch.cuda.is_available() else "cpu")
 
 
 def _extract_json(text: str) -> dict | None:

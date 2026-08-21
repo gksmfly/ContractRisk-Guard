@@ -41,7 +41,15 @@ eval/은 scripts/rebuild_ftc_ground_truth.py + extract_precedent_ground_truth.py
 ```bash
 source .venv/bin/activate
 ```
-모든 명령은 저장소 루트에서 실행. GPU는 `cuda:1` 고정. FastAPI 서버: `uvicorn backend.api.server:app --reload`.
+모든 명령은 저장소 루트에서 실행. FastAPI 서버: `uvicorn backend.api.server:app --reload`.
+
+**GPU 배치**: 모델 3개가 각자 다른 기본값을 쓴다 — KoE5 임베더(`db/loader.py`)는
+`EMBED_DEVICE`(기본 `cuda:1`), KoELECTRA 판단 모델(`agents/judgment_agent.py`)은
+`cuda`(=`cuda:0`) 고정, EXAONE 법령 라우터(`agents/query_router.py`)는
+`EXAONE_DEVICE`(기본 `cuda:0`)다. 즉 **KoELECTRA와 EXAONE이 기본적으로 같은
+GPU(`cuda:0`)를 나눠 쓴다** — 둘 다 몇 GB 단위 모델이라 동시 요청이 늘면 그
+GPU에서 메모리 경합이 날 수 있다. 멀티 GPU 호스트라면 `EXAONE_DEVICE=cuda:1`
+등으로 KoE5와 같은 GPU에 몰아주거나 별도 GPU로 분리할 것.
 
 ## 테스트
 

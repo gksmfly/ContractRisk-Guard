@@ -79,7 +79,7 @@ def run_koelectra(records: list[dict], span_cache: dict[str, str]) -> list[str |
     preds = []
     for r in records:
         query = span_cache.get(r["chunk_id"]) or r["text"]
-        _, risk = electra_predict(query)
+        _, risk, _ = electra_predict(query)
         preds.append(risk)
     return preds
 
