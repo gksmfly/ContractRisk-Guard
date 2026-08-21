@@ -57,6 +57,39 @@ EXAONE(7.8B, 한국어 특화)보다 낮았다 — "더 합치면/더 크면 좋
 운영 반영 여부는 미결정 — LegalMALR-lite/RAPTOR-lite는 쿼리마다 로컬 LLM
 추론이 추가로 필요하다(레이턴시·GPU 상주 비용 트레이드오프). 상세 결과·caveat는
 survey 문서 참고.
+
+────────────────────────────────────────────────────────────────────────────
+**2026-08-19 정정 — 위 문단들의 절대 수치는 전부 무효다.**
+
+두 가지가 밝혀졌다.
+
+1) **법령 청크가 껍데기였다.** `preprocess/extractor.py`가 `조문내용`(본문)만 담고
+   `항`·`호`·`목`을 통째로 버려서, 규범 내용이 각 호에 있는 조문은 제목만 색인됐다
+   (약관규제법 제6조 = 9자). 법령 청크의 90.7%가 120자 미만이었다. 항·호·목을
+   포함하도록 고친 뒤 3,323청크(평균 52자) → 3,463청크(평균 197자)가 됐고,
+   같은 평가 100건에서 RRF 8% → 18%로 올랐다(페어드 McNemar p=0.0063).
+   따라서 위의 "3,323청크", "RRF 8%", "LightRAG 20% vs RRF 12%"는 **전부 껍데기
+   텍스트 위에서 측정한 값**이다.
+
+2) **RAPTOR-lite(EXAONE 라우팅)는 상수 기준선에 완패한다.** 상수와 비교하지 않은 게
+   원인이었다. `backend/eval/law_router_compare.py` 실측(100건, 후보 20/법령, top-5):
+
+       RRF(필터 없음)            18%
+       EXAONE top-2 라우팅        37%
+       약관규제법 + 민법 고정      24%
+       약관규제법 + EXAONE 추가    40%
+       약관규제법 고정            66%   ← EXAONE만 맞은 케이스 0건, p=3.7e-09
+
+   평가 100건 **전부** 정답에 약관규제법이 들어 있어 라우팅할 대상 자체가 없었고,
+   민법(1,337조)처럼 큰 파티션이 섞이면 후보가 희석돼 오히려 떨어진다. 이득의
+   정체는 "똑똑하게 고르기"가 아니라 "좁히기"였다.
+
+   → 운영은 `agents/retrieval_strategy_agent.py::_PRIMARY_LAW`로 약관규제법 고정.
+     EXAONE 라우팅은 검색 경로에서 제거했다.
+
+한계: 이 평가셋은 전부 FTC 불공정약관 의결서라 약관규제법이 100% 정답이다.
+"라우팅이 일반적으로 무용하다"가 아니라 "이 도메인에서는 약관규제법이 항상
+관련된다"로 읽어야 한다.
 """
 
 from backend.api.schemas import LegalBasis
@@ -102,10 +135,16 @@ def _truncate(text: str, max_len: int = 100) -> str:
 
 
 def _law_to_legal_basis(metadata: dict, text: str) -> LegalBasis:
+    """법령 청크를 인용 형태로 바꾼다.
+
+    `article_label`은 가지 조문("제19조의2")을 구분해 담는다 — `article_no`만 쓰면
+    제19조와 제19조의2가 똑같이 "제19조"로 표시돼 인용이 틀린다. 옛 적재분에는
+    이 키가 없으므로 `article_no`로 폴백한다.
+    """
     metadata = metadata or {}
     article_no    = metadata.get("article_no", "")
     article_title = metadata.get("article_title", "")
-    article = f"제{article_no}조" if article_no else ""
+    article = metadata.get("article_label") or (f"제{article_no}조" if article_no else "")
     if article_title:
         article = f"{article}({article_title})" if article else article_title
     return LegalBasis(law=metadata.get("law_name", ""), article=article, description=_truncate(text))
@@ -165,39 +204,59 @@ def _search_sparse(
     return cur.fetchall()
 
 
-def _search_dense_one_law(cur, law_name: str, vec_literal: str, top_k: int) -> list[tuple[str, str, dict, str, float]]:
+# 조 번호 범위 필터. `article_range`가 주어지면 그 구간의 조문만 검색한다.
+# 약관규제법 46청크 중 실질 규범(제6~14조)은 9개뿐이고 나머지 37개는 심사청구·
+# 분쟁조정·협의회 구성·과태료 같은 절차 조문이라, 필터가 없으면 "이 조항이
+# 불공정한가"와 무관한 조문이 상위를 차지한다.
+_ARTICLE_RANGE_SQL = (
+    " AND (metadata->>'article_no') ~ '^[0-9]+$'"
+    " AND (metadata->>'article_no')::int BETWEEN %s AND %s"
+)
+
+
+def _search_dense_one_law(
+    cur, law_name: str, vec_literal: str, top_k: int, article_range: tuple[int, int] | None = None,
+) -> list[tuple[str, str, dict, str, float]]:
     """단일 law_name 파티션 안에서만 dense 검색 — 실제 코사인 유사도 점수도 같이 반환한다
     (파티션을 넘어 병합할 때 순위가 아니라 점수로 비교해야 하기 때문, 아래 docstring 참고)."""
+    extra = _ARTICLE_RANGE_SQL if article_range else ""
+    params = [vec_literal, law_name, *(article_range or ()), vec_literal, top_k]
     cur.execute(
-        """
+        f"""
         SELECT chunk_id, source, metadata, text, 1 - (embedding <=> %s::vector) AS score
         FROM chunks
-        WHERE source = 'law' AND metadata->>'law_name' = %s
+        WHERE source = 'law' AND metadata->>'law_name' = %s{extra}
         ORDER BY embedding <=> %s::vector
         LIMIT %s
         """,
-        (vec_literal, law_name, vec_literal, top_k),
+        params,
     )
     return cur.fetchall()
 
 
-def _search_sparse_one_law(cur, law_name: str, query_text: str, top_k: int, similarity_threshold: float = 0.1) -> list[tuple[str, str, dict, str, float]]:
+def _search_sparse_one_law(
+    cur, law_name: str, query_text: str, top_k: int, similarity_threshold: float = 0.1,
+    article_range: tuple[int, int] | None = None,
+) -> list[tuple[str, str, dict, str, float]]:
     cur.execute("SET pg_trgm.similarity_threshold = %s", (similarity_threshold,))
+    extra = _ARTICLE_RANGE_SQL if article_range else ""
+    params = [query_text, law_name, query_text, *(article_range or ()), top_k]
     cur.execute(
-        """
+        f"""
         SELECT chunk_id, source, metadata, text, similarity(text, %s) AS score
         FROM chunks
-        WHERE source = 'law' AND metadata->>'law_name' = %s AND text %% %s
+        WHERE source = 'law' AND metadata->>'law_name' = %s AND text %% %s{extra}
         ORDER BY score DESC
         LIMIT %s
         """,
-        (query_text, law_name, query_text, top_k),
+        params,
     )
     return cur.fetchall()
 
 
 def _search_law_partitioned(
-    cur, vec_literal: str, query_text: str, top_k: int, sparse_similarity_threshold: float, law_names: list[str],
+    cur, vec_literal: str, query_text: str, top_k: int, sparse_similarity_threshold: float,
+    law_names: list[str], article_range: tuple[int, int] | None = None,
 ) -> tuple[list[tuple], list[tuple]]:
     """법령별로 따로 top_k를 확보한 뒤 실제 유사도 점수로 재병합한다.
 
@@ -214,8 +273,10 @@ def _search_law_partitioned(
     """
     all_dense, all_sparse = [], []
     for law_name in law_names:
-        all_dense.extend(_search_dense_one_law(cur, law_name, vec_literal, top_k))
-        all_sparse.extend(_search_sparse_one_law(cur, law_name, query_text, top_k, sparse_similarity_threshold))
+        all_dense.extend(_search_dense_one_law(cur, law_name, vec_literal, top_k, article_range))
+        all_sparse.extend(
+            _search_sparse_one_law(cur, law_name, query_text, top_k, sparse_similarity_threshold, article_range)
+        )
 
     dense_sorted  = [row[:4] for row in sorted(all_dense, key=lambda r: r[4], reverse=True)]
     sparse_sorted = [row[:4] for row in sorted(all_sparse, key=lambda r: r[4], reverse=True)]
@@ -267,6 +328,7 @@ def fetch_candidates(
     sparse_similarity_threshold: float = 0.1,
     unified: bool = False,
     law_names: list[str] | None = None,
+    law_article_range: tuple[int, int] | None = None,
 ) -> dict[str, list[dict]]:
     """법령·판례 검색 후보 풀을 소스별로 반환한다(Evidence Selection Agent가 재랭킹할 원본).
 
@@ -275,13 +337,22 @@ def fetch_candidates(
     (Evidence Verification의 마지막 재검색 단계 — 소스를 나눠서 못 찾았으면 안 나눠서라도
     찾아본다는 전략).
 
-    law_names가 주어지면 law 소스 검색만 그 법령들로 제한한다(unified 모드에선 무시 —
-    통합 재검색은 범위를 넓히는 마지막 시도이므로 좁히는 필터와 상충한다).
-    backend.agents.query_router.route_law_names()가 예측한 값을 넘긴다 — 법령
-    코퍼스가 43청크(약관규제법)~1,305청크(민법)로 극단적으로 불균형해서, 필터
-    없이 전체를 한 풀에서 경쟁시키면 소수 법령이 밀리는 문제를 완화한다
-    (`backend/eval/retrieval_alternatives_survey.md`의 RAPTOR-lite 실측:
-    RRF 8%→33%, McNemar p<0.0001).
+    law_names가 주어지면 law 소스 검색만 그 법령들로 제한하고, law_article_range가
+    함께 주어지면 그 조 번호 구간까지 좁힌다(둘 다 unified 모드에선 무시 — 통합
+    재검색은 범위를 넓히는 마지막 시도라 좁히는 필터와 상충한다).
+
+    **좁힐수록 좋아진다**는 것이 이 코퍼스의 실측 결과다
+    (`backend/eval/law_router_compare.py`, FTC 의결서 100건, top-5):
+
+        필터 없음(법령 전체 16개 파티션)          18%
+        EXAONE이 예측한 top-2 법령                37%
+        약관규제법 + 민법                         24%   ← 큰 파티션이 섞이면 나빠진다
+        약관규제법만                              66%
+        약관규제법 제6~14조만                     81%   ← 실질 규범 9청크
+
+    LLM 라우팅(EXAONE)은 "항상 약관규제법" 상수에 완패했다(EXAONE만 맞은 케이스 0건,
+    p=3.7e-09). 이득의 정체는 "똑똑하게 고르기"가 아니라 "좁히기"였다.
+    호출부는 `backend.agents.retrieval_strategy_agent`.
     """
     if not query_text.strip():
         return {"law": [], "precedent": []}
@@ -305,7 +376,8 @@ def fetch_candidates(
                 for source in ("law", "precedent"):
                     if source == "law" and law_names:
                         dense, sparse = _search_law_partitioned(
-                            cur, vec_literal, query_text, top_k_per_source, sparse_similarity_threshold, law_names,
+                            cur, vec_literal, query_text, top_k_per_source, sparse_similarity_threshold,
+                            law_names, law_article_range,
                         )
                     else:
                         dense  = _search_dense(cur, [source], vec_literal, top_k_per_source)
@@ -331,6 +403,96 @@ def search_legal_basis(query_text: str, top_k: int = 2) -> list[LegalBasis]:
     return [candidate_to_legal_basis(c) for c in law_top + precedent_top]
 
 
+# 조항 추천이 검색할 수 있는 테이블 — 문자열을 SQL에 직접 넣으므로 화이트리스트로 제한한다.
+_CLAUSE_TABLES = {
+    # 테이블명: 본문으로 쓸 컬럼 표현식
+    "clean_clauses": "COALESCE(NULLIF(evidence_span, ''), text)",  # FB-Check 검증 478건
+    "seed_clauses":  "text",                                       # FTC 제재 499 + 표준계약서 1,336
+}
+_DEDUP_FETCH_MULTIPLIER = 6  # 중복 제거 후에도 top_k를 채우려면 넉넉히 받아와야 한다
+
+
+def search_similar_clauses(
+    query_text: str,
+    table: str = "clean_clauses",
+    top_k: int = 5,
+    source: str | None = None,
+    domain: str | None = None,
+    risk_level: str | None = None,
+    exclude_chunk_id: str | None = None,
+    exclude_texts: set[str] | None = None,
+    max_text_len: int | None = None,
+) -> list[dict]:
+    """의미상 비슷한 조항을 찾는다 — Red-team 편향 probe와 조항 추천이 공유하는 검색기.
+
+    `source`/`domain`/`risk_level`로 용도를 나눈다:
+      - 대안 조항 제시:   seed_clauses + source='standard_contract' + risk_level='Low' + 같은 domain
+      - 유사 제재 사례:   seed_clauses + source='ftc_case'
+      - 판단 참고 사례:   clean_clauses (FB-Check 검증본)
+
+    **중복 제거가 필수다.** seed_clauses의 표준계약서 조항은 1,336건 중 고유 텍스트가
+    564건뿐이라(중복률 57.8%, 같은 조항이 최대 32번) 그대로 top_k를 뽑으면 추천 목록이
+    같은 조항으로 채워진다. 그래서 넉넉히 받아온 뒤 본문 기준으로 중복을 접는다.
+
+    max_text_len은 지나치게 긴 청크를 배제한다 — 표준계약서에는 최대 19,902자짜리도
+    있는데 "이렇게 바꾸세요"로 보여줄 수 없다.
+
+    exclude_texts는 평가에서 자기 자신(또는 동일 텍스트 사본)이 이웃으로 잡히는
+    누수를 막는 용도다 — chunk_id만 제외하면 중복 사본이 그대로 들어온다.
+    """
+    if not query_text.strip():
+        return []
+    if table not in _CLAUSE_TABLES:
+        raise ValueError(f"허용되지 않은 테이블: {table} (가능: {sorted(_CLAUSE_TABLES)})")
+
+    conditions = ["chunk_id != %s"]
+    params: list = [exclude_chunk_id or ""]
+    for column, value in (("source", source), ("domain", domain), ("risk_level", risk_level)):
+        if value is not None:
+            conditions.append(f"{column} = %s")
+            params.append(value)
+    if max_text_len is not None:
+        conditions.append("length(text) <= %s")
+        params.append(max_text_len)
+
+    span_expr = _CLAUSE_TABLES[table]
+    try:
+        embedder = _get_cached_embedder()
+        query_vec = embed_texts(embedder, [query_text], prefix="query: ")[0]
+        vec_literal = "[" + ",".join(repr(x) for x in query_vec) + "]"
+
+        with get_conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT chunk_id, domain, risk_level, {span_expr} AS span,
+                       1 - (embedding <=> %s::vector) AS similarity
+                FROM {table}
+                WHERE {' AND '.join(conditions)}
+                ORDER BY embedding <=> %s::vector
+                LIMIT %s
+                """,
+                (vec_literal, *params, vec_literal, top_k * _DEDUP_FETCH_MULTIPLIER),
+            )
+            rows = cur.fetchall()
+    except Exception as e:
+        logger.warning(f"유사 조항 검색 실패({table}), 빈 결과 반환: {e}")
+        return []
+
+    excluded = {t.strip() for t in (exclude_texts or set())}
+    seen: set[str] = set()
+    out: list[dict] = []
+    for chunk_id, domain_v, risk_v, text, sim in rows:
+        key = (text or "").strip()
+        if not key or key in seen or key in excluded:
+            continue
+        seen.add(key)
+        out.append({"chunk_id": chunk_id, "domain": domain_v, "risk_level": risk_v,
+                    "text": text, "similarity": float(sim)})
+        if len(out) >= top_k:
+            break
+    return out
+
+
 def search_similar_labeled_clauses(
     query_text: str, top_k: int = 5, exclude_chunk_id: str | None = None,
 ) -> list[dict]:
@@ -340,33 +502,6 @@ def search_similar_labeled_clauses(
     일관적인지 확인하는 데 쓴다. FB-Check로 검증된 데이터만 대상으로 하므로
     (clean_clauses, 478건) 비교 기준 자체의 신뢰도가 높다.
     """
-    if not query_text.strip():
-        return []
-
-    try:
-        embedder = _get_cached_embedder()
-        query_vec = embed_texts(embedder, [query_text], prefix="query: ")[0]
-        vec_literal = "[" + ",".join(repr(x) for x in query_vec) + "]"
-
-        with get_conn() as conn, conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT chunk_id, domain, risk_level,
-                       COALESCE(NULLIF(evidence_span, ''), text) AS span,
-                       1 - (embedding <=> %s::vector) AS similarity
-                FROM clean_clauses
-                WHERE chunk_id != %s
-                ORDER BY embedding <=> %s::vector
-                LIMIT %s
-                """,
-                (vec_literal, exclude_chunk_id or "", vec_literal, top_k),
-            )
-            rows = cur.fetchall()
-    except Exception as e:
-        logger.warning(f"유사 라벨 조항 검색 실패, 빈 결과 반환: {e}")
-        return []
-
-    return [
-        {"chunk_id": chunk_id, "domain": domain, "risk_level": risk_level, "text": text, "similarity": float(sim)}
-        for chunk_id, domain, risk_level, text, sim in rows
-    ]
+    return search_similar_clauses(
+        query_text, table="clean_clauses", top_k=top_k, exclude_chunk_id=exclude_chunk_id,
+    )

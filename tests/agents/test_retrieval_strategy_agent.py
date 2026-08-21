@@ -77,47 +77,62 @@ class TestReciprocalRankFusion:
 
 
 class TestRetrievalStrategyNodeRouting:
-    """법령 라우팅은 1회차(retry_count=0)에서만 쓰고, 재시도에서는 안 쓴다
-    (재시도는 검색 범위를 넓히는 게 목적이라 좁히는 필터와 상충하기 때문)."""
+    """1회차는 약관규제법 파티션으로 고정 검색, 재시도는 필터 없이 검색한다.
 
-    def _patch(self, monkeypatch, route_return: list[str] | None = ["약관의 규제에 관한 법률"]):
-        calls = {"route": [], "fetch": []}
+    예전에는 로컬 LLM(EXAONE)이 top-2 법령을 예측해 그 파티션만 검색했다. FTC 의결서
+    100건 실측에서 그 라우팅이 고정 검색에 완패해(37 vs 65, EXAONE만 맞은 케이스 0건,
+    McNemar p<0.00001) 제거했다 — 평가 100건 전부 정답에 약관규제법이 들어 있어
+    라우팅할 대상 자체가 없었고, 민법처럼 큰 파티션이 섞이면 후보가 희석돼 오히려
+    떨어졌다(약관규제법+민법 23%).
 
-        def fake_route(clause):
-            calls["route"].append(clause)
-            return route_return
+    이 테스트는 라우터를 되살리는 변경에 대한 회귀 방지다.
+    """
+
+    def _patch(self, monkeypatch):
+        calls = {"fetch": []}
 
         def fake_fetch(query, law_names=None, **kwargs):
             calls["fetch"].append({"query": query, "law_names": law_names, **kwargs})
             return {"law": [], "precedent": []}
 
-        monkeypatch.setattr(retrieval_strategy_agent, "route_law_names", fake_route)
         monkeypatch.setattr(retrieval_strategy_agent, "fetch_candidates", fake_fetch)
         return calls
 
-    def test_first_attempt_calls_router_and_passes_law_names(self, monkeypatch):
+    def test_first_attempt_pins_primary_law(self, monkeypatch):
         calls = self._patch(monkeypatch)
         state = {"clause": "제9조 계약 해지 조항", "evidence_span": "해지 조항", "retry_count": 0}
 
         retrieval_strategy_agent.retrieval_strategy_node(state)
 
-        assert calls["route"] == ["제9조 계약 해지 조항"]
-        assert calls["fetch"][0]["law_names"] == ["약관의 규제에 관한 법률"]
+        assert calls["fetch"][0]["law_names"] == [retrieval_strategy_agent._PRIMARY_LAW]
+        assert retrieval_strategy_agent._PRIMARY_LAW == "약관의 규제에 관한 법률"
 
-    def test_retry_does_not_call_router_and_passes_no_filter(self, monkeypatch):
+    def test_first_attempt_uses_single_partition(self, monkeypatch):
+        """파티션을 하나만 더 붙여도 성능이 42%p 떨어졌다 — 반드시 1개여야 한다."""
+        calls = self._patch(monkeypatch)
+        state = {"clause": "제9조 계약 해지 조항", "evidence_span": "해지 조항", "retry_count": 0}
+
+        retrieval_strategy_agent.retrieval_strategy_node(state)
+
+        assert len(calls["fetch"][0]["law_names"]) == 1
+
+    def test_retry_passes_no_filter(self, monkeypatch):
         calls = self._patch(monkeypatch)
         state = {"clause": "제9조 계약 해지 조항", "evidence_span": "해지 조항", "retry_count": 1}
-
-        retrieval_strategy_agent.retrieval_strategy_node(state)
-
-        assert calls["route"] == []
-        assert calls["fetch"][0]["law_names"] is None
-
-    def test_router_failure_returns_none_and_search_proceeds_unfiltered(self, monkeypatch):
-        calls = self._patch(monkeypatch, route_return=None)
-        state = {"clause": "제9조 계약 해지 조항", "evidence_span": "해지 조항", "retry_count": 0}
 
         result = retrieval_strategy_agent.retrieval_strategy_node(state)
 
         assert calls["fetch"][0]["law_names"] is None
         assert result == {"retrieval_candidates": {"law": [], "precedent": []}}
+
+    def test_no_llm_router_is_called(self, monkeypatch):
+        """모듈이 EXAONE 라우터를 다시 import·호출하지 않는지 확인하는 트립와이어."""
+        import backend.agents.query_router as qr
+
+        called = []
+        monkeypatch.setattr(qr, "route_law_names", lambda *a, **k: called.append(a) or [])
+        self._patch(monkeypatch)
+        retrieval_strategy_agent.retrieval_strategy_node(
+            {"clause": "제9조 계약 해지 조항", "evidence_span": "해지 조항", "retry_count": 0}
+        )
+        assert called == []
