@@ -182,7 +182,23 @@ Returns:
          pdfplumber 미설치 또는 추출 실패 시 빈 문자열.
 """
 
-def extract_text_from_pdf(filepath: Path) -> str:
+TEXT_CACHE_DIR = FTC_DIR / "text_cache"      # FTC_DIR을 따라간다(경로 규칙)
+
+
+def extract_text_from_pdf(filepath: Path, use_cache: bool = True) -> str:
+    """PDF에서 텍스트를 뽑고 **캐시에 남긴다.**
+
+    파싱 결과 JSON은 `전체_텍스트_길이`만 남기고 본문을 버린다. 그래서 원문이 필요할
+    때마다 PDF 3,359개를 다시 연다 — 08-21 파서 수정, 08-30 조항 텍스트 확인,
+    08-31 대조표 조사까지 **세 번째**다. 한 번 연 김에 남긴다.
+
+    캐시는 PDF 파일명 기준이라 재파싱해도 재사용된다. 지우면 자동으로 다시 쌓인다.
+    """
+    if use_cache:
+        cached = TEXT_CACHE_DIR / (filepath.stem + ".txt")
+        if cached.exists():
+            return cached.read_text(encoding="utf-8")
+
     try:
         import pdfplumber
     except ImportError:
@@ -200,7 +216,11 @@ def extract_text_from_pdf(filepath: Path) -> str:
         logger.error(f"PDF 텍스트 추출 실패 - {filepath.name}: {e}")
         return ""
 
-    return "\n".join(text_parts)
+    text = "\n".join(text_parts)
+    if use_cache and text:
+        TEXT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        (TEXT_CACHE_DIR / (filepath.stem + ".txt")).write_text(text, encoding="utf-8")
+    return text
 
 
 """약관 조항 원문을 추출합니다.
@@ -307,7 +327,13 @@ _PDF_ARTIFACTS = [
 ]
 
 
+# 조항 끝에 붙는 범례. 의결서는 조항을 인용한 뒤 "* 갑 : 위임인(청구인), 을 : 수임인(피심인)"
+# 처럼 당사자 대응표를 각주로 단다 — 조항 본문이 아니므로 떼어낸다.
+_TRAILING_LEGEND = re.compile(r"\s*[*※]\s*[“\"']?[갑을병][”\"']?\s*[:：].*$", re.S)
+
+
 def _strip_pdf_artifacts(clause: str) -> str:
+    clause = _TRAILING_LEGEND.sub("", clause)
     for pat in _PDF_ARTIFACTS:
         clause = pat.sub(" ", clause)
     return re.sub(r"\s+", " ", clause).strip(" <>〈〉·.,")
@@ -387,6 +413,66 @@ def _is_mostly_non_korean(clause: str) -> bool:
     return korean < len(clause) * 0.3
 
 
+# ── 섹션 기반 추출 ──────────────────────────────────────────────────────────
+# 위 `extract_clause_text()`는 "제N조(제목)" 형식만 인식한다. 그런데 의결서 1,092건 중
+# 410건(37.5%)이 조항 0건으로 나왔고, 원인은 조항이 없어서가 아니라 **조 번호가 없어서**였다:
+#
+#   [아고다]     "고객이 숙박예약을 취소하는 경우 ... 일률적으로 숙박대금 전액을
+#                환불하지 않는다는 내용의 '환불불가' 조건"        ← 서술형
+#   [루프트한자] "<특가 항공권 환불수수료(PENALTY)기준> ㅇ 출발전 : 환불불가"  ← 표/항목
+#
+# 플랫폼·항공·렌터카처럼 최근 사건일수록 의결서가 약관을 서술형·표로 인용한다.
+# 조사해보니 **"약관조항" 섹션은 표본 80건 전부(100%)에 존재**하므로, 그 섹션을
+# 추출 앵커로 쓴다. 앵커는 둘:
+#
+#   A. 주문   "…약관조항을 다시 사용하여서는 아니 된다." 뒤가 문제된 조항 내용
+#   B. 본문   줄머리의 "N. 약관 조항" 섹션 헤더 뒤
+#
+# 종료 표지는 **줄머리 목록 번호**와 섹션명만 쓴다 — 문장 안의 "다."를 종료로 보면
+# 조항이 중간에 잘린다(시제품에서 실제로 그랬다).
+_SEC_ORDER = re.compile(
+    r"약\s*관\s*조\s*항\s*을\s*다시\s*사용하여서는\s*아니\s*된다\s*[.。]?"
+)
+_SEC_HEADER = re.compile(r"(?:^|\n)\s*(?:\d+|[가-하]|[IVX]+)\s*[.、]\s*약관\s*조항\s*[:：]?")
+_SEC_END = re.compile("|".join([
+    r"\n\s*\d+\s*[.、]\s*피심인",
+    r"\n\s*\d+\s*[.、]\s*[가-힣]",
+    r"\n\s*[가-하]\s*[.、]\s*[가-힣]",
+    r"\s*".join("적용법조"), r"\s*".join("심사의견"), r"\s*".join("검토의견"),
+    r"\s*".join("위법성판단"), r"\s*".join("약관인지여부"), r"\s*".join("기초사실"),
+    r"\s*".join("시정권고이유"), r"\s*".join("시정명령"),
+    r"\n\s*이\s*유\s*\n",
+]))
+# 앵커 A는 "…아니 된다."로 끝나는데 PDF 줄바꿈 때문에 그 꼬리가 조항 앞에 남는 경우가 있다.
+_SEC_LEAD_JUNK = re.compile(r"^\s*(?:하여서는|여서는|서는)?\s*아니\s*된다\s*[.。]?\s*|^[\s.。,、:：]+")
+
+_SEC_MIN_LEN = 40   # 섹션 추출은 조 번호라는 신호가 없어 더 보수적으로 자른다
+
+
+def extract_clause_sections(text: str) -> list[str]:
+    """"약관조항" 섹션에서 조 번호 없는 조항 본문을 뽑는다."""
+    found: list[str] = []
+    for pattern, tail in ((_SEC_ORDER, 1500), (_SEC_HEADER, 1200)):
+        for m in pattern.finditer(text):
+            rest = text[m.end(): m.end() + tail]
+            end = _SEC_END.search(rest, 20)
+            seg = rest[: end.start()] if end else rest
+            seg = _strip_pdf_artifacts(_SEC_LEAD_JUNK.sub("", seg))
+            if len(seg) < _SEC_MIN_LEN:
+                continue
+            if _is_article_reference_list(seg) or _is_decision_prose(seg) or _is_mostly_non_korean(seg):
+                continue
+            found.append(seg[:_MAX_CLAUSE_LEN])
+
+    # 긴 것부터 남기고, 다른 조각에 포함되는 것은 버린다(같은 섹션이 앵커 둘에 다 걸린다).
+    found.sort(key=len, reverse=True)
+    unique: list[str] = []
+    for s in found:
+        if not any(s in kept for kept in unique):
+            unique.append(s)
+    return unique
+
+
 def extract_clause_text(text: str) -> list[str]:
     # "피심인의 약관 제X조"가 가장 구체적이고, 뒤로 갈수록 일반적이다 (일반 패턴은
     # 심결문 안의 법조문 인용까지 "제N조(...)"로 오매칭한다). 세 패턴 다 돌리되,
@@ -419,6 +505,11 @@ def extract_clause_text(text: str) -> list[str]:
         if c not in seen:
             seen.add(c)
             unique.append(c)
+
+    # 조 번호 패턴이 아무것도 못 찾았을 때만 섹션 추출로 넘어간다 — 조 번호가 있는
+    # 문서에서는 그쪽이 더 정확하고, 섹션 추출은 경계가 느슨해 오염 위험이 크다.
+    if not unique:
+        unique = extract_clause_sections(text)
 
     return unique
 
@@ -804,9 +895,21 @@ def main() -> None:
     parser.add_argument(
         "--no-headless", action="store_true", help="브라우저 화면 표시 (디버깅용)"
     )
+    parser.add_argument(
+        "--raw-file", default=None,
+        help="사건 목록 JSON 경로 (기본: data/raw/ftc_cases/ftc_cases_raw.json). "
+             "ftc_cases_raw_FULL_1674.json을 주면 사건 1,674건 전체를 대상으로 한다."
+    )
+    parser.add_argument(
+        "--only-missing-pdf", action="store_true",
+        help="PDF가 아직 없는 사건만 다운로드 대상으로 삼는다(이미 받은 건 건너뜀)"
+    )
     args = parser.parse_args()
 
-    raw_path = FTC_DIR / "ftc_cases_raw.json"
+    # 어느 사건 목록을 쓸지 고를 수 있어야 한다. `ftc_cases_raw.json`(1,092건)은
+    # `ftc_cases_raw_FULL_1674.json`(1,674건)의 부분집합이라, 기본값만 쓰면 불공정약관
+    # 사건 529건이 파이프라인에 아예 들어오지 않는다.
+    raw_path = Path(args.raw_file) if args.raw_file else FTC_DIR / os.environ.get("FTC_RAW_FILE", "ftc_cases_raw.json")
     if not raw_path.exists():
         logger.error(f"원본 데이터 파일이 없습니다: {raw_path}")
         logger.error("먼저 crawl_ftc_cases.py를 실행하세요.")
@@ -826,7 +929,20 @@ def main() -> None:
                 downloaded[title] = filepath
         logger.info(f"기존 PDF 파일 {len(downloaded)}건 발견")
     else:
-        downloaded = run_download(cases, args.delay, headless=not args.no_headless)
+        targets = cases
+        if args.only_missing_pdf:
+            targets = [
+                c for i, c in enumerate(cases, 1)
+                if not (PDF_DIR / f"{build_case_identifier(c, fallback_index=i)}.pdf").exists()
+            ]
+            logger.info(f"PDF 미보유 사건만 대상: {len(targets)}건 / 전체 {len(cases)}건")
+        downloaded = run_download(targets, args.delay, headless=not args.no_headless)
+        # 이미 받아둔 PDF도 파싱 대상에 포함시킨다.
+        for i, c in enumerate(cases, 1):
+            title = c.get("사건명", "")
+            fp = PDF_DIR / f"{build_case_identifier(c, fallback_index=i)}.pdf"
+            if title not in downloaded and fp.exists():
+                downloaded[title] = fp
 
     parsed = run_parse(cases, downloaded)
 
