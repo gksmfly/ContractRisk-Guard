@@ -16,6 +16,8 @@ Seed 데이터 라벨링 스크립트
 
 import json
 import os
+import argparse
+import random
 import re
 from collections import Counter
 from pathlib import Path
@@ -205,8 +207,48 @@ def split_articles(text: str, pattern: re.Pattern) -> list[tuple[str, str]]:
     return [(h.strip(), b.strip()) for h, b in zip(parts[1::2], parts[2::2])]
 
 
+def sample_by_document(records: list[dict], target: int, seed: int = 42) -> list[dict]:
+    """표준계약서를 **문서 단위로** 무작위 추출한다(조항 단위 금지).
+
+    조항 단위로 뽑으면 같은 계약서의 조항이 학습·평가에 흩어진다 — doc-level leakage로,
+    07-21에 검색기반 비교 결론을 뒤집었던 바로 그 함정이다. 문서를 먼저 뽑고 그 문서의
+    조항을 통째로 가져온다.
+
+    **비율은 임의 선택이다.** FTC 2,055 : 표준계약서 ~2,000은 1:1이 자연스러워 보여서
+    고른 값이고, 실제 계약서에서 위반 조항이 차지하는 비율을 반영하지 않는다(아무도
+    모른다). 나중에 학습 시점에 비율을 조절해 A/B 할 수 있도록 라벨은 넉넉히 만든다.
+    """
+    by_doc: dict[str, list[dict]] = {}
+    for r in records:
+        by_doc.setdefault(r.get("doc_id") or r["chunk_id"], []).append(r)
+    docs = sorted(by_doc)
+    random.Random(seed).shuffle(docs)
+
+    picked: list[dict] = []
+    for d in docs:
+        if len(picked) >= target:
+            break
+        picked.extend(by_doc[d])
+    logger.info(f"  표준계약서 문서 단위 추출: 문서 {len(by_doc)}개 중 일부 → 조항 {len(picked)}건 "
+                f"(목표 {target}, 문서 경계 유지)")
+    return picked
+
+
 def main() -> None:
-    """Seed 라벨링 진입점."""
+    """Seed 라벨링 진입점.
+
+    여기서 만드는 것은 **조항 텍스트 목록**이지 최종 라벨이 아니다. 조 라벨은
+    `backend.fb_check`가 GPT로 붙인다 — 표준계약서를 "정부 발행이니 위반 없음"으로
+    찍으면 출처 → 라벨이 결정적 함수가 되어 교락을 코드로 굳히게 된다.
+    """
+    ap = argparse.ArgumentParser(description="Seed 조항 추출")
+    ap.add_argument("--contract-sample", type=int, default=2000,
+                    help="표준계약서에서 뽑을 조항 수(문서 단위 추출, 0=전량). "
+                         "기본 2000은 FTC(~2,055)와 대략 1:1을 맞춘 **임의 선택**이며 "
+                         "실제 위반 비율을 반영하지 않는다")
+    ap.add_argument("--seed", type=int, default=42, help="추출 재현성 시드")
+    args = ap.parse_args()
+
     logger.info("========== Seed 라벨링 시작 ==========")
 
     logger.info("  [1/2] FTC 시정조치 추출 중 ...")
@@ -216,6 +258,11 @@ def main() -> None:
     logger.info("  [2/2] 표준계약서 조문 추출 중 ...")
     contract_records, contract_stats = extract_contract_records(CONTRACT_DIR)
     logger.info(f"  계약서: {len(contract_records)}건 추출 | {contract_stats}")
+
+    # 표준계약서를 전량(9,523건) 쓰면 82%를 차지해 "위반 없음" 쪽으로 심하게 기울고,
+    # 출처 교락(의결서 문체 vs 표준계약서 문체)이 그대로 재현된다.
+    if args.contract_sample > 0:
+        contract_records = sample_by_document(contract_records, args.contract_sample, args.seed)
 
     all_records = ftc_records + contract_records
     save_jsonl(all_records, SEED_DIR / "seed_labeled.jsonl")

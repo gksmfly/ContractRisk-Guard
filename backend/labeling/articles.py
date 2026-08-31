@@ -139,3 +139,45 @@ def prompt_block() -> str:
         for it in spec["items"]:
             out.append(f"    {it}")
     return "\n".join(out)
+
+
+# ── 프롬프트 블록 변형 (A/B/C 실험용) ────────────────────────────────────────
+# `prompt_block()`(전문)이 forward+verify 입력의 45%(조항당 2,252토큰)를 차지한다.
+# 조문 전문을 매번 보내는 게 실제로 값을 하는지는 **측정된 적이 없다** — "법 조문을
+# 보여주면 잘하겠지"라는 가정이 측정 없이 들어간 컴포넌트다.
+#
+# 세 변형을 같은 표본으로 비교한다:
+#   full    전문 (현행)
+#   summary 조 제목 + 각 호 앞부분 몇 개
+#   title   조 제목만
+#
+# **요약문은 손으로 쓰지 않고 규칙으로 잘라낸다.** 다듬으면 "요약이 충분해서 이겼는지
+# 요약을 잘 써서 이겼는지" 구분할 수 없고, 법 개정 시 따로 관리해야 한다.
+
+_SUMMARY_ITEMS = 2      # 조당 인용할 호 개수
+_SUMMARY_CHARS = 45     # 호 하나에서 잘라낼 앞부분 길이
+
+
+def _clip(text: str, n: int) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= n else text[:n].rstrip() + "…"
+
+
+def prompt_block_variant(kind: str = "full") -> str:
+    """A/B/C 실험용 조문 블록. `kind`는 full / summary / title."""
+    if kind == "full":
+        return prompt_block()
+    if kind not in ("summary", "title"):
+        raise ValueError(f"알 수 없는 변형: {kind} (full/summary/title)")
+
+    out = []
+    for art, spec in ARTICLES.items():
+        line = f'- {art} ({spec["title"]})'
+        if kind == "summary":
+            # 항 표시(①②)로 시작하는 줄은 총칙이라 건너뛰고, 각 호를 우선 인용한다.
+            items = [i for i in spec["items"] if not i.startswith(("①", "②", "③"))] or spec["items"]
+            gist = " / ".join(_clip(i, _SUMMARY_CHARS) for i in items[:_SUMMARY_ITEMS])
+            if gist:
+                line += f" — {gist}"
+        out.append(line)
+    return "\n".join(out)
