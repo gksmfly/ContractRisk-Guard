@@ -43,6 +43,18 @@ from backend.model.electra import DualHeadElectra, INV_DOMAIN_MAP, INV_RISK_MAP
 from backend.utils import PROJECT_ROOT
 
 MODEL_DIR = Path(os.environ.get("MODEL_DIR", str(PROJECT_ROOT / "models/v4")))
+
+
+def model_version() -> str:
+    """판단에 쓰인 체크포인트 이름. 저장된 분석 결과에 함께 남긴다.
+
+    지금 기본값 `models/v4`는 **폐기 대상**이다(누수 있는 분할 + 학습 라벨의 16.4%를
+    정확도 45%짜리 이전 세대가 결정). 라벨 재생성 후 교체할 예정인데, 그 전에 저장된
+    분석 결과와 이후 결과를 구분할 수 없으면 나중에 전부 무효 처리해야 한다.
+    `analyses.result`가 JSONB라 응답에 필드를 하나 넣으면 마이그레이션 없이 함께 저장된다
+    (`WHERE result->>'model_version' = 'v4'`로 조회 가능).
+    """
+    return MODEL_DIR.name
 # 프로젝트 규칙상 GPU는 cuda:1 고정(`Claude.md`). 이전에는 `torch.device("cuda")`라
 # 인덱스 없이 잡아 항상 cuda:0으로 갔다 — EXAONE(16GB)과 같은 GPU에 몰리는 원인이었다.
 JUDGMENT_DEVICE = os.environ.get("JUDGMENT_DEVICE", "cuda:1")

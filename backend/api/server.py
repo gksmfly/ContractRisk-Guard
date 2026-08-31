@@ -33,29 +33,31 @@ def _validate_required_env() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # KoE5 임베딩 모델 로딩(HF 다운로드+GPU 적재)과 DB 커넥션 풀 생성을 기동 시
-    # 미리 해둬서, 첫 요청 사용자가 콜드스타트 지연을 떠안지 않게 한다.
-    from backend.agents.query_router import _get_local_model, is_enabled as exaone_enabled
+    # 첫 요청 사용자가 콜드스타트 지연을 떠안지 않도록 무거운 자원을 기동 시 미리 올린다.
+    #
+    # **EXAONE 워밍업은 제거했다.** 2026-08-21에 법령 라우팅을 상수(약관규제법 제6~14조
+    # 고정)로 바꾸면서 `route_law_names()`의 운영 호출부가 0곳이 됐는데 워밍업만 남아 있었다
+    # — 서버가 뜰 때마다 7.8B를 GPU에 15.6GB 올려놓고 아무도 쓰지 않았다. 예전 경고 문구가
+    # 말하던 "조문 적중률 33%→8%"도 지금은 틀렸다(상수 스코핑으로 81%).
+    # 라우터 모듈 자체는 재검토 여지가 있어 남겨두되, 기동 경로에서는 뺀다.
+    #
+    # 대신 **KoELECTRA를 워밍업에 추가한다.** 판단 모델인데 빠져 있어서
+    # `judgment_agent.electra_predict()`가 첫 호출에 lazy 로드됐고, 지연 벤치마크에서
+    # 1조항 20.4초 vs 이후 조항당 ~11초로 약 10초가 첫 사용자에게 전가되고 있었다.
+    from backend.agents.judgment_agent import _get_electra
     from backend.api.services.retrieval import _get_cached_embedder
 
     _validate_required_env()
     init_pool()
     _get_cached_embedder()
 
-    # EXAONE(7.8B, query_router.py — 법령 라우팅)도 같은 이유로 미리 로드한다.
-    # 다만 이건 KoE5와 달리 "없으면 필터 없이 검색"으로 이미 우아하게 degrade하도록
-    # 설계돼 있으므로(route_law_names의 예외 처리 참고), 워밍업 자체가 실패해도
-    # 서버 기동을 막지 않는다 — 로그만 남기고 첫 실제 요청에서 다시 시도하게 둔다.
-    if not exaone_enabled():
-        logger.warning("EXAONE_ENABLED=0 — 라우팅 비활성화, 모델을 로드하지 않는다"
-                       "(GPU 약 15.6GB 절약. 조문 적중률은 33%→8% 수준으로 하락)")
-    else:
-        try:
-            _get_local_model()
-        except Exception as e:
-            logger.warning(f"EXAONE 워밍업 실패 — 첫 분석 요청에서 재시도됨(필터 없이 검색으로 대체 가능): {e}")
+    # 워밍업 실패가 서버 기동을 막지 않게 한다 — 실패해도 첫 요청에서 다시 시도된다.
+    try:
+        _get_electra()
+    except Exception as e:
+        logger.warning(f"KoELECTRA 워밍업 실패 — 첫 분석 요청에서 재시도됨: {e}")
 
-    logger.info("서버 기동: DB 풀 초기화 + 임베더/EXAONE 워밍업 완료")
+    logger.info("서버 기동: DB 풀 초기화 + KoE5/KoELECTRA 워밍업 완료")
     yield
     close_pool()
 

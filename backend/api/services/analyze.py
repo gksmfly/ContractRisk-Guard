@@ -8,7 +8,8 @@ from typing import Any
 from fastapi import HTTPException
 
 from backend.agents.graph import get_graph
-from backend.api.schemas import AnalyzeResponse, ClauseResult, EvidenceSpan
+from backend.agents.judgment_agent import model_version
+from backend.api.schemas import OutOfScopeClause, AnalyzeResponse, ClauseResult, EvidenceSpan
 # 근거 문구 매칭 기준을 FB-Check와 공유한다 — 검증 파이프라인이 통과시킨 근거를
 # 서빙이 버리면 화면에서 하이라이트가 조용히 사라진다(_extract_spans docstring 참고).
 from backend.fb_check.backward_grounding import _FUZZY_MATCH_THRESHOLD, _PAGE_MARKER
@@ -28,14 +29,50 @@ _MAX_CONCURRENT_ANALYSES = int(os.environ.get("MAX_CONCURRENT_ANALYSES", "4"))
 _QUEUE_TIMEOUT_SECONDS = 30
 _analyze_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_ANALYSES)
 
+# 조항 단위 동시 처리 한도. **요청별이 아니라 모듈 전역**이어야 한다 —
+# 요청마다 세마포어를 만들면 `요청 4개 × 조항 30개 = 동시 호출 120`으로 곱해져
+# OpenAI rate limit(429)에 그대로 부딪힌다. 전역이면 두 세마포어가 곱해지지 않고
+# 조항 호출 총량이 이 값으로 상한된다.
+#
+# 조항 하나가 forward·verify·red-team 등 여러 번 호출하고 조항당 약 2,000 토큰을
+# 쓰므로, TPM 한도에서 역산해 보수적으로 잡는다. 개별 호출의 429 백오프는
+# `forward_labeling.run_forward`/`consistency_verification.run_verify`가 이미 한다.
+_MAX_CONCURRENT_CLAUSES = int(os.environ.get("MAX_CONCURRENT_CLAUSES", "6"))
+_clause_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_CLAUSES)
 
-def split_clauses(text: str) -> list[str]:
+
+async def _process_clause_async(client: Any, clause: str, index: int):
+    """조항 하나를 스레드로 넘겨 처리하되, 전역 세마포어로 동시 호출 수를 묶는다."""
+    async with _clause_semaphore:
+        return await asyncio.to_thread(_process_clause, client, clause, index)
+
+
+def _tally(outcomes: list) -> tuple[list[ClauseResult], list[OutOfScopeClause]]:
+    analyzed = [o for o in outcomes if isinstance(o, ClauseResult)]
+    skipped  = [o for o in outcomes if isinstance(o, OutOfScopeClause)]
+    return analyzed, skipped
+
+
+# 예전에는 두 값이 모두 리터럴 `20`이라 뜻이 섞여 있었다 — 하나는 "조각의 최소 글자수",
+# 하나는 "분석할 조항 개수 상한"이다.
+_MIN_CLAUSE_CHARS = 20
+
+# 조항 하나당 OpenAI 호출이 최소 1회라 상한 자체는 있어야 한다(긴 문서 붙여넣기 =
+# 비용·DoS 노출). 다만 예전 상한 20은 실제 계약서(30조항대)를 조용히 잘라냈다 —
+# 벤치마크에서 입력 20과 30의 소요 시간이 같았던 이유가 이것이다. 상한은 올리되
+# **넘긴 사실을 응답에 반드시 남긴다**(`truncated_clauses`).
+_MAX_CLAUSES = int(os.environ.get("MAX_CLAUSES", "60"))
+
+
+def split_clauses(text: str) -> tuple[list[str], int]:
+    """(분석할 조항, 상한 초과로 잘라낸 개수)를 반환한다."""
     parts = re.split(
         r"(?=제\s*\d+\s*조|^\s*\d+\.\s|^[①②③④⑤⑥⑦⑧⑨⑩]|\n{2,})",
         text,
         flags=re.MULTILINE,
     )
-    return [s.strip() for s in parts if len(s.strip()) > 20][:20]
+    found = [s.strip() for s in parts if len(s.strip()) > _MIN_CLAUSE_CHARS]
+    return found[:_MAX_CLAUSES], max(0, len(found) - _MAX_CLAUSES)
 
 
 def _normalize_with_map(text: str) -> tuple[str, list[int]]:
@@ -117,18 +154,26 @@ def _extract_spans(clause_text: str, evidence_span: str) -> list[EvidenceSpan]:
     return []
 
 
-def _process_clause(client: Any, clause: str, index: int) -> ClauseResult | None:
+_OUT_OF_SCOPE_REASON = (
+    "약관규제법 해지·책임제한 조항에 해당하지 않아 분석하지 않았습니다. "
+    "안전하다는 뜻이 아니라 현재 분석 범위 밖이라는 뜻입니다."
+)
+
+
+def _process_clause(client: Any, clause: str, index: int) -> ClauseResult | OutOfScopeClause:
     """단일 조항을 LangGraph 파이프라인(Analysis→Retrieval Strategy→Judgment)으로 분석한다.
 
-    domain이 "해당없음"이면 그래프가 검색·판단 단계를 건너뛰고 바로 끝나므로,
-    반환된 상태에도 domain만 있고 나머지 필드는 비어 있다 — 이 경우 None을 반환한다.
+    domain이 "해당없음"이면 그래프가 검색·판단 단계를 건너뛰므로 판단 결과가 없다.
+    예전에는 이때 None을 반환했고 호출부가 그대로 버려서, **조항이 응답에서 통째로
+    사라졌다**(벤치마크에서 입력 20 → 결과 10건). 사용자는 나머지가 안전하다고 오해한다.
+    지금은 `OutOfScopeClause`로 돌려 목록에는 남기되 **위험도는 붙이지 않는다**.
     """
     graph = get_graph()
     result = graph.invoke({"clause": clause}, config={"configurable": {"client": client}})
 
     domain = result.get("domain", "해당없음")
     if domain == "해당없음":
-        return None
+        return OutOfScopeClause(id=index + 1, original=clause, reason=_OUT_OF_SCOPE_REASON)
 
     evidence_span = result.get("evidence_span", "")
     verified = result.get("verified", False)
@@ -153,7 +198,7 @@ def _process_clause(client: Any, clause: str, index: int) -> ClauseResult | None
 
 
 async def run_analyze(text: str) -> AnalyzeResponse:
-    clauses = split_clauses(text)
+    clauses, truncated = split_clauses(text)
     if not clauses:
         raise HTTPException(status_code=400, detail="조항을 분리할 수 없습니다.")
 
@@ -166,29 +211,34 @@ async def run_analyze(text: str) -> AnalyzeResponse:
         )
 
     try:
-        client  = _get_openai()
-        results: list[ClauseResult] = []
-
-        for i, clause in enumerate(clauses):
-            # graph.invoke는 동기 호출(OpenAI/DB 왕복 포함)이라 그대로 부르면
-            # 이 async 핸들러가 이벤트 루프를 막아 다른 요청을 전부 지연시킨다.
-            # 스레드로 넘겨 이벤트 루프는 그동안 다른 요청을 계속 처리하게 한다.
-            result = await asyncio.to_thread(_process_clause, client, clause, i)
-            if result is not None:
-                results.append(result)
+        client = _get_openai()
+        # 예전에는 `for` 루프에서 매번 await 해 조항을 **직렬** 처리했다 — 비동기 구조를
+        # 갖춰놓고 쓰지 않은 셈이라, 조항당 약 10초가 그대로 누적됐다(30조항 = 5분).
+        # 시간의 대부분이 OpenAI 왕복 대기라 병렬화 이득이 크다. 동시 호출 수는
+        # `_clause_semaphore`(전역)가 묶으므로 여기서 한 번에 던져도 안전하다.
+        outcomes = await asyncio.gather(
+            *(_process_clause_async(client, c, i) for i, c in enumerate(clauses))
+        )
     finally:
         _analyze_semaphore.release()
 
+    results, skipped = _tally(list(outcomes))
+    results.sort(key=lambda r: r.id)      # gather는 순서를 보존하지만 명시해 둔다
+    skipped.sort(key=lambda r: r.id)
     high   = sum(1 for r in results if r.risk_level == "High")
     medium = sum(1 for r in results if r.risk_level == "Medium")
     low    = sum(1 for r in results if r.risk_level == "Low")
 
     return AnalyzeResponse(
-        total_clauses = len(results),
-        high_count    = high,
-        medium_count  = medium,
-        low_count     = low,
-        clauses       = results,
+        total_clauses     = len(results),
+        high_count        = high,
+        medium_count      = medium,
+        low_count         = low,
+        clauses           = results,
+        input_clauses     = len(clauses) + truncated,
+        truncated_clauses = truncated,
+        out_of_scope      = skipped,
+        model_version     = model_version(),
     )
 
 
@@ -207,7 +257,7 @@ async def run_analyze_stream(text: str):
     뒤에는 HTTP 상태 코드를 바꿀 수 없으므로, 실패할 수 있는 경로는 첫 바이트가
     나가기 전에 전부 해치워야 한다.
     """
-    clauses = split_clauses(text)
+    clauses, truncated = split_clauses(text)
     if not clauses:
         raise HTTPException(status_code=400, detail="조항을 분리할 수 없습니다.")
 
@@ -222,33 +272,48 @@ async def run_analyze_stream(text: str):
     async def _events():
         try:
             client = _get_openai()
-            results: list[ClauseResult] = []
             total = len(clauses)
+            outcomes: list = []
 
-            for i, clause in enumerate(clauses):
-                result = await asyncio.to_thread(_process_clause, client, clause, i)
-                if result is not None:
-                    results.append(result)
+            # 조항을 병렬로 던지고 **끝나는 순서대로** 진행률을 흘린다.
+            # 순차 처리 시절에는 진행률 index가 곧 조항 번호였지만, 병렬에서는
+            # 완료 순서가 뒤섞이므로 진행률은 "몇 개 끝났는지"(done/total)로 센다.
+            async def _one(i: int, c: str):
+                return i, await _process_clause_async(client, c, i)
+
+            tasks = [asyncio.create_task(_one(i, c)) for i, c in enumerate(clauses)]
+            done_n = 0
+            for fut in asyncio.as_completed(tasks):
+                i, outcome = await fut
+                outcomes.append(outcome)
+                done_n += 1
+                if isinstance(outcome, ClauseResult):
                     yield {
-                        "type": "progress",
-                        "index": i + 1,
-                        "total": total,
-                        "risk_level": result.risk_level,
-                        "domain": result.domain,
+                        "type": "progress", "index": done_n, "total": total,
+                        "clause_no": i + 1,
+                        "risk_level": outcome.risk_level, "domain": outcome.domain,
                     }
                 else:
-                    yield {"type": "progress", "index": i + 1, "total": total, "skipped": True}
+                    yield {"type": "progress", "index": done_n, "total": total,
+                           "clause_no": i + 1, "skipped": True}
 
+            results, skipped = _tally(outcomes)
+            results.sort(key=lambda r: r.id)      # 완료 순서가 아니라 조항 순서로 돌려준다
+            skipped.sort(key=lambda r: r.id)
             high   = sum(1 for r in results if r.risk_level == "High")
             medium = sum(1 for r in results if r.risk_level == "Medium")
             low    = sum(1 for r in results if r.risk_level == "Low")
 
             final = AnalyzeResponse(
-                total_clauses = len(results),
-                high_count    = high,
-                medium_count  = medium,
-                low_count     = low,
-                clauses       = results,
+                total_clauses     = len(results),
+                high_count        = high,
+                medium_count      = medium,
+                low_count         = low,
+                clauses           = results,
+                input_clauses     = total + truncated,
+                truncated_clauses = truncated,
+                out_of_scope      = skipped,
+                model_version     = model_version(),
             )
             yield {"type": "done", "result": final.model_dump()}
         finally:
