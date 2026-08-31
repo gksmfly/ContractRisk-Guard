@@ -18,6 +18,17 @@ from backend.model.electra import DualHeadElectra, INV_DOMAIN_MAP, INV_RISK_MAP
 
 _PAGE_MARKER = re.compile(r'\s*-\s*\d+\s*-\s*')
 _FUZZY_MATCH_THRESHOLD = 0.85  # 완전 일치 실패 시, 최장 공통 부분열이 근거 문구의 이 비율 이상이면 인정
+# 매칭 규칙이 바뀌면 **반드시 올린다.** 레코드에 함께 저장돼, 규칙이 바뀐 뒤에만
+# 재처리되도록 하는 근거가 된다(`__main__._load_checkpoint`의 redo 분기).
+# forward_model / forward_prompt 가드와 같은 패턴이다 — "판정에 쓰지 않는 신호도
+# 레코드에 남긴다"는 원칙의 연장이고, 그 원칙이 08-23에 모델 불일치를 잡아냈다.
+#
+#   snip-v1  완전일치 → 퍼지(공백 압축만)          ← PDF 줄바꿈이 쪼갠 단어를 전부 놓쳤다
+#   snip-v2  완전일치 → 레이아웃 제거 → 퍼지@0.85  ← E⊂C 실패율 12.5% → 2.3%
+MATCHER_VERSION = "snip-v2-striplayout-fuzzy085"
+
+_BOX_DRAWING = re.compile(r'[\u2500-\u257f]')   # 의결서 PDF의 표 괘선(│ ─ ┌ …)
+_WHITESPACE = re.compile(r'\s+')
 
 
 def load_model(model_dir: Path, device: torch.device) -> tuple[DualHeadElectra, ElectraTokenizerFast]:
@@ -30,12 +41,33 @@ def load_model(model_dir: Path, device: torch.device) -> tuple[DualHeadElectra, 
     return model, tokenizer
 
 
+def _strip_layout(text: str) -> str:
+    """페이지 번호·표 괘선·**모든 공백**을 없앤 비교용 문자열.
+
+    공백을 압축(`" ".join(split())`)하는 것으로는 부족하다. 의결서 PDF는 줄바꿈 지점에서
+    **단어 중간에 공백을 끼워 넣는다** — `영업정 지`, `비회원과 의 교제`, `을의 부 담`.
+    GPT는 이걸 정상 표기로 되돌려 인용하므로 압축만 해서는 영영 안 맞는다.
+
+    실측(라벨링 914건 시점, `snippet_not_found` 66건 전량 분해):
+
+        공백/괘선을 제거하면 완전일치          54건  81.8%   ← 매칭 버그였다
+        모델이 '...'로 생략                     5건   7.6%
+        진짜 불일치(중간 건너뛰기·단어 변형)     6건   9.1%   ← 거절이 맞다
+        span 없음/10자 미만                     1건   1.5%
+
+    공백 제거가 무르지 않은가? 근거 문구는 10자 이상이라 한국어에서 공백만 지운 10자
+    이상 문자열이 우연히 일치할 확률은 사실상 0이다. 실제로 위 6건은 그대로 걸러진다
+    — `관련한`→`관한`(단어 변형), 문장 중간을 건너뛰고 앞뒤를 이어붙인 경우.
+    """
+    return _WHITESPACE.sub("", _BOX_DRAWING.sub("", _PAGE_MARKER.sub(" ", text)))
+
+
 def snippet_exists(clause_text: str, evidence_span: str) -> bool:
     """evidence_span이 clause_text 안에 있는지 확인한다.
 
-    완전 일치를 우선 시도하고, 실패하면 퍼지 매칭으로 한 번 더 확인한다 — PDF에서
-    텍스트를 추출할 때 표(비교표 등)의 셀이 뒤섞여 문장이 중복·재배열되는 경우가
-    있는데, 이때는 근거 문구 자체는 실존해도 완전 일치가 깨진다.
+    완전 일치 → 레이아웃 제거 후 완전 일치 → 퍼지 매칭 순으로 확인한다. PDF에서 텍스트를
+    추출할 때 표 셀이 뒤섞이거나 줄바꿈이 단어를 쪼개는 경우가 있는데, 이때는 근거 문구
+    자체는 실존해도 완전 일치가 깨진다. 레이아웃 제거는 `_strip_layout` 참조.
     """
     if not evidence_span or len(evidence_span) < 10:
         return False
@@ -45,9 +77,13 @@ def snippet_exists(clause_text: str, evidence_span: str) -> bool:
     if norm_span in norm_text:
         return True
 
-    matcher = difflib.SequenceMatcher(None, norm_span, norm_text, autojunk=False)
-    match = matcher.find_longest_match(0, len(norm_span), 0, len(norm_text))
-    return (match.size / len(norm_span)) >= _FUZZY_MATCH_THRESHOLD
+    bare_text, bare_span = _strip_layout(clause_text), _strip_layout(evidence_span)
+    if bare_span and bare_span in bare_text:
+        return True
+
+    matcher = difflib.SequenceMatcher(None, bare_span, bare_text, autojunk=False)
+    match = matcher.find_longest_match(0, len(bare_span), 0, len(bare_text))
+    return (match.size / len(bare_span)) >= _FUZZY_MATCH_THRESHOLD if bare_span else False
 
 
 def predict(

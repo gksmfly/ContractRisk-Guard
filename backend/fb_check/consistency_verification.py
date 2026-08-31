@@ -35,7 +35,10 @@ import time
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from backend.labeling.articles import ARTICLE_IDS, derive_domain, prompt_block
+from backend.labeling.articles import (
+    ARTICLE_IDS, derive_domain, prompt_block, prompt_block_variant,
+)
+from backend.fb_check.api_errors import raise_if_fatal
 from backend.utils import load_logger
 
 load_dotenv()
@@ -45,7 +48,7 @@ logger = load_logger("consistency_verification.log")
 VERIFY_MODEL = os.environ["VERIFY_MODEL"]
 
 # forward와 독립적으로 올린다 — 두 단계 프롬프트를 따로 고칠 수 있어야 한다.
-PROMPT_VERSION = "ver-v3-art6-art8"
+PROMPT_VERSION = "ver-v5-ordered-summaryblock"
 MAX_VERIFY_CHARS = 3000  # clause 모드 입력 상한 (forward의 MAX_GPT_CHARS와 동일)
 
 _FEW_SHOT_EXAMPLES = [
@@ -97,21 +100,23 @@ _FEW_SHOT_EXAMPLES = [
 #   clause — forward가 "위반 없음"(articles 빈 배열)이라 한 경우. 근거 문구 자체가 없으므로
 #            조항 전문을 준다. 부정 판정은 근거 문구로 검증할 수 없기 때문이다.
 #            어느 모드로 판정했는지는 결과 레코드에 `verify_mode`로 남긴다.
-_SYSTEM_SPAN = """당신은 한국 계약법 전문가입니다.
+_HEAD__SYSTEM_SPAN = """당신은 한국 계약법 전문가입니다.
 주어진 계약 조항의 근거 문구만을 보고 「약관의 규제에 관한 법률」 위반 유형과 리스크를
 판단하세요. 전체 조항 맥락 없이 오직 근거 문구만으로 판단해야 합니다.
 
 ## 위반 유형 (해당하는 것을 모두 고르세요 — 복수 선택 가능)
 
-""" + prompt_block() + """
+"""
+
+_TAIL__SYSTEM_SPAN = """
 
 ## 판단 규칙
 
-- 해당하는 조를 **모두** 넣으세요. 한 문구가 여러 조에 걸리는 경우가 흔합니다.
-- **제6조(일반원칙)는 구체적 조항과 병기하는 것이 원칙입니다.** 문구가 고객에게
-  일방적으로 불리하면 구체적 조에 더해 제6조도 넣으세요.
-- **금전 부담 문구는 제8조를 검토하세요.** 위약금·환급 제한·지연손해금·"반환하지
-  아니한다"가 여기 해당합니다.
+- **먼저 제7~14조 중 해당하는 조를 빠짐없이 찾으세요**: 해지·해제→제9조 / 면책·책임제한→제7조 /
+  위약금·환급 제한·지연손해금→제8조 / 급부 일방변경→제10조 / 고객 권리 제한→제11조 /
+  동의 의제→제12조 / 대리인 책임→제13조 / 관할·부제소·입증책임→제14조.
+- **그 다음** 문구가 고객에게 일방적으로 불리하면 제6조를 **추가**하세요.
+  **제6조가 구체적 조를 대체하면 안 됩니다** — 제6조를 넣어도 제9조·제8조는 그대로 둡니다.
 - 근거 문구만으로 위 조항 중 어디에도 걸린다고 보기 어려우면 `articles`를 빈 배열로 두세요.
   다만 한쪽에만 유리한 구석이 있으면 해당 조를 지목하세요.
 - High: 무효로 판단될 소지가 큰 문구 / Medium: 부분적 제한 문구 /
@@ -123,19 +128,23 @@ _SYSTEM_SPAN = """당신은 한국 계약법 전문가입니다.
   "risk_level": "High" 또는 "Medium" 또는 "Low"
 }"""
 
-_SYSTEM_CLAUSE = """당신은 한국 계약법 전문가입니다.
+
+_HEAD__SYSTEM_CLAUSE = """당신은 한국 계약법 전문가입니다.
 주어진 계약 조항이 「약관의 규제에 관한 법률」 제6조~제14조 중 어디에 걸리는지 판단하세요.
 다른 검토자가 이 조항을 "위반 없음"으로 봤습니다. 그 판단에 얽매이지 말고 독립적으로
 다시 판단하세요.
 
 ## 위반 유형 (해당하는 것을 모두 고르세요 — 복수 선택 가능)
 
-""" + prompt_block() + """
+"""
+
+_TAIL__SYSTEM_CLAUSE = """
 
 ## 판단 규칙
 
-- 해당하는 조를 **모두** 넣으세요. **제6조(일반원칙)는 구체적 조항과 병기하는 것이
-  원칙입니다.** 금전 부담을 지우는 조항(위약금·환급 제한·지연손해금)은 제8조를 검토하세요.
+- **먼저 제7~14조 중 해당하는 조를 빠짐없이 찾고**(위약금·환급 제한→제8조,
+  급부 일방변경→제10조, 관할·부제소→제14조), **그 다음** 고객에게 일방적으로 불리하면
+  제6조를 **추가**하세요. 제6조가 구체적 조를 대체하면 안 됩니다.
 - 위 어디에도 해당하지 않으면 `articles`를 빈 배열로 두세요. 계약 조항이 아닌
   제목·목차·설명문도 빈 배열입니다.
 - 다만 빈 배열은 신중하게 쓰세요 — 사업자와 고객의 권리·의무가 대등할 때만 해당합니다.
@@ -147,6 +156,7 @@ _SYSTEM_CLAUSE = """당신은 한국 계약법 전문가입니다.
   "articles": [],
   "risk_level": "High" 또는 "Medium" 또는 "Low"
 }"""
+
 
 
 def _normalize(out: dict, model: str) -> dict:
@@ -165,21 +175,52 @@ def _normalize(out: dict, model: str) -> dict:
     }
 
 
+# 조문 블록 기본값 = "summary"(제목 + 각 호 앞 45자 × 2).
+# A/B/C 절제 실험 결과(`backend/eval/prompt_block_ablation.md`, 100건 페어드):
+#
+#   구성            블록토큰   조항당입력   총편차   판정
+#   A 전문            1,126     5,026      46     기준선
+#   B 제목+요지          498     3,770      48     ← 채택 (Δ+2, 노이즈 범위)
+#   C 제목만            111     2,994      61     기각 (Δ+15)
+#
+# 전문을 빼면 이웃 조의 **경계 문구**가 사라져 갈 곳 잃은 조항이 포괄적 제목
+# (제8조 "손해배상액의 예정", 제6조 "일반원칙")으로 쏠린다 — C에서 제8조가 32→43.
+# 앞 45자면 그 경계가 유지된다. 전량 라벨링 입력이 12.2M→9.2M 토큰으로 줄어
+# TPM 스로틀링 기준 6.8시간 → 5.1시간이 된다.
+_DEFAULT_BLOCK = "summary"
+
+
+def build_system(mode: str = "span", block: str = _DEFAULT_BLOCK) -> str:
+    """조문 블록만 갈아끼운 시스템 프롬프트. forward와 같은 규칙(few-shot 불변)."""
+    if mode == "span":
+        return _HEAD__SYSTEM_SPAN + prompt_block_variant(block) + _TAIL__SYSTEM_SPAN
+    if mode == "clause":
+        return _HEAD__SYSTEM_CLAUSE + prompt_block_variant(block) + _TAIL__SYSTEM_CLAUSE
+    raise ValueError(f"알 수 없는 verify mode: {mode}")
+
+
+_SYSTEM_SPAN   = build_system("span", _DEFAULT_BLOCK)
+_SYSTEM_CLAUSE = build_system("clause", _DEFAULT_BLOCK)
+
+
 def run_verify(
     client: OpenAI,
     text: str,
     mode: str = "span",
     retries: int = 3,
     model: str = VERIFY_MODEL,
+    block: str = _DEFAULT_BLOCK,
 ) -> dict | None:
     """`mode="span"`이면 근거 문구만, `"clause"`면 조항 전문을 주고 재판정한다."""
     if mode == "span":
-        messages = [{"role": "system", "content": _SYSTEM_SPAN}, *_FEW_SHOT_EXAMPLES,
+        sys_span = build_system("span", block) if block != _DEFAULT_BLOCK else _SYSTEM_SPAN
+        messages = [{"role": "system", "content": sys_span}, *_FEW_SHOT_EXAMPLES,
                     {"role": "user", "content": f"근거 문구:\n{text}"}]
     elif mode == "clause":
         # 조항 전문 모드에는 퓨샷을 붙이지 않는다 — 퓨샷이 전부 짧은 문구라
         # 조항 전문 입력과 형식이 어긋나 오히려 판정을 흔든다.
-        messages = [{"role": "system", "content": _SYSTEM_CLAUSE},
+        sys_cl = build_system("clause", block) if block != _DEFAULT_BLOCK else _SYSTEM_CLAUSE
+        messages = [{"role": "system", "content": sys_cl},
                     {"role": "user", "content": f"계약 조항:\n{text[:MAX_VERIFY_CHARS]}"}]
     else:
         raise ValueError(f"알 수 없는 verify mode: {mode}")
@@ -194,6 +235,10 @@ def run_verify(
             )
             return _normalize(json.loads(resp.choices[0].message.content), model)
         except Exception as e:
+            # 크레딧 소진·키 오류처럼 기다려도 안 풀리는 건 즉시 위로 던진다.
+            # 예전에는 429를 전부 같게 보고 3번씩 재시도해서, 크레딧이 떨어진 뒤
+            # 5시간 동안 6,393번의 무의미한 호출을 했다 — `api_errors` 참고.
+            raise_if_fatal(e, "Consistency Verify")
             logger.warning(f"  Consistency Verify 호출 실패 ({attempt + 1}/{retries}): {e}")
             if attempt < retries - 1:
                 time.sleep(2 ** attempt)

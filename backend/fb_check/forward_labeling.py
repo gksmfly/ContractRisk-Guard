@@ -38,7 +38,10 @@ import time
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from backend.labeling.articles import ARTICLE_IDS, derive_domain, prompt_block
+from backend.labeling.articles import (
+    ARTICLE_IDS, derive_domain, prompt_block, prompt_block_variant,
+)
+from backend.fb_check.api_errors import raise_if_fatal
 from backend.utils import load_logger
 
 load_dotenv()
@@ -50,7 +53,7 @@ FORWARD_MODEL = os.environ["FORWARD_MODEL"]
 
 # 프롬프트를 고칠 때마다 올린다 — 라벨 레코드에 함께 기록되어 어느 프롬프트가
 # 어느 라벨을 만들었는지 사후에 구분할 수 있게 한다.
-PROMPT_VERSION = "fwd-v3-art6-art8"
+PROMPT_VERSION = "fwd-v5-ordered-summaryblock"
 
 _FEW_SHOT_EXAMPLES = [
     {
@@ -141,25 +144,43 @@ _FEW_SHOT_EXAMPLES = [
 
 # 유형 목록은 f-string이 아니라 런타임 결합으로 넣는다 — JSON 예시의 중괄호를
 # 이스케이프하지 않아도 되고, 법 개정 시 articles.py만 재생성하면 반영된다.
-_SYSTEM = """당신은 한국 계약법 전문가입니다.
+# 조문 블록만 갈아끼울 수 있게 조립 함수로 둔다 — A/B/C 절제 실험용
+# (`backend/eval/prompt_block_ablation.md`). **few-shot은 건드리지 않는다**:
+# 한 번에 한 변수만 바꿔야 페어드 비교가 성립한다.
+_SYSTEM_HEAD = """당신은 한국 계약법 전문가입니다.
 주어진 계약 조항이 「약관의 규제에 관한 법률」 제6조~제14조 중 어디에 걸리는지 판단하세요.
 
 ## 위반 유형 (해당하는 것을 모두 고르세요 — 복수 선택 가능)
 
-""" + prompt_block() + """
+"""
 
-## 판단 규칙
+_SYSTEM_TAIL = """
 
-- `articles`에는 해당하는 조를 **모두** 넣으세요. 한 조항이 여러 조에 걸리는 경우가 흔합니다
-  (공정위 의결서 기준 케이스당 평균 2.01개).
-- **제6조(일반원칙)는 구체적 조항과 함께 병기하는 것이 원칙입니다.** 공정위는 제7~14조
-  위반을 인정하면서 "고객에게 부당하게 불리한 조항"이라는 이유로 제6조를 함께 적용하는
-  경우가 많습니다. 조항이 고객에게 일방적으로 불리하다고 판단되면, 구체적 조에 더해
-  제6조도 넣으세요. 제7~14조 어디에도 안 걸리지만 부당하게 불리하거나 예상하기 어려운
-  조항이면 제6조 단독으로 씁니다.
-- **금전 부담을 지우는 조항은 제8조를 검토하세요.** 위약금·해약환급금·중도해지 수수료·
-  지연손해금·"반환하지 않는다"는 조항이 여기 해당합니다. 금액이 과중한지 판단하기
-  어렵더라도, 고객에게만 금전 부담을 지우는 구조면 제8조 후보입니다.
+## 판단 순서 (반드시 이 순서로)
+
+**1단계 — 제7조~제14조 중 해당하는 조를 빠짐없이 찾으세요.** 조항이 무엇을 규정하는지로
+판단합니다:
+
+    해지·해제·계약기간          → 제9조
+    면책·책임 배제·손해배상 범위 제한 → 제7조
+    위약금·환급 제한·지연손해금·"반환하지 아니한다" → 제8조
+    급부 내용의 일방적 결정·변경·중지  → 제10조
+    항변권·상계권·기한이익·제3자 계약 제한·비밀 누설 → 제11조
+    침묵을 동의로 간주·의사표시 형식 제한 → 제12조
+    대리인에게 책임 전가          → 제13조
+    관할 합의·부제소 특약·입증책임 전가 → 제14조
+
+**2단계 — 1단계에서 찾은 조를 그대로 둔 채, 제6조를 추가할지 판단합니다.** 조항이 고객에게
+일방적으로 불리하면 제6조를 **추가**하세요. 공정위는 구체적 조 위반을 인정하면서 제6조를
+함께 적용하는 경우가 많습니다.
+
+**제6조는 1단계 결과를 대체하지 않습니다.** 제6조를 넣는다고 해서 제9조·제8조 같은
+구체적 조를 빼면 안 됩니다. 제6조 단독은 제7~14조 어디에도 해당하지 않지만 고객에게
+부당하게 불리하거나 예상하기 어려운 조항일 때뿐입니다.
+
+## 그 밖의 규칙
+
+- 한 조항이 여러 조에 걸리는 경우가 흔합니다(공정위 의결서 기준 케이스당 평균 2.01개).
 - 위 어디에도 해당하지 않으면 `articles`를 빈 배열로 두세요. 계약 조항이 아닌
   제목·목차·설명문도 빈 배열입니다.
 - 다만 **빈 배열은 신중하게** 쓰세요. 사업자와 고객의 권리·의무가 대등하고 법령 범위
@@ -190,6 +211,30 @@ _SYSTEM = """당신은 한국 계약법 전문가입니다.
 }"""
 
 
+# 조문 블록 기본값 = "summary"(제목 + 각 호 앞 45자 × 2).
+# A/B/C 절제 실험 결과(`backend/eval/prompt_block_ablation.md`, 100건 페어드):
+#
+#   구성            블록토큰   조항당입력   총편차   판정
+#   A 전문            1,126     5,026      46     기준선
+#   B 제목+요지          498     3,770      48     ← 채택 (Δ+2, 노이즈 범위)
+#   C 제목만            111     2,994      61     기각 (Δ+15)
+#
+# 전문을 빼면 이웃 조의 **경계 문구**가 사라져 갈 곳 잃은 조항이 포괄적 제목
+# (제8조 "손해배상액의 예정", 제6조 "일반원칙")으로 쏠린다 — C에서 제8조가 32→43.
+# 앞 45자면 그 경계가 유지된다. 전량 라벨링 입력이 12.2M→9.2M 토큰으로 줄어
+# TPM 스로틀링 기준 6.8시간 → 5.1시간이 된다.
+_DEFAULT_BLOCK = "summary"
+
+
+def build_system(block: str = _DEFAULT_BLOCK) -> str:
+    """`block`은 full(전문) / summary(제목+각 호 앞부분) / title(제목만)."""
+    return _SYSTEM_HEAD + prompt_block_variant(block) + _SYSTEM_TAIL
+
+
+_SYSTEM = build_system(_DEFAULT_BLOCK)
+
+
+
 def _normalize(out: dict, model: str) -> dict:
     """모델 출력을 다듬는다 — 알 수 없는 조를 버리고, 옛 `domain`과 재현 정보를 채운다.
 
@@ -216,8 +261,9 @@ def _normalize(out: dict, model: str) -> dict:
     }
 
 
-def run_forward(client: OpenAI, clause_text: str, retries: int = 3, model: str = FORWARD_MODEL) -> dict | None:
-    messages = [{"role": "system", "content": _SYSTEM}]
+def run_forward(client: OpenAI, clause_text: str, retries: int = 3,
+                model: str = FORWARD_MODEL, block: str = _DEFAULT_BLOCK) -> dict | None:
+    messages = [{"role": "system", "content": build_system(block) if block != _DEFAULT_BLOCK else _SYSTEM}]
     messages.extend(_FEW_SHOT_EXAMPLES)
     messages.append({"role": "user", "content": f"계약 조항:\n{clause_text[:MAX_GPT_CHARS]}"})
 
@@ -231,6 +277,10 @@ def run_forward(client: OpenAI, clause_text: str, retries: int = 3, model: str =
             )
             return _normalize(json.loads(resp.choices[0].message.content), model)
         except Exception as e:
+            # 크레딧 소진·키 오류처럼 기다려도 안 풀리는 건 즉시 위로 던진다.
+            # 예전에는 429를 전부 같게 보고 3번씩 재시도해서, 크레딧이 떨어진 뒤
+            # 5시간 동안 6,393번의 무의미한 호출을 했다 — `api_errors` 참고.
+            raise_if_fatal(e, "Forward Labeling")
             logger.warning(f"  Forward Labeling 호출 실패 ({attempt + 1}/{retries}): {e}")
             if attempt < retries - 1:
                 time.sleep(2 ** attempt)
