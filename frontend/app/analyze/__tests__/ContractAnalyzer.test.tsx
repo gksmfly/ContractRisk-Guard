@@ -2,6 +2,8 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useSession } from "next-auth/react";
+import type { Session } from "next-auth";
 import {
   ContractAnalyzer,
   HighlightText,
@@ -9,7 +11,21 @@ import {
 } from "@/app/analyze/ContractAnalyzer";
 import type { FullAnalyzeResult } from "@/app/api/analyze-full/route";
 
-function renderWithClient(ui: React.ReactElement) {
+// 실제 SessionProvider는 마운트 시 /api/auth/session으로 fetch를 시도해서 이 파일의
+// SSE 스트림 mock(global.fetch)과 충돌한다 — useSession 훅 자체를 모킹해서 피한다.
+jest.mock("next-auth/react", () => ({
+  useSession: jest.fn(),
+}));
+
+function mockSession(session: Session | null) {
+  (useSession as jest.Mock).mockReturnValue({
+    data: session,
+    status: session ? "authenticated" : "unauthenticated",
+  });
+}
+
+function renderWithClient(ui: React.ReactElement, session: Session | null = null) {
+  mockSession(session);
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -110,7 +126,8 @@ describe("ContractAnalyzer 전체 흐름", () => {
         original: "회사는 사전 통지 없이 계약을 해지할 수 있다.",
         domain: "해지_조항",
         risk_level: "High",
-        confidence: 0.9,
+        confidence_band: "높음",
+        confidence_band_accuracy: 0.575,
         evidence_spans: [],
         legal_basis: [{ law: "약관규제법", article: "제9조", description: "부당 해지권 무효" }],
         reasoning: "사전 통지 없는 해지권 부여",
@@ -123,7 +140,8 @@ describe("ContractAnalyzer 전체 흐름", () => {
         original: "당사자는 30일 전 서면 통지로 계약을 해지할 수 있다.",
         domain: "해지_조항",
         risk_level: "Low",
-        confidence: 0.8,
+        confidence_band: "중간",
+        confidence_band_accuracy: 0.461,
         evidence_spans: [],
         legal_basis: [],
         reasoning: "",
@@ -148,12 +166,10 @@ describe("ContractAnalyzer 전체 흐름", () => {
     jest.resetAllMocks();
   });
 
-  it("텍스트 입력 후 분석하면 결과가 사이드바+상세 패널로 노출된다", async () => {
+  it("분석하면 기본은 사이드바 없이 카드가 쌓이고, '자세히' 토글로 사이드바+상세 패널로 전환된다", async () => {
     const user = userEvent.setup();
     renderWithClient(<ContractAnalyzer />);
 
-    // 사이드바+상세 패널 레이아웃은 B2B 전문 모드 전용이다.
-    await user.click(screen.getByRole("radio", { name: /B2B 전문 모드/ }));
     const textarea = screen.getByLabelText("분석할 계약서 전문 입력");
     await user.type(textarea, "회사는 사전 통지 없이 계약을 해지할 수 있는 조항을 포함한다.");
     await user.click(screen.getByRole("button", { name: "계약서 전체 분석 시작" }));
@@ -165,64 +181,50 @@ describe("ContractAnalyzer 전체 흐름", () => {
       expect.objectContaining({ method: "POST" })
     );
 
-    // 인쇄용 전체 목록이 DOM에 함께 존재하므로(화면에서는 CSS로 숨김), 상호작용 영역으로 범위를 좁혀 검증한다.
-    const workspace = () => within(screen.getByTestId("clause-workspace"));
-    // 상세 패널 안에도 위험도 지도(§N 버튼)가 함께 있으므로, 조항 이동은 사이드바 내비게이션으로 한정한다.
-    const sidebar = () => within(workspace().getByRole("navigation", { name: "분석된 조항 목록" }));
+    // 기본값(간단히 보기)은 사이드바 없이 카드가 쌓인다.
+    let workspace = within(screen.getByTestId("clause-workspace"));
+    expect(workspace.getByText(/회사는 사전 통지 없이/)).toBeInTheDocument();
+    expect(workspace.getByText(/30일 전 서면 통지/)).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "분석된 조항 목록" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tablist", { name: "위험도 필터" })).not.toBeInTheDocument();
+
+    // "자세히" 토글을 누르면 사이드바+상세 패널로 전환된다.
+    await user.click(screen.getByRole("tab", { name: "자세히" }));
+
+    workspace = within(screen.getByTestId("clause-workspace"));
+    const sidebar = within(workspace.getByRole("navigation", { name: "분석된 조항 목록" }));
 
     // 기본 선택은 첫 조항(고위험, 검증됨) — 상세 패널에 검증 배지가 보인다.
-    expect(workspace().getByText(/회사는 사전 통지 없이/)).toBeInTheDocument();
-    expect(workspace().getByText("검증됨")).toBeInTheDocument();
-    expect(workspace().queryByText("근거 미확정")).not.toBeInTheDocument();
-    expect(workspace().getByText(/약관규제법 제9조/)).toBeInTheDocument();
+    expect(workspace.getByText(/회사는 사전 통지 없이/)).toBeInTheDocument();
+    expect(workspace.getByText("검증됨")).toBeInTheDocument();
+    expect(workspace.queryByText("근거 미확정")).not.toBeInTheDocument();
+    expect(workspace.getByText(/약관규제법 제9조/)).toBeInTheDocument();
 
     // 사이드바에서 두 번째 조항(저위험, 근거 미확정)을 선택하면 상세가 전환된다.
-    await user.click(sidebar().getByRole("button", { name: /§2/ }));
+    await user.click(sidebar.getByRole("button", { name: /§2/ }));
 
-    expect(workspace().getByText(/30일 전 서면 통지/)).toBeInTheDocument();
-    expect(workspace().getByText("근거 미확정")).toBeInTheDocument();
-    expect(workspace().queryByText(/회사는 사전 통지 없이/)).not.toBeInTheDocument();
+    expect(workspace.getByText(/30일 전 서면 통지/)).toBeInTheDocument();
+    expect(workspace.getByText("근거 미확정")).toBeInTheDocument();
+    expect(workspace.queryByText(/회사는 사전 통지 없이/)).not.toBeInTheDocument();
 
     // 고위험 필터를 적용하면 저위험 조항은 목록/상세에서 사라진다.
     await user.click(screen.getByRole("tab", { name: /고위험/ }));
 
-    expect(workspace().getByText(/회사는 사전 통지 없이/)).toBeInTheDocument();
-    expect(sidebar().queryByRole("button", { name: /§2/ })).not.toBeInTheDocument();
-  });
-
-  it("기본값인 B2C 모드에서는 사이드바 없이 조항 카드가 순서대로 쌓인다", async () => {
-    const user = userEvent.setup();
-    renderWithClient(<ContractAnalyzer />);
-
-    // B2C가 기본 선택 모드이므로 별도로 모드를 클릭하지 않는다.
-    expect(screen.getByRole("radio", { name: /B2C 소비자 모드/ })).toHaveAttribute("aria-checked", "true");
-
-    const textarea = screen.getByLabelText("분석할 계약서 전문 입력");
-    await user.type(textarea, "회사는 사전 통지 없이 계약을 해지할 수 있는 조항을 포함한다.");
-    await user.click(screen.getByRole("button", { name: "계약서 전체 분석 시작" }));
-    await waitFor(() => expect(screen.getByText("분석 결과")).toBeInTheDocument());
-
-    const workspace = within(screen.getByTestId("clause-workspace"));
-
-    // 두 조항이 모두 카드로 한 화면에 쌓여 보인다 — 사이드바 없이도 전부 확인 가능.
     expect(workspace.getByText(/회사는 사전 통지 없이/)).toBeInTheDocument();
-    expect(workspace.getByText(/30일 전 서면 통지/)).toBeInTheDocument();
-    expect(screen.queryByRole("navigation", { name: "분석된 조항 목록" })).not.toBeInTheDocument();
-    // B2C 모드에는 PDF 리포트 버튼과 위험도 필터 탭이 없다.
-    expect(screen.queryByRole("button", { name: /PDF 리포트/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("tablist", { name: "위험도 필터" })).not.toBeInTheDocument();
+    expect(sidebar.queryByRole("button", { name: /§2/ })).not.toBeInTheDocument();
   });
 
   it("미니맵을 클릭하면 해당 조항 상세로 전환된다", async () => {
     const user = userEvent.setup();
     renderWithClient(<ContractAnalyzer />);
 
-    // 위험도 미니맵은 B2B 전문 모드 상세 패널 안에서만 렌더링된다.
-    await user.click(screen.getByRole("radio", { name: /B2B 전문 모드/ }));
     const textarea = screen.getByLabelText("분석할 계약서 전문 입력");
     await user.type(textarea, "회사는 사전 통지 없이 계약을 해지할 수 있는 조항을 포함한다.");
     await user.click(screen.getByRole("button", { name: "계약서 전체 분석 시작" }));
     await waitFor(() => expect(screen.getByText("분석 결과")).toBeInTheDocument());
+
+    // 위험도 미니맵은 "자세히" 보기의 상세 패널 안에서만 렌더링된다.
+    await user.click(screen.getByRole("tab", { name: "자세히" }));
 
     const minimap = within(screen.getByRole("group", { name: "조항별 위험도 미니맵" }));
     await user.click(minimap.getByRole("button", { name: /§2/ }));
@@ -243,7 +245,8 @@ describe("ContractAnalyzer 전체 흐름", () => {
           original: "회사는 사전 통지 없이 계약을 해지할 수 있다.",
           domain: "해지_조항",
           risk_level: "High",
-          confidence: 0.9,
+          confidence_band: "높음",
+          confidence_band_accuracy: 0.575,
           evidence_spans: [{ text: "사전 통지 없이", start: 4, end: 12 }],
           legal_basis: [{ law: "약관규제법", article: "제9조", description: "부당 해지권 무효" }],
           reasoning: "",
@@ -278,29 +281,6 @@ describe("ContractAnalyzer 전체 흐름", () => {
     expect(mark).toHaveClass("bg-seal-soft");
   });
 
-  it("B2C 모드로 분석 중일 때는 축약형 진행바가 표시되고 에이전트 리스트는 안 보인다", async () => {
-    const { stream, push, close } = createControllableStream();
-    global.fetch = jest.fn().mockResolvedValue({ ok: true, body: stream }) as unknown as typeof fetch;
-
-    const user = userEvent.setup();
-    renderWithClient(<ContractAnalyzer />);
-
-    // B2C가 기본값이므로 모드를 따로 바꾸지 않는다.
-    const textarea = screen.getByLabelText("분석할 계약서 전문 입력");
-    await user.type(textarea, "계약서 조항 예시 텍스트를 충분히 길게 입력합니다.");
-    await user.click(screen.getByRole("button", { name: "계약서 전체 분석 시작" }));
-
-    expect(await screen.findByText("약관을 분석하고 있습니다")).toBeInTheDocument();
-    // 에이전트 리스트(B2B 전용)에만 있는 마커는 B2C에서 보이지 않는다.
-    expect(screen.queryByText(/6-agent 파이프라인 완료/)).not.toBeInTheDocument();
-
-    push({ type: "progress", index: 1, total: 2, risk_level: "High", domain: "해지_조항" });
-    push({ type: "progress", index: 2, total: 2, risk_level: "Low", domain: "해지_조항" });
-    push({ type: "done", result: mockResult });
-    close();
-    await waitFor(() => expect(screen.getByText("분석 결과")).toBeInTheDocument());
-  });
-
   it("분석 중에는 조항 단위 실시간 진행 상태가 표시된다", async () => {
     const { stream, push, close } = createControllableStream();
     global.fetch = jest.fn().mockResolvedValue({ ok: true, body: stream }) as unknown as typeof fetch;
@@ -308,13 +288,11 @@ describe("ContractAnalyzer 전체 흐름", () => {
     const user = userEvent.setup();
     renderWithClient(<ContractAnalyzer />);
 
-    // 상세 진행 리스트는 B2B 전문 모드에서 노출된다.
-    await user.click(screen.getByRole("radio", { name: /B2B 전문 모드/ }));
     const textarea = screen.getByLabelText("분석할 계약서 전문 입력");
     await user.type(textarea, "계약서 조항 예시 텍스트를 충분히 길게 입력합니다.");
     await user.click(screen.getByRole("button", { name: "계약서 전체 분석 시작" }));
 
-    expect(await screen.findByText(/6개 AI 에이전트가 법령 근거를 검토하고 판단합니다/)).toBeInTheDocument();
+    expect(await screen.findByText("약관을 분석하고 있습니다")).toBeInTheDocument();
     // 첫 진행 이벤트가 오기 전에는 조항 수를 모르는 불확정 상태를 보여준다 — 가짜로 지어내지 않는다.
     expect(screen.getByText("조항을 분리하고 있습니다...")).toBeInTheDocument();
 
@@ -328,22 +306,69 @@ describe("ContractAnalyzer 전체 흐름", () => {
     expect(screen.queryByText("조항 1")).not.toBeInTheDocument();
   });
 
-  it("리포트 저장 버튼을 누르면 인쇄를 호출한다", async () => {
+  it("PDF 리포트 버튼은 항상 노출되고 누르면 인쇄를 호출한다", async () => {
     const printSpy = jest.spyOn(window, "print").mockImplementation(() => {});
     const user = userEvent.setup();
     renderWithClient(<ContractAnalyzer />);
 
-    // PDF 리포트 버튼은 B2B 전문 모드에서만 노출된다.
-    await user.click(screen.getByRole("radio", { name: /B2B 전문 모드/ }));
     const textarea = screen.getByLabelText("분석할 계약서 전문 입력");
     await user.type(textarea, "계약서 조항 예시 텍스트를 충분히 길게 입력합니다.");
     await user.click(screen.getByRole("button", { name: "계약서 전체 분석 시작" }));
     await waitFor(() => expect(screen.getByText("분석 결과")).toBeInTheDocument());
 
+    // 간단히 보기(기본값)에서도 PDF 리포트 버튼은 노출된다 — 모드로 가려지지 않는다.
     await user.click(screen.getByRole("button", { name: /PDF 리포트/ }));
 
     expect(printSpy).toHaveBeenCalledTimes(1);
     printSpy.mockRestore();
+  });
+
+  it("로그인하지 않은 사용자에게는 결과 하단에 저장 유도 배너가 보인다", async () => {
+    const user = userEvent.setup();
+    renderWithClient(<ContractAnalyzer />, null);
+
+    const textarea = screen.getByLabelText("분석할 계약서 전문 입력");
+    await user.type(textarea, "계약서 조항 예시 텍스트를 충분히 길게 입력합니다.");
+    await user.click(screen.getByRole("button", { name: "계약서 전체 분석 시작" }));
+    await waitFor(() => expect(screen.getByText("분석 결과")).toBeInTheDocument());
+
+    expect(screen.getByText("이 분석 결과를 저장할까요?")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "로그인하고 저장하기" })).toHaveAttribute("href", "/login");
+  });
+
+  it("로그인한 사용자는 '저장하기'를 눌러 결과를 히스토리에 저장할 수 있다", async () => {
+    const user = userEvent.setup();
+    const session: Session = { user: { id: 1, name: "테스트" }, expires: "2099-01-01" };
+
+    global.fetch = jest.fn().mockImplementation((url: string) => {
+      if (url === "/api/history") {
+        return Promise.resolve({ ok: true, json: async () => ({ id: 1, created_at: "2026-08-16" }) });
+      }
+      return Promise.resolve(
+        mockStreamResponse([
+          { type: "progress", index: 1, total: 2, risk_level: "High", domain: "해지_조항" },
+          { type: "progress", index: 2, total: 2, risk_level: "Low", domain: "해지_조항" },
+          { type: "done", result: mockResult },
+        ])
+      );
+    }) as unknown as typeof fetch;
+
+    renderWithClient(<ContractAnalyzer />, session);
+
+    const textarea = screen.getByLabelText("분석할 계약서 전문 입력");
+    await user.type(textarea, "계약서 조항 예시 텍스트를 충분히 길게 입력합니다.");
+    await user.click(screen.getByRole("button", { name: "계약서 전체 분석 시작" }));
+    await waitFor(() => expect(screen.getByText("분석 결과")).toBeInTheDocument());
+
+    // 로그인하지 않았을 때 보이던 "로그인하고 저장하기" 링크 대신 바로 저장 버튼이 보인다.
+    expect(screen.queryByRole("link", { name: "로그인하고 저장하기" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "저장하기" }));
+
+    await waitFor(() => expect(screen.getByText("히스토리에 저장했습니다")).toBeInTheDocument());
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/history",
+      expect.objectContaining({ method: "POST" })
+    );
   });
 
   it("PDF 업로드 후 분석하면 결과가 표시되고 스트리밍 엔드포인트를 호출한다", async () => {

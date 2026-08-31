@@ -3,6 +3,8 @@
 
 import { useState, useRef, useCallback } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { useSession } from "next-auth/react";
+import Link from "next/link";
 import type { FullAnalyzeResult } from "@/app/api/analyze-full/route";
 import {
   AlertTriangle,
@@ -447,8 +449,8 @@ export interface StreamProgress {
   total: number;
 }
 
-// B2B: 조항별 완료 리스트
-function AgentListProgress({ progress }: { progress: StreamProgress | null }) {
+// 조항별 완료 리스트 — 실제 스트리밍 이벤트를 그대로 보여준다
+function ClauseProgressList({ progress }: { progress: StreamProgress | null }) {
   if (!progress) {
     return (
       <div className="border border-rule bg-white px-4 py-6 text-center text-xs text-slate-400">
@@ -508,24 +510,8 @@ function AgentListProgress({ progress }: { progress: StreamProgress | null }) {
   );
 }
 
-// B2C: 축약형 진행바
-function CompactProgress({ progress }: { progress: StreamProgress | null }) {
-  const pct = progress ? Math.round((progress.index / progress.total) * 100) : 0;
-
-  return (
-    <div className="space-y-3">
-      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-        <div className="h-full bg-navy transition-all duration-500" style={{ width: `${pct}%` }} />
-      </div>
-      <p className="text-xs text-slate-400">
-        {progress ? `조항 ${progress.index}/${progress.total}개 분석 완료` : "조항을 분리하고 있습니다..."}
-      </p>
-    </div>
-  );
-}
-
-function AnalysisProgress({ mode, progress }: { mode: "b2c" | "b2b"; progress: StreamProgress | null }) {
-  return mode === "b2b" ? <AgentListProgress progress={progress} /> : <CompactProgress progress={progress} />;
+function AnalysisProgress({ progress }: { progress: StreamProgress | null }) {
+  return <ClauseProgressList progress={progress} />;
 }
 
 // ── Step breadcrumb (약관 업로드 → 분석 중 → 결과 확인) ──
@@ -561,17 +547,45 @@ function StepBreadcrumb({ active }: { active: "upload" | "analyzing" }) {
 }
 
 // ── Main component ────────────────────────────────────
-export function ContractAnalyzer() {
+interface ContractAnalyzerProps {
+  // "내 분석 히스토리"에서 저장된 결과를 다시 열 때 넘어온다 — 있으면 업로드
+  // 단계를 건너뛰고 바로 결과 화면을 보여주고, 이미 저장된 결과라 저장 배너는 생략한다.
+  initialResult?: FullAnalyzeResult;
+  initialTitle?: string;
+}
+
+export function ContractAnalyzer({ initialResult, initialTitle }: ContractAnalyzerProps = {}) {
   const [text, setText] = useState("");
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string | null>(initialTitle ?? null);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [filter, setFilter] = useState<"all" | RiskLevel>("all");
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [mode, setMode] = useState<"b2c" | "b2b">("b2c");
+  const [detailLevel, setDetailLevel] = useState<"simple" | "detailed">("simple");
   const [inputTab, setInputTab] = useState<"text" | "pdf">("text");
   const [streamProgress, setStreamProgress] = useState<StreamProgress | null>(null);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  // initialResult는 고정된 prop이라 리셋해도 안 바뀐다 — "새 계약서 분석"을 누르면
+  // 이 플래그로 더 이상 initialResult를 보여주지 않게 한다.
+  const [dismissedInitial, setDismissedInitial] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const { data: session } = useSession();
+
+  const handleSaveToHistory = async () => {
+    if (!displayResult) return;
+    setSaveState("saving");
+    try {
+      const res = await fetch("/api/history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: fileName ?? "분석 결과", result: displayResult }),
+      });
+      if (!res.ok) throw new Error();
+      setSaveState("saved");
+    } catch {
+      setSaveState("error");
+    }
+  };
 
   // /api/analyze-stream, /api/analyze-pdf-stream이 흘려보내는 SSE("data: {...}\n\n")를
   // 읽어 조항이 끝날 때마다 onProgress를 부르고, 마지막 done 이벤트의 결과를 반환한다.
@@ -677,7 +691,9 @@ export function ContractAnalyzer() {
     mutation.mutate({ text });
   };
 
-  const filteredClauses = mutation.data?.clauses.filter(
+  const displayResult = mutation.data ?? (dismissedInitial ? undefined : initialResult);
+
+  const filteredClauses = displayResult?.clauses.filter(
     (c) => filter === "all" || c.risk_level === filter
   ) ?? [];
   const selectedClause =
@@ -686,7 +702,7 @@ export function ContractAnalyzer() {
   return (
     <div className="space-y-6">
       {/* ── Input area ── */}
-      {!mutation.data && (
+      {!displayResult && (
         <div className="space-y-5 max-w-2xl mx-auto w-full">
           <StepBreadcrumb active={mutation.isPending ? "analyzing" : "upload"} />
 
@@ -696,16 +712,12 @@ export function ContractAnalyzer() {
                 <Loader2 className="h-6 w-6 text-navy animate-spin" aria-hidden />
               </div>
               <div className="space-y-1.5">
-                <h1 className="text-xl font-bold text-slate-900">
-                  {mode === "b2b" ? "법령 근거를 검토하고 있습니다" : "약관을 분석하고 있습니다"}
-                </h1>
+                <h1 className="text-xl font-bold text-slate-900">약관을 분석하고 있습니다</h1>
                 <p className="text-sm text-slate-500">
-                  {mode === "b2b"
-                    ? "6개 AI 에이전트가 법령 근거를 검토하고 판단합니다. 잠시만 기다려주세요."
-                    : "약관규제법 조문 검색 중 · 판례 대조 중 · 위험도 판정 중"}
+                  6개 AI 에이전트가 조항별로 법령 근거를 검토하고 판단합니다. 잠시만 기다려주세요.
                 </p>
               </div>
-              <AnalysisProgress mode={mode} progress={streamProgress} />
+              <AnalysisProgress progress={streamProgress} />
             </div>
           ) : (
             <>
@@ -810,34 +822,6 @@ export function ContractAnalyzer() {
             </div>
           )}
 
-          {/* Mode toggle */}
-          <div className="flex gap-2 justify-center" role="radiogroup" aria-label="분석 모드">
-            {([
-              ["b2c", "B2C 소비자 모드 (요약 판정)"],
-              ["b2b", "B2B 전문 모드 (전체 분석 + PDF)"],
-            ] as const).map(([val, label]) => (
-              <button
-                key={val}
-                role="radio"
-                aria-checked={mode === val}
-                onClick={() => setMode(val)}
-                className={`flex items-center gap-2 text-xs font-medium px-3.5 py-2 rounded-lg border transition-colors ${
-                  mode === val
-                    ? "border-navy bg-navy-soft text-navy"
-                    : "border-slate-200 text-slate-500 hover:border-slate-300"
-                }`}
-              >
-                <span
-                  className={`h-2.5 w-2.5 rounded-full border-2 shrink-0 ${
-                    mode === val ? "border-navy bg-navy" : "border-slate-300"
-                  }`}
-                  aria-hidden
-                />
-                {label}
-              </button>
-            ))}
-          </div>
-
           {/* Analyze button */}
           <button
             onClick={handleAnalyze}
@@ -859,7 +843,7 @@ export function ContractAnalyzer() {
       )}
 
       {/* ── Results ── */}
-      {mutation.data && (
+      {displayResult && (
         <div className="space-y-5">
           {/* Reset / export buttons */}
           <div className="flex items-center justify-between gap-3 flex-wrap print:hidden">
@@ -873,17 +857,15 @@ export function ContractAnalyzer() {
               </span>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {mode === "b2b" && (
-                <button
-                  onClick={() => window.print()}
-                  title="인쇄 대화상자가 열리면 대상(프린터)을 'PDF로 저장'으로 선택하세요"
-                  aria-label="PDF 리포트 — 인쇄 대화상자에서 'PDF로 저장'을 선택하세요"
-                  className="flex items-center gap-1.5 text-xs text-navy border border-navy/30 hover:bg-navy-soft rounded-lg px-3 py-1.5 transition-colors"
-                >
-                  <Printer className="h-3.5 w-3.5" aria-hidden />
-                  PDF 리포트
-                </button>
-              )}
+              <button
+                onClick={() => window.print()}
+                title="인쇄 대화상자가 열리면 대상(프린터)을 'PDF로 저장'으로 선택하세요"
+                aria-label="PDF 리포트 — 인쇄 대화상자에서 'PDF로 저장'을 선택하세요"
+                className="flex items-center gap-1.5 text-xs text-navy border border-navy/30 hover:bg-navy-soft rounded-lg px-3 py-1.5 transition-colors"
+              >
+                <Printer className="h-3.5 w-3.5" aria-hidden />
+                PDF 리포트
+              </button>
               <button
                 onClick={async () => {
                   const shareData = { title: "Verilex 분석 결과", url: window.location.href };
@@ -900,7 +882,7 @@ export function ContractAnalyzer() {
                 공유
               </button>
               <button
-                onClick={() => { mutation.reset(); setText(""); setFileName(null); setFilter("all"); setSelectedId(null); }}
+                onClick={() => { mutation.reset(); setText(""); setFileName(null); setFilter("all"); setSelectedId(null); setSaveState("idle"); setDismissedInitial(true); }}
                 className="text-xs text-slate-500 hover:text-slate-700 border border-slate-300 hover:border-slate-400 rounded-lg px-3 py-1.5 transition-colors"
               >
                 새 계약서 분석
@@ -918,16 +900,38 @@ export function ContractAnalyzer() {
           </div>
 
           {/* Summary */}
-          <SummaryBar result={mutation.data} />
+          <SummaryBar result={displayResult} />
 
-          {/* Filter tabs (B2B 전용 — B2C는 요약 판정만 보여주므로 생략) */}
-          {mode === "b2b" && (
+          {/* Detail level toggle — 로그인/사용자 종류와 무관한 순수 표시 옵션 */}
+          <div className="flex justify-center print:hidden">
+            <div className="inline-flex bg-slate-100 rounded-full p-1" role="tablist" aria-label="결과 표시 방식">
+              {([
+                ["simple", "간단히"],
+                ["detailed", "자세히"],
+              ] as const).map(([val, label]) => (
+                <button
+                  key={val}
+                  role="tab"
+                  aria-selected={detailLevel === val}
+                  onClick={() => setDetailLevel(val)}
+                  className={`text-xs font-semibold px-4 py-1.5 rounded-full transition-colors ${
+                    detailLevel === val ? "bg-white text-navy shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Filter tabs (자세히 보기에서만 노출 — 간단히 보기는 요약 판정만 보여주므로 생략) */}
+          {detailLevel === "detailed" && (
             <div className="flex gap-2 print:hidden" role="tablist" aria-label="위험도 필터">
               {([
-                ["all", "전체", mutation.data.total_clauses],
-                ["High", "고위험", mutation.data.high_count],
-                ["Medium", "중위험", mutation.data.medium_count],
-                ["Low", "저위험", mutation.data.low_count],
+                ["all", "전체", displayResult.total_clauses],
+                ["High", "고위험", displayResult.high_count],
+                ["Medium", "중위험", displayResult.medium_count],
+                ["Low", "저위험", displayResult.low_count],
               ] as [string, string, number][]).map(([val, label, count]) => (
                 <button
                   key={val}
@@ -949,15 +953,15 @@ export function ContractAnalyzer() {
           {/* 결과 본문: screen 전용 */}
           {filteredClauses.length === 0 ? (
             <p className="text-center text-slate-400 py-8 text-sm print:hidden">해당 위험도의 조항이 없습니다.</p>
-          ) : mode === "b2c" ? (
-            /* B2C 소비자 모드: 사이드바 없이 요약 판정 카드만 순서대로 */
+          ) : detailLevel === "simple" ? (
+            /* 간단히 보기: 사이드바 없이 요약 판정 카드만 순서대로 */
             <div data-testid="clause-workspace" className="space-y-4 print:hidden">
               {filteredClauses.map((clause) => (
                 <ClauseDetail key={clause.id} clause={clause} />
               ))}
             </div>
           ) : (
-            /* B2B 전문 모드: 사이드바 + 상세 패널 */
+            /* 자세히 보기: 사이드바 + 상세 패널 */
             <div
               data-testid="clause-workspace"
               className="md:grid md:grid-cols-[220px_1fr] md:gap-5 md:items-start print:hidden"
@@ -988,12 +992,59 @@ export function ContractAnalyzer() {
             </div>
           )}
 
-          {/* Full clause list (print only, B2B 리포트 전용) */}
-          {mode === "b2b" && (
-            <div className="hidden print:block space-y-6">
-              {filteredClauses.map((clause) => (
-                <ClauseDetail key={clause.id} clause={clause} />
-              ))}
+          {/* Full clause list (print only) — 화면 표시 방식과 무관하게 PDF는 항상 전체 조항 상세를 담는다 */}
+          <div className="hidden print:block space-y-6">
+            {filteredClauses.map((clause) => (
+              <ClauseDetail key={clause.id} clause={clause} />
+            ))}
+          </div>
+
+          {/* 저장 — 결과를 이미 확인한 다음에만 등장, 무시하고 이탈해도 무방. 히스토리에서 다시 연 결과는 이미 저장되어 있으므로 생략 */}
+          {initialResult ? null : !session ? (
+            <div className="flex items-center justify-between gap-4 flex-wrap border border-dashed border-slate-300 rounded-xl px-5 py-4 print:hidden">
+              <div>
+                <p className="text-sm font-semibold text-slate-700">이 분석 결과를 저장할까요?</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  로그인하면 언제든 다시 찾아볼 수 있어요 · 로그인 안 해도 지금 이 결과는 그대로 유지돼요
+                </p>
+              </div>
+              <Link
+                href="/login"
+                className="shrink-0 text-xs font-semibold bg-navy hover:opacity-90 text-white rounded-lg px-4 py-2 transition-opacity"
+              >
+                로그인하고 저장하기
+              </Link>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-4 flex-wrap border border-dashed border-slate-300 rounded-xl px-5 py-4 print:hidden">
+              <div>
+                <p className="text-sm font-semibold text-slate-700">
+                  {saveState === "saved" ? "히스토리에 저장했습니다" : "이 분석 결과를 히스토리에 저장할까요?"}
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {saveState === "saved"
+                    ? "내 분석 히스토리에서 언제든 다시 확인할 수 있어요"
+                    : saveState === "error"
+                    ? "저장에 실패했습니다. 다시 시도해 주세요."
+                    : "저장하면 내 분석 히스토리에서 다시 찾아볼 수 있어요"}
+                </p>
+              </div>
+              {saveState === "saved" ? (
+                <Link
+                  href="/dashboard"
+                  className="shrink-0 text-xs font-semibold text-navy border border-navy/30 hover:bg-navy-soft rounded-lg px-4 py-2 transition-colors"
+                >
+                  내 분석 히스토리 보기
+                </Link>
+              ) : (
+                <button
+                  onClick={handleSaveToHistory}
+                  disabled={saveState === "saving"}
+                  className="shrink-0 text-xs font-semibold bg-navy hover:opacity-90 disabled:opacity-60 text-white rounded-lg px-4 py-2 transition-opacity"
+                >
+                  {saveState === "saving" ? "저장 중..." : "저장하기"}
+                </button>
+              )}
             </div>
           )}
 

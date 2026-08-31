@@ -8,7 +8,13 @@ interface ClauseResult {
   original: string;
   domain: Domain;
   risk_level: RiskLevel;
-  confidence: number;
+  // 백엔드가 원시 확률(confidence: number) 대신 구간을 보낸다 — KoELECTRA softmax는
+  // 보정이 안 돼 있어(ECE 0.289) %로 표시하면 실제보다 30%p 이상 과신하게 된다.
+  // confidence_band_accuracy는 그 구간의 실측 정확도이므로, "높음"만 단독으로
+  // 보여주지 말고 이 값을 함께 표시할 것.
+  // 근거: backend/eval/confidence_calibration.py
+  confidence_band: "높음" | "중간" | "낮음";
+  confidence_band_accuracy: number;
   evidence_spans: { text: string; start: number; end: number }[];
   legal_basis: { law: string; article: string; description: string }[];
   reasoning: string;
@@ -23,6 +29,10 @@ export interface FullAnalyzeResult {
   medium_count: number;
   low_count: number;
   clauses: ClauseResult[];
+  // 판단을 낸 체크포인트 이름. analyses.result(JSONB)에 통째로 저장되므로
+  // 나중에 `WHERE result->>'model_version' = 'v4'`로 옛 모델 결과를 골라낼 수 있다.
+  // 예전 저장분에는 없으므로 optional.
+  model_version?: string;
 }
 
 export async function POST(req: NextRequest) {
