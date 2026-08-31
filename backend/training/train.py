@@ -164,7 +164,8 @@ def _count_contained(val_recs: list[dict], train_texts: set[str]) -> list[int]:
     return [i for i, r in enumerate(val_recs) if any(t in r["text"] for t in long_train)]
 
 
-def split_by_document(records: list[dict], test_ratio: float, seed: int) -> tuple[list[dict], list[dict]]:
+def split_by_document(records: list[dict], test_ratio: float, seed: int,
+                      stratify_key: str = "risk_level") -> tuple[list[dict], list[dict]]:
     """학습/검증을 **문서 단위로** 나누고, 남은 텍스트 누수까지 제거한다.
 
     이 데이터에는 누수 경로가 세 개 있고 하나씩 막아야 한다:
@@ -197,7 +198,7 @@ def split_by_document(records: list[dict], test_ratio: float, seed: int) -> tupl
     groups = sorted({r["group"] for r in deduped})
     per_group: dict[str, list[str]] = {}
     for r in deduped:
-        per_group.setdefault(r["group"], []).append(r["risk_level"])
+        per_group.setdefault(r["group"], []).append(str(r.get(stratify_key)))
     group_label = {g: Counter(v).most_common(1)[0][0] for g, v in per_group.items()}
 
     train_g, val_g = train_test_split(
@@ -225,8 +226,9 @@ def split_by_document(records: list[dict], test_ratio: float, seed: int) -> tupl
 
     logger.info(f"  문서 {len(groups)}개를 {1 - test_ratio:.0%}:{test_ratio:.0%}로 분할(문서 단위)")
     logger.info(f"    학습 {len(train_recs)}건/{len(train_g)}문서 | 검증 {len(val_recs)}건/{len(val_g)}문서")
-    logger.info(f"    학습 라벨 {Counter(r['risk_level'] for r in train_recs).most_common()}")
-    logger.info(f"    검증 라벨 {Counter(r['risk_level'] for r in val_recs).most_common()}")
+    # 라벨 분포는 층화에 쓴 키로 찍는다 — 조 multi-label 경로에는 `risk_level`이 없다.
+    logger.info(f"    학습 라벨 {Counter(str(r.get(stratify_key)) for r in train_recs).most_common()}")
+    logger.info(f"    검증 라벨 {Counter(str(r.get(stratify_key)) for r in val_recs).most_common()}")
 
     # --- 누수 검증: 학습 로그에 항상 남긴다. 분할 로직을 누가 건드려도 즉시 드러나게 ---
     overlap = len(train_g & val_g)
@@ -310,20 +312,35 @@ def evaluate(
     model: DualHeadElectra,
     loader: DataLoader,
     device: torch.device,
-) -> tuple[list[int], list[int], list[int], list[int]]:
+    domain_criterion: nn.Module | None = None,
+    risk_criterion: nn.Module | None = None,
+) -> tuple[list[int], list[int], list[int], list[int], float | None]:
+    """검증 예측과 **검증 손실**을 함께 낸다.
+
+    검증 손실이 없으면 과적합을 볼 수 없다 — F1만 보면 "아직 오르는 중"과 "이미 외우기
+    시작했는데 운 좋게 F1이 유지되는 중"을 구분할 수 없기 때문이다. 학습 손실과 같은
+    criterion(클래스 가중치 포함)을 써야 두 곡선을 같은 축에서 비교할 수 있다.
+    """
     model.eval()
     d_preds, d_labels, r_preds, r_labels = [], [], [], []
+    total_loss, n_batches = 0.0, 0
     with torch.no_grad():
         for batch in loader:
             input_ids      = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
             token_type_ids = batch["token_type_ids"].to(device)
             d_logits, r_logits = model(input_ids, attention_mask, token_type_ids)
+            if domain_criterion is not None and risk_criterion is not None:
+                loss = (domain_criterion(d_logits, batch["domain_label"].to(device))
+                        + risk_criterion(r_logits, batch["risk_label"].to(device)))
+                total_loss += loss.item()
+                n_batches += 1
             d_preds.extend(d_logits.argmax(dim=-1).cpu().tolist())
             d_labels.extend(batch["domain_label"].tolist())
             r_preds.extend(r_logits.argmax(dim=-1).cpu().tolist())
             r_labels.extend(batch["risk_label"].tolist())
-    return d_preds, d_labels, r_preds, r_labels
+    val_loss = total_loss / n_batches if n_batches else None
+    return d_preds, d_labels, r_preds, r_labels, val_loss
 
 
 def compute_metrics(
@@ -423,13 +440,20 @@ def main() -> None:
     for epoch in range(1, args.epochs + 1):
         train_loss = train_epoch(model, train_loader, optimizer, domain_criterion, risk_criterion,
                                  device, accum_steps=args.accum_steps)
-        d_preds, d_labels, r_preds, r_labels = evaluate(model, val_loader, device)
+        d_preds, d_labels, r_preds, r_labels, val_loss = evaluate(
+            model, val_loader, device, domain_criterion, risk_criterion
+        )
         metrics = compute_metrics(d_preds, d_labels, r_preds, r_labels, risk_names)
-        metrics.update({"epoch": epoch, "train_loss": round(train_loss, 4)})
+        metrics.update({
+            "epoch": epoch,
+            "train_loss": round(train_loss, 4),
+            "val_loss": round(val_loss, 4) if val_loss is not None else None,
+        })
         history.append(metrics)
         logger.info(
-            f"  Epoch {epoch}/{args.epochs} | loss={train_loss:.4f} "
-            f"| domain_f1={metrics['domain_macro_f1']:.4f} | risk_f1={metrics['risk_macro_f1']:.4f}"
+            f"  Epoch {epoch}/{args.epochs} | train_loss={train_loss:.4f} "
+            f"| val_loss={val_loss:.4f} | domain_f1={metrics['domain_macro_f1']:.4f} "
+            f"| risk_f1={metrics['risk_macro_f1']:.4f}"
         )
         if metrics["risk_macro_f1"] > best_risk_f1:
             best_risk_f1 = metrics["risk_macro_f1"]
@@ -448,6 +472,18 @@ def main() -> None:
         },
         MODEL_DIR / "metrics.json",
     )
+
+    # 학습 곡선 PNG를 체크포인트 옆에 남긴다 — 숫자만으로는 과적합 시작 지점을 못 본다.
+    # 그리기 실패가 학습 결과를 날리면 안 되므로 예외는 로그만 남기고 삼킨다.
+    try:
+        from backend.training.plot_history import diagnose, plot_history
+        out = plot_history(MODEL_DIR)
+        if out:
+            logger.info(f"  학습 곡선: {out}")
+            logger.info(f"  과적합 진단: {diagnose(history)['verdict']}")
+    except Exception as e:
+        logger.warning(f"  학습 곡선 생성 실패(학습 결과에는 영향 없음): {e}")
+
     logger.info(f"========== 학습 완료 | best_risk_f1={best_risk_f1:.4f} ==========")
 
 
