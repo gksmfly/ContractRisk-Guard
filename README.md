@@ -109,7 +109,7 @@ external reference. They are not comparable to the table above and should not be
 | Layer | Technology |
 |-------|-----------|
 | Backend | FastAPI, Python, uvicorn |
-| Core Inference | KoELECTRA fine-tuned on CLEAN data — article multi-label head (§6–§14, sigmoid + BCE), served from `models/article_v1`. The superseded dual-head (domain + risk) model is retained only for the labeling path |
+| Core Inference | KoELECTRA fine-tuned on CLEAN data — article multi-label head (§6–§14, sigmoid + BCE), served from `models/article_v2`. The superseded dual-head (domain + risk) model is retained only for the labeling path |
 | LLM (support) | OpenAI GPT-4o (explanation generation, search query construction only) |
 | Retrieval | Dense + Sparse Hybrid Retrieval, metadata filtering |
 | Frontend | Next.js 14, Tailwind CSS, shadcn/ui, Zustand |

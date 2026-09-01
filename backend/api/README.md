@@ -52,4 +52,4 @@ python -m backend.api.services.latency_benchmark --sizes 1,5,10,20
 uvicorn backend.api.server:app --reload --port 8000
 ```
 
-환경변수: `OPENAI_API_KEY`, `DATABASE_URL`, `FORWARD_MODEL`, `CORS_ORIGIN`, `MODEL_DIR`(KoELECTRA 체크포인트 경로, 기본 `models/article_v1`. 읽는 곳은 `backend/agents/judgment_agent.py`).
+환경변수: `OPENAI_API_KEY`, `DATABASE_URL`, `FORWARD_MODEL`, `CORS_ORIGIN`, `MODEL_DIR`(KoELECTRA 체크포인트 경로, 기본 `models/article_v2`. 읽는 곳은 `backend/agents/judgment_agent.py`).

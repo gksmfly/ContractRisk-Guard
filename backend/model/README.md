@@ -29,4 +29,4 @@ INV_RISK_MAP   = {v: k for k, v in RISK_MAP.items()}
 
 ## 참고
 
-`DualHeadElectra`는 체크포인트를 만들지도 로드하지도 않는 순수 아키텍처 정의지만, `ArticleMultiLabelElectra`는 `save()`/`load()`를 직접 갖습니다(저장 형식을 아는 곳을 한 군데로 묶기 위함). 실제 체크포인트(프로덕션 `models/article_v1`, 옛 세대 `models/v1`~`v9`)와 버전별 성능·의사결정은 `models/README.md`, 학습은 `backend/training/README.md`, 프로덕션 추론은 `backend/agents/README.md`의 `judgment_node` 항목 참고.
+`DualHeadElectra`는 체크포인트를 만들지도 로드하지도 않는 순수 아키텍처 정의지만, `ArticleMultiLabelElectra`는 `save()`/`load()`를 직접 갖습니다(저장 형식을 아는 곳을 한 군데로 묶기 위함). 실제 체크포인트(프로덕션 `models/article_v2`, 직전 `models/article_v1`, 옛 세대 `models/v1`~`v9`)와 버전별 성능·의사결정은 `models/README.md`, 학습은 `backend/training/README.md`, 프로덕션 추론은 `backend/agents/README.md`의 `judgment_node` 항목 참고.

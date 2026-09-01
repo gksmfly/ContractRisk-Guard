@@ -5,7 +5,7 @@ KoELECTRA 분류 헤드 정의 및 공유 레이블 상수
 헤드가 둘 있고 **둘 다 살아 있다** — 쓰임이 다르고, 전환이 아직 안 끝났다:
 
     ArticleMultiLabelElectra   조항 → 약관규제법 조 multi-label. **프로덕션 판단 경로**
-                               (`backend.agents.judgment_agent`, 기본 `models/article_v1`)
+                               (`backend.agents.judgment_agent`, 기본 `models/article_v2`)
     DualHeadElectra            domain 2-class + risk 3-class. 전량 라벨링 경로
                                (`backend.fb_check`)와 과거 실험 스크립트가 아직 쓴다
 

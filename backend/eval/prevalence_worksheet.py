@@ -132,7 +132,7 @@ def _truncated_flags(texts: list[str], max_len: int = 256) -> list[bool]:
     """
     try:
         from transformers import AutoTokenizer
-        tok = AutoTokenizer.from_pretrained(str(PROJECT_ROOT / "models/article_v1"))
+        tok = AutoTokenizer.from_pretrained(str(PROJECT_ROOT / "models/article_v2"))
         return [len(tok(t)["input_ids"]) > max_len for t in texts]
     except Exception as e:                                   # noqa: BLE001
         logger.warning(f"  토크나이저 없이 글자 수로 근사한다 ({e})")

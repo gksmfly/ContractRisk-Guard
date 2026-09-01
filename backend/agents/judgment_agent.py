@@ -48,15 +48,19 @@ from backend.agents.state import ClauseState
 from backend.model.electra import ArticleMultiLabelElectra
 from backend.utils import PROJECT_ROOT
 
-MODEL_DIR = Path(os.environ.get("MODEL_DIR", str(PROJECT_ROOT / "models/article_v1")))
+MODEL_DIR = Path(os.environ.get("MODEL_DIR", str(PROJECT_ROOT / "models/article_v2")))
 
 
 def model_version() -> str:
     """판단에 쓰인 체크포인트 이름. 저장된 분석 결과에 함께 남긴다.
 
-    기본값은 `models/article_v1`(조 multi-label)이다. 옛 `models/v4`(domain 2종 + risk
-    3단계)는 **서빙에서 빠졌다** — 누수 있는 분할이었고, 학습 라벨의 16.4%를 정확도
-    45%짜리 이전 세대가 결정했다.
+    기본값은 `models/article_v2`(조 multi-label, max_len 512)다. 옛 `models/v4`(domain
+    2종 + risk 3단계)는 **서빙에서 빠졌다** — 누수 있는 분할이었고, 학습 라벨의 16.4%를
+    정확도 45%짜리 이전 세대가 결정했다.
+
+    **`article_v1`(max_len 256)에서 이름을 올린 이유가 이 필드다.** 두 세대는 taxonomy가
+    같아서 결과 모양이 구분되지 않는다 — 이름을 안 바꿨으면 저장된 판정이 256에서 잘린
+    입력으로 난 것인지 아닌지 나중에 알 수 없다.
 
     **이 필드가 있어야 taxonomy가 다른 두 세대의 저장분을 나중에 구분할 수 있다.**
     v4 시절 결과에는 `risk_level`·`confidence_band`가 있고 `articles`가 없다 —
@@ -72,6 +76,7 @@ _electra_model: ArticleMultiLabelElectra | None = None
 _thresholds: Any = None
 _electra_tokenizer: ElectraTokenizerFast | None = None
 _electra_device: Any = None
+_max_len: int = 256
 
 
 def _get_electra() -> tuple[ArticleMultiLabelElectra, ElectraTokenizerFast, Any]:
@@ -80,13 +85,20 @@ def _get_electra() -> tuple[ArticleMultiLabelElectra, ElectraTokenizerFast, Any]
     임계값은 학습 때 dev에서 확정한 조별 값을 그대로 쓴다(`thresholds.npy`).
     **여기서 다시 고르지 않는다** — 그게 곧 평가셋 오염이다.
     """
-    global _electra_model, _electra_tokenizer, _electra_device, _thresholds
+    global _electra_model, _electra_tokenizer, _electra_device, _thresholds, _max_len
     if _electra_model is None:
+        import json
+
         import numpy as np
         _electra_device = torch.device(JUDGMENT_DEVICE if torch.cuda.is_available() else "cpu")
         _electra_model = ArticleMultiLabelElectra.load(MODEL_DIR).to(_electra_device).eval()
         _electra_tokenizer = ElectraTokenizerFast.from_pretrained(str(MODEL_DIR))
         _thresholds = np.load(MODEL_DIR / "thresholds.npy")
+        # **max_len을 체크포인트에서 읽는다 — 여기 상수로 박지 않는다.**
+        # 예전에 256이 박혀 있었다. 학습이 512로 가도 서빙만 256에서 잘랐을 것이고,
+        # evidence_span 때와 **똑같은 형태의 사고**가 된다(모델은 바뀌는데 입력만 남는다).
+        _max_len = int((json.loads((MODEL_DIR / "metrics.json").read_text(encoding="utf-8"))
+                        .get("train_config") or {}).get("max_len", 256))
     return _electra_model, _electra_tokenizer, _electra_device
 
 
@@ -124,14 +136,31 @@ def electra_predict(text: str) -> list[str]:
     53%에만 있고 비위반 조항에는 2%뿐이다 — 양성은 조각으로, 음성은 원문으로 들어가서
     재현은 78.0→72.9%로 내려가고 GPT불일치는 2.6→4.0%로 올라간다. **두 축이 같은 방향으로
     나빠지는 게 아니라 서로 반대로 어긋난다.**
+
+    ## 길이도 체크포인트를 따른다 — 256을 상수로 박지 말 것 (2026-09-01)
+
+    `max_len`은 학습 하이퍼파라미터인데 **운영에서는 조용한 입력 절단**으로 작동했다.
+    실제 약관은 한 조에 항이 여럿 붙어 학습 텍스트보다 2.4배 길고, 256토큰에서
+    **35.4%가 뒷부분을 잃었다**(gold는 5.5%뿐이라 78.0%에는 안 보였다).
+
+    512로 재학습해 절단을 없앴고, 판정은 **사전 등록한 무해 확인**으로 했다
+    (`backend/eval/maxlen_harm_check.py`):
+
+        gold 조항 재현  78.0% → 78.4%   +0.4%p [-3.9,+4.7]  ← 주 판정. 해가 없다
+        조 F1          38.6% → 38.5%    -0.1%p             ← 참고
+        실제 약관 절단   35.4% →  8.1%                      ← 개입이 표방한 일
+
+    근거는 "512가 더 좋다"가 **아니다** — 그건 gold로 고르는 것이라 금지다. 근거는
+    **사용자가 넣은 입력을 버리지 않는다**이고, gold는 그게 해롭지 않은지만 확인했다.
     """
     model, tokenizer, device = _get_electra()
-    enc = tokenizer(text, max_length=256, padding="max_length", truncation=True, return_tensors="pt")
+    enc = tokenizer(text, max_length=_max_len, padding="max_length", truncation=True,
+                    return_tensors="pt")
     with torch.no_grad():
         logits = model(
             enc["input_ids"].to(device),
             enc["attention_mask"].to(device),
-            enc.get("token_type_ids", torch.zeros(1, 256, dtype=torch.long)).to(device),
+            enc.get("token_type_ids", torch.zeros(1, _max_len, dtype=torch.long)).to(device),
         )
     probs = torch.sigmoid(logits)[0].cpu().numpy()
     return [n for n, p, t in zip(model.article_names, probs, _thresholds) if p >= t]

@@ -75,7 +75,7 @@ GPT-4o Forward Labeling(`backend.fb_check.forward_labeling.run_forward()`) 재�
 재랭킹을 얹는 시도는 두 번 다 측정에서 졌다: Cross-Encoder(10.7% vs RRF 20.1%), 법원 심급 가중치(@2 6.4% vs 폐지 9.4%, McNemar p=0.035 — `"고등법원"` 키는 DB에 없어 한 번도 매칭된 적이 없었고, 대법원 가산 0.10은 RRF 점수 폭 전체(0.00738)의 13.5배라 사실상 "대법원 순 정렬"이었다).
 
 ### `judgment_node` (`judgment_agent.py`)
-`models/article_v1` KoELECTRA 로드 → **위반 소지 조 multi-label** 판단(약관규제법 제6·7·8·9·10·11·12·14조. 제13조는 support 부족으로 접힘). 임계값은 학습 때 dev에서 확정한 조별 값(`thresholds.npy`)을 그대로 쓴다 — 여기서 다시 고르면 그게 평가셋 오염이다. **조항 원문(`clause`)**을 입력으로 씀 — 학습·채점과 같은 입력이다. 2026-09-01 이전에는 `evidence_span`(없으면 `clause`)을 넣었는데, 그건 span 증강으로 학습한 `models/v4` 시절 규칙이었다. 페어드 실측(136건)에서 조각 입력은 조항 재현을 **81.6% → 72.1% (-9.6%p [-16.9,-2.9])** 로 유의하게 떨어뜨린다. 게다가 span은 위반 조항의 53%·비위반 조항의 2%에만 있어 **입력이 정답과 상관한다** — 되돌리지 말 것 (`backend/eval/input_parity_eval.py`).
+`models/article_v2`(max_len **512**) KoELECTRA 로드 → **위반 소지 조 multi-label** 판단(약관규제법 제6·7·8·9·10·11·12·14조. 제13조는 support 부족으로 접힘). 임계값은 학습 때 dev에서 확정한 조별 값(`thresholds.npy`)을 그대로 쓴다 — 여기서 다시 고르면 그게 평가셋 오염이다. **조항 원문(`clause`)**을 입력으로 씀 — 학습·채점과 같은 입력이다. 2026-09-01 이전에는 `evidence_span`(없으면 `clause`)을 넣었는데, 그건 span 증강으로 학습한 `models/v4` 시절 규칙이었다. 페어드 실측(136건)에서 조각 입력은 조항 재현을 **81.6% → 72.1% (-9.6%p [-16.9,-2.9])** 로 유의하게 떨어뜨린다. 게다가 span은 위반 조항의 53%·비위반 조항의 2%에만 있어 **입력이 정답과 상관한다** — 되돌리지 말 것 (`backend/eval/input_parity_eval.py`).
 
 **위험도 3단계(High/Medium/Low)는 더 이상 내지 않는다**(2026-08-31). 조 taxonomy로 바꾸면서 risk의 gold를 정의할 방법이 없어 헤드를 일부러 뺐고, 그 위에 얹혀 있던 `confidence_band` 실측치도 v4 전용이라 옮길 수 없다. 지금 내는 것은 `model_articles`(빈 리스트 가능)와 `needs_review`(지목 여부 = 이진)다.
 
