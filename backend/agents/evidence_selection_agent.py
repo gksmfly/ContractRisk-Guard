@@ -33,6 +33,7 @@ McNemar p=0.035. 작은 가중치(0.0003·0.001)도 시도했으나 폐지 대�
 """
 
 from backend.agents.state import ClauseState
+from backend.labeling.articles import ARTICLES, LAW_NAME
 from backend.api.schemas import LegalBasis
 from backend.api.services.retrieval import candidate_to_legal_basis
 
@@ -47,17 +48,37 @@ from backend.api.services.retrieval import candidate_to_legal_basis
 _FINAL_K = 5
 
 # 후보가 하나도 없을 때(DB 미가동·미적재 등)만 쓰는 최종 fallback.
-LEGAL_BASIS_FALLBACK: dict[str, list[dict]] = {
-    "해지_조항": [
-        {"law": "약관규제법", "article": "제9조",      "description": "고객에게 부당하게 불리한 해제·해지권 부여 조항 무효"},
-        {"law": "민법",      "article": "제543~553조", "description": "계약 해제·해지의 일반 요건 및 효과"},
-    ],
-    "책임제한_조항": [
-        {"law": "약관규제법", "article": "제7조",      "description": "사업자 책임 부당 면제·제한 조항 무효"},
-        {"law": "민법",      "article": "제750~766조", "description": "불법행위 손해배상 책임"},
-    ],
-    "해당없음": [],
-}
+def _fallback_for(articles: list[str]) -> list[dict]:
+    """검색이 아무것도 못 건졌을 때 붙이는 **참고 법령 안내.**
+
+    ## 판정이 아니라 안내다
+
+    배포 임계값에서 조 단위 성능은 상수와 구분되지 않는다(38.2% vs 상수 40.3%,
+    CI [-7.7,+3.4] 미판정). **그래서 "이 조항은 제9조 위반"이라고 말하지 않는다** —
+    사용자가 조문을 찾아볼 출발점만 제공한다. 정확도 주장이 아니므로 미판정이
+    문제가 되지 않는 형태다.
+
+    제품이 주장하는 것은 조항 지목이고 그건 측정돼 있다(조항 단위 재현 78.0% ·
+    오경보 2.6%). 조는 그 위에 얹는 참고값이다.
+
+    ## 법령 문구를 손으로 쓰지 않는다
+
+    조문 설명은 `labeling/articles.py`에서 가져온다 — 그건 원문 법령 JSON에서 생성된다.
+    예전 판본은 2-도메인 키에 설명을 직접 타이핑해 넣었는데, 법령을 손으로 옮겨 적으면
+    틀려도 아무도 모른다(이 프로젝트에서 실제로 겪은 실패다).
+    """
+    out: list[dict] = []
+    for a in articles:
+        meta = ARTICLES.get(a)
+        if not meta:
+            continue
+        out.append({
+            "law": LAW_NAME,
+            "article": a,
+            # 조 제목 + 첫 호. 원문에서 그대로 온다.
+            "description": meta["title"] + (f" — {meta['items'][0]}" if meta.get("items") else ""),
+        })
+    return out
 
 
 def evidence_selection_node(state: ClauseState) -> dict:
@@ -68,7 +89,8 @@ def evidence_selection_node(state: ClauseState) -> dict:
     selected = law_top + precedent_top
 
     if not selected:
-        fallback = LEGAL_BASIS_FALLBACK.get(state.get("domain", "해당없음"), [])
+        # 모델이 지목한 조를 쓴다. 없으면(=out_of_scope로 빠질 조항) 빈 목록이다.
+        fallback = _fallback_for(state.get("model_articles") or [])
         return {"legal_basis": [LegalBasis(**b) for b in fallback], "evidence_agreement": False}
 
     legal_basis = [candidate_to_legal_basis(c) for c in selected]

@@ -32,10 +32,20 @@ from backend.agents.state import ClauseState
 _compiled_graph = None
 
 
-def _route_after_analysis(state: ClauseState) -> list[str]:
-    if state.get("domain") == "해당없음":
+def _route_after_judgment(state: ClauseState) -> list[str]:
+    """**판단 주체가 모델이다** — 조를 하나도 못 지목하면 근거 수집으로 가지 않는다.
+
+    예전에는 `analysis` 직후 GPT의 2-도메인 값(`domain == "해당없음"`)으로 끊었다.
+    조 multi-label로 서빙을 바꾸면서 `analyze.py`의 게이트는 모델 출력으로 옮겼는데
+    **그래프가 그보다 먼저 GPT 기준으로 끊고 있었다** — judgment가 아예 실행되지 않아
+    게이트 이전이 반쪽이었다.
+
+    지금은 judgment를 항상 돌리고 그 결과로 가른다. 비용은 거의 없다 — 110M 인코더
+    forward 한 번(로컬)이고, 아낀 것은 검색·근거 브랜치 쪽이다.
+    """
+    if not state.get("model_articles"):
         return [END]
-    return ["judgment", "retrieval_strategy"]  # 판단·근거 브랜치로 동시 분기(fan-out)
+    return ["red_team", "retrieval_strategy"]  # 반박·근거 브랜치로 동시 분기(fan-out)
 
 
 def _route_after_verification(state: ClauseState) -> str:
@@ -51,15 +61,16 @@ def build_graph():
     graph.add_node("red_team", red_team_node)
     graph.add_node("evidence_verification", evidence_verification_node)
 
+    # analysis(GPT) → judgment(모델) 순서다. 판단을 낸 뒤 그 결과로 분기하므로
+    # `evidence_selection`에서 `model_articles`를 읽을 수 있다(예전 병렬 구조에서는
+    # 두 브랜치가 서로의 상태를 못 봤다).
     graph.add_edge(START, "analysis")
+    graph.add_edge("analysis", "judgment")
     graph.add_conditional_edges(
-        "analysis",
-        _route_after_analysis,
-        ["judgment", "retrieval_strategy", END],
+        "judgment",
+        _route_after_judgment,
+        ["red_team", "retrieval_strategy", END],
     )
-
-    # 판단 브랜치 — 근거 브랜치와 독립적으로 끝까지 실행됨
-    graph.add_edge("judgment", "red_team")
     graph.add_edge("red_team", END)
 
     # 근거 브랜치 — 재검색 루프 후 종료

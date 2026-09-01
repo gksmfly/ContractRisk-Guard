@@ -16,7 +16,7 @@ DB·CrossEncoder 불필요.
 """
 
 from backend.agents.evidence_selection_agent import (
-    _FINAL_K, evidence_selection_node, LEGAL_BASIS_FALLBACK,
+    _FINAL_K, evidence_selection_node, _fallback_for,
 )
 
 # DB의 metadata->>'court' 실측값에서 가져온 표기들(총 58종 중 대표).
@@ -41,7 +41,7 @@ class TestPrecedentOrdering:
         # 테스트를 같이 고치게 되면 "값이 바뀐 것"과 "동작이 깨진 것"을 구분할 수 없다.
         names = [f"cand{i}" for i in range(_FINAL_K + 3)]
         candidates = [_candidate(n) for n in names]
-        state = {"domain": "해지_조항", "retrieval_candidates": {"law": [], "precedent": candidates}}
+        state = {"model_articles": ["제9조"], "retrieval_candidates": {"law": [], "precedent": candidates}}
         result = evidence_selection_node(state)
         assert [b.article for b in result["legal_basis"]] == names[:_FINAL_K]
 
@@ -54,31 +54,31 @@ class TestPrecedentOrdering:
         courts = list(reversed(REAL_COURT_VALUES))
         assert len(courts) > _FINAL_K, "법원 표기 표본이 _FINAL_K보다 많아야 순서 검증이 의미 있다"
         candidates = [_candidate(f"c{i}", court=c) for i, c in enumerate(courts)]
-        state = {"domain": "해지_조항", "retrieval_candidates": {"law": [], "precedent": candidates}}
+        state = {"model_articles": ["제9조"], "retrieval_candidates": {"law": [], "precedent": candidates}}
         result = evidence_selection_node(state)
         assert [b.article for b in result["legal_basis"]] == [f"c{i}" for i in range(_FINAL_K)]
 
     def test_empty_precedents_falls_back(self):
-        state = {"domain": "해지_조항", "retrieval_candidates": {"law": [], "precedent": []}}
+        state = {"model_articles": ["제9조"], "retrieval_candidates": {"law": [], "precedent": []}}
         result = evidence_selection_node(state)
-        assert len(result["legal_basis"]) == len(LEGAL_BASIS_FALLBACK["해지_조항"])
+        assert len(result["legal_basis"]) == len(_fallback_for(["제9조"]))
 
 
 class TestEvidenceSelectionNode:
     def test_no_candidates_uses_fallback(self):
-        state = {"domain": "해지_조항", "retrieval_candidates": {"law": [], "precedent": []}}
+        state = {"model_articles": ["제9조"], "retrieval_candidates": {"law": [], "precedent": []}}
         result = evidence_selection_node(state)
-        assert len(result["legal_basis"]) == len(LEGAL_BASIS_FALLBACK["해지_조항"])
+        assert len(result["legal_basis"]) == len(_fallback_for(["제9조"]))
         assert result["evidence_agreement"] is False
 
     def test_missing_retrieval_candidates_key_uses_fallback(self):
-        state = {"domain": "책임제한_조항"}
+        state = {"model_articles": ["제7조"]}
         result = evidence_selection_node(state)
-        assert len(result["legal_basis"]) == len(LEGAL_BASIS_FALLBACK["책임제한_조항"])
+        assert len(result["legal_basis"]) == len(_fallback_for(["제7조"]))
 
     def test_evidence_agreement_true_when_any_selected_in_both(self):
         state = {
-            "domain": "해지_조항",
+            "model_articles": ["제9조"],
             "retrieval_candidates": {
                 "law": [{"chunk_id": "l1", "source": "law", "metadata": {"law_name": "민법", "article_no": "543"}, "text": "t", "in_both": True}],
                 "precedent": [],
@@ -89,7 +89,7 @@ class TestEvidenceSelectionNode:
 
     def test_evidence_agreement_false_when_none_in_both(self):
         state = {
-            "domain": "해지_조항",
+            "model_articles": ["제9조"],
             "retrieval_candidates": {
                 "law": [{"chunk_id": "l1", "source": "law", "metadata": {"law_name": "민법", "article_no": "543"}, "text": "t", "in_both": False}],
                 "precedent": [],

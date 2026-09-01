@@ -45,10 +45,16 @@ const REVIEW_CFG = {
   icon: AlertTriangle,
 };
 
-/** 조 목록을 "제7조 · 제9조 관련" 형태로. 비어 있으면 빈 문자열. */
+/** 조 목록을 **안내 형태**로. 비어 있으면 빈 문자열.
+ *
+ * "제9조 관련으로 보입니다"처럼 판정형으로 쓰지 않는다 — 배포 임계값에서 조 단위
+ * 성능은 상수(항상 {제6,8,9조})와 구분되지 않는다(38.2% vs 40.3%, CI [-7.7,+3.4] 미판정).
+ * 조를 정확히 맞혔다는 주장은 근거가 없으므로, 사용자가 조문을 찾아볼 **출발점**으로만
+ * 제시한다. 검증된 주장은 조항 지목뿐이다(조항 단위 재현 78.0% · 오경보 2.6%).
+ */
 export function articleHint(articles?: string[]): string {
   if (!articles?.length) return "";
-  return `${articles.join(" · ")} 관련으로 보입니다`;
+  return `관련 법령: 약관규제법 ${articles.join(" · ")}`;
 }
 
 // ── Highlight helper ───────────────────────────────────
@@ -317,15 +323,22 @@ function ClauseDetail({
         {/* Judgment summary */}
         {clause.reasoning && (
           <div className={`border ${cfg.ring} ${cfg.bg} p-4`}>
-            <p className={`text-xs font-bold ${cfg.color} mb-1.5`}>판단 요약</p>
+            <p className={`text-xs font-bold ${cfg.color} mb-1.5`}>확인이 필요한 이유</p>
             <p className="text-sm text-slate-700 leading-relaxed">{clause.reasoning}</p>
           </div>
         )}
 
-        {/* Legal basis */}
+        {/* 참고 법령 안내 — 판정이 아니다(articleHint 주석 참고) */}
+        {articleHint(clause.articles) && (
+          <p className="text-xs text-slate-500 font-mono">
+            {articleHint(clause.articles)}
+            <span className="ml-1.5 text-slate-400">· 조문 확인용 참고이며 위반 판정이 아닙니다</span>
+          </p>
+        )}
+
         {clause.legal_basis.length > 0 && (
           <div className="space-y-2">
-            <SectionLabel icon={Shield}>적용 법령 원문</SectionLabel>
+            <SectionLabel icon={Shield}>참고 법령 원문</SectionLabel>
             <div className="space-y-2">
               {clause.legal_basis.map((lb, i) => (
                 <LegalQuote
