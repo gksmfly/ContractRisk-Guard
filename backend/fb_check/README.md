@@ -48,7 +48,7 @@ Forward-Backward Consistency Check(FB-Check) — LLM 자동 라벨링 결과를 
 
 `--dry-scope`를 건너뛰지 말 것 — 08-24에 `--redo-reason snippet_not_found`가 의도한 146건이
 아니라 2,277건을 대상으로 잡아 $1짜리 작업이 $17이 될 뻔한 적이 있다
-(`_redo_ids` docstring 참고).
+(`_collect_redo_ids` docstring 참고).
 
 ### 재개 후 반드시 다시 돌려야 하는 것
 
@@ -69,25 +69,32 @@ NOISE→CLEAN)만으로도 출처 교락이 +0.9%p → +2.4%p로 2.7배가 됐�
 **Forward Labeling: 계약 조항(C) → 리스크 라벨(L) + 근거 문구(E)**
 - OpenAI 모델이 조항 전문을 보고 domain·risk_level·evidence_span·reasoning을 생성
 - few-shot 예시 3개(`_FEW_SHOT_EXAMPLES`)로 판단 기준 고정
-- 사용 모델은 하드코딩하지 않고 `.env`의 `FORWARD_MODEL`을 그대로 읽는다 (`os.environ["FORWARD_MODEL"]`,
-  기본값 없음 — `.env`에 없으면 즉시 에러). `run_forward(..., model=...)`로 호출 시점에 다른 모델(예:
-  `gpt-4o-mini`)로 오버라이드도 가능하다 (`llm_benchmark.py`가 이렇게 씀).
+- 사용 모델은 하드코딩하지 않는다. `run_forward(..., model=...)`로 **호출 시점에 받는다** —
+  `python -m backend.fb_check`는 `--model`을 **필수**로 요구하고 `.env`를 상속하지 않는다.
+- 모듈 최상단의 `FORWARD_MODEL`은 `lazy_env()`로 읽는다(없어도 `""`). **`os.environ[...]`을
+  쓰지 않는다** — `agents/analysis_agent.py`가 `run_forward`를 재사용해 서빙 import 체인이
+  이 모듈을 지나므로, 최상단에서 읽으면 그 변수가 없는 배포에서 서버 import가 통째로 죽는다
+  (2026-09-01 실제 사고). 검사는 `run_forward()` 진입 시 `require_env()`가 한다 —
+  "없으면 즉시 에러"라는 원래 의도는 그대로고, 터지는 시점만 import에서 사용으로 옮겼다.
 
 ### `backward_grounding.py`
-**Backward Grounding: E⊂C 검증 + KoELECTRA 독립 예측**
-- `snippet_exists`: evidence_span이 원문에 실제 존재하는지 문자열 포함 검사
-- `predict`: KoELECTRA로 조항의 domain·risk_level을 독립적으로 예측
+**Backward Grounding: E⊂C 인덱스 검증**
+- `check_snippet_exists`: evidence_span이 원문에 실제 존재하는지 확인(완전일치 → 레이아웃 제거 →
+  퍼지 0.85). **순수 문자열 검사이고 모델을 쓰지 않는다.**
+- `predict`(KoELECTRA)는 **판정에 쓰지 않는다** — `--record-backward`일 때 기록만 한다.
+  파이프라인의 산출물이 그 파이프라인의 검증자가 될 수 없어서다(Data Flywheel 철회).
 
 ### `consistency_verification.py`
 **Consistency Verification: 근거 문구(E)만으로 재라벨링(L′)**
 - OpenAI 모델이 evidence_span만 보고 독립적으로 재라벨링, `L == L′`이면 라벨 일관성 확인
-- 마찬가지로 `.env`의 `VERIFY_MODEL`을 읽는다 (하드코딩 없음)
+- 마찬가지로 `lazy_env()` + `require_env()` 패턴. 모델은 `run_verify(..., model=...)`로 받는다
 
 ### `__main__.py`
 **FB-Check 오케스트레이터** — 위 3단계를 조합해 CLEAN/NOISE 판정
 ```bash
-python -m backend.fb_check --sample 200 --gpu 1
+python -m backend.fb_check --model gpt-4o --sample 200 --gpu 1
 ```
+`--model`은 **필수**다 — `.env`의 `FORWARD_MODEL`은 서빙용이라 상속하지 않는다(위 재개 절차 참고).
 
 ### `llm_benchmark.py`
 **FB-Check — 오픈소스/저비용 LLM 대체 가능성 비교**

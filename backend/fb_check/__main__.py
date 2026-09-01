@@ -24,9 +24,10 @@ FB-Check 오케스트레이터 (Step 6)
     data/fb_check/noise.jsonl
     data/fb_check/fb_check_report.json
 
-사용법:
-    python -m backend.fb_check
-    python -m backend.labeling.fb_check --sample 200 --gpu 1
+사용법 (**`--model`은 필수다** — `.env`를 상속하지 않는다. 위 --model 주석 참고):
+    python -m backend.fb_check --model gpt-4o --dry-scope     # 범위·비용만 확인, API 호출 없음
+    python -m backend.fb_check --model gpt-4o --gpu 1         # 전량(체크포인트가 이어받는다)
+    python -m backend.fb_check --model gpt-4o --sample 200 --gpu 1
 """
 
 import argparse
@@ -43,7 +44,7 @@ from openai import OpenAI
 from transformers import ElectraTokenizerFast
 
 from backend.fb_check.api_errors import FatalAPIError
-from backend.fb_check.backward_grounding import MATCHER_VERSION, load_model, predict, snippet_exists
+from backend.fb_check.backward_grounding import MATCHER_VERSION, check_snippet_exists, load_model, predict
 from backend.fb_check.consistency_verification import run_verify
 from backend.fb_check.forward_labeling import run_forward
 from backend.model.electra import DualHeadElectra
@@ -81,7 +82,7 @@ MODEL_DIR = Path(os.environ.get("MODEL_DIR",  str(PROJECT_ROOT / "models/v1")))
 OUT_DIR   = Path(os.environ.get("FB_OUT_DIR", str(PROJECT_ROOT / "data/fb_check")))
 
 
-def stratified_limit(records: list[dict], limit: int, seed: int = 42) -> list[dict]:
+def apply_stratified_limit(records: list[dict], limit: int, seed: int = 42) -> list[dict]:
     """스모크용 표본 — **단일조항 문서와 다조항 문서를 반반** 뽑는다.
 
     앞선 라벨링 파일럿은 `조항이 1개인 사건`만 봤다. 그건 파서가 깨끗하게 동작한 구간이라,
@@ -161,9 +162,9 @@ def run_fb_check(
     })
 
     # --- Backward Grounding: E ⊂ C 검증 + KoELECTRA ---
-    # `snippet_exists`(E⊂C)는 순수 문자열 검사라 모델이 필요 없다 — 논문이 정의한
+    # `check_snippet_exists`(E⊂C)는 순수 문자열 검사라 모델이 필요 없다 — 논문이 정의한
     # Backward Grounding의 역할이 바로 이 인덱스 검증이다.
-    span_exists = snippet_exists(clause_text, evidence_span)
+    span_exists = check_snippet_exists(clause_text, evidence_span)
     result["snippet_exists"] = span_exists
     result["snippet_matcher"] = MATCHER_VERSION
 
@@ -402,7 +403,7 @@ def log_scope(pending: list[dict], records: list[dict], done: int, redo: frozens
                        "재처리 대상만 원하면 --only-redo를 붙일 것")
 
 
-def _redo_ids(results_path: Path, redo_reasons: frozenset[str]) -> set[str]:
+def _collect_redo_ids(results_path: Path, redo_reasons: frozenset[str]) -> set[str]:
     """재처리 대상 chunk_id만 모은다 — `--only-redo`용.
 
     `--redo-reason`만으로는 부족하다. `_load_checkpoint`가 ERROR 레코드를 **재시도 대상**
@@ -476,7 +477,7 @@ def _load_checkpoint(results_path: Path, expect: dict[str, str] | None = None,
             if row.get("status") == "ERROR":
                 continue           # 재시도 대상
             # 판정 **규칙**이 고쳐졌을 때 해당 사유로 버려진 건만 다시 태운다.
-            # 실제 사례: `snippet_exists`가 공백을 압축만 하고 제거하지 않아 PDF 줄바꿈이
+            # 실제 사례: `check_snippet_exists`가 공백을 압축만 하고 제거하지 않아 PDF 줄바꿈이
             # 단어를 쪼갠 건(`영업정 지`)을 전부 놓쳤다 — E⊂C 실패율 12.5% 중 9.8%p가
             # 매칭 버그였다. 그 건들은 게이트에서 조기 반환돼 verify_*가 비어 있으므로
             # 오프라인 재계산으로는 못 살리고 verify를 다시 불러야 한다.
@@ -591,10 +592,19 @@ def main() -> None:
                              "이어서 전량을 돌리면 resume이 그 뒤부터 이어받는다")
     parser.add_argument("--gpu",       type=int, default=0,    help="GPU 인덱스")
     parser.add_argument("--save-every",type=int, default=50,   help="clean/noise 중간 저장 주기")
-    parser.add_argument("--model", default=None,
-                        help="forward/verify에 쓸 모델. 기본은 .env의 FORWARD_MODEL/VERIFY_MODEL. "
-                             "**명시하는 편이 안전하다** — 스모크 300건이 .env의 gpt-4o-mini로 돌아 "
-                             "빈 배열 63%%가 나온 적이 있다(mini는 9유형 분류에 부적합 확정)")
+    # **필수다. `.env`를 기본값으로 상속하지 않는다.**
+    #
+    # 예전에는 `default=None`이라 안 주면 `.env`의 FORWARD_MODEL/VERIFY_MODEL을 썼다.
+    # 그 기본값은 **서빙용**(gpt-4o-mini)이고 라벨링에는 부적합이 확정돼 있다 —
+    # 9유형 분류에서 빈 배열 66% vs gpt-4o 39%(2026-08-23 실측). 실제로 스모크 300건이
+    # 그렇게 돌아 빈 배열 63%가 나온 적이 있다.
+    #
+    # 더 나쁜 건 **조용하다**는 점이다. 기존 2,335건은 전량 gpt-4o라, mini로 재개하면
+    # stale 가드가 전부 재처리 대상으로 잡아 비용이 두 배가 된다($15.98 → $33.51).
+    # 경고 주석으로는 두 번 다 못 막았으므로 **구조로 막는다** — 이제 안 주면 실행 자체가 안 된다.
+    parser.add_argument("--model", required=True, metavar="모델명",
+                        help="forward/verify에 쓸 모델(**필수**). 라벨링은 `--model gpt-4o`. "
+                             ".env의 FORWARD_MODEL은 서빙용이라 여기서 상속하지 않는다")
     parser.add_argument("--dry-scope", action="store_true",
                         help="처리 대상 건수·출처·예상 비용만 찍고 종료한다(API 호출 없음). "
                              "범위를 바꾸는 플래그(--limit/--sample/--redo-reason)를 쓸 때 "
@@ -602,7 +612,7 @@ def main() -> None:
     parser.add_argument("--only-redo", action="store_true",
                         help="--redo-reason 대상만 처리하고 미처리분은 건드리지 않는다. "
                              "이걸 안 주면 ERROR로 남은 미처리분까지 함께 돈다 "
-                             "(_redo_ids 참고 — 146건 작업이 2,277건이 된다)")
+                             "(_collect_redo_ids 참고 — 146건 작업이 2,277건이 된다)")
     parser.add_argument("--redo-reason", default="", metavar="사유[,사유…]",
                         help="해당 noise_reason으로 버려진 건만 재처리한다 "
                              "(판정 규칙을 고친 뒤 그 부분집합만 다시 태울 때). "
@@ -620,7 +630,7 @@ def main() -> None:
     if args.sample > 0:
         records = records[:args.sample]
     if args.limit > 0:
-        records = stratified_limit(records, args.limit)
+        records = apply_stratified_limit(records, args.limit)
     else:
         # **전량도 섞는다.** seed_labeled.jsonl은 FTC 전부 → 표준계약서 전부 순으로 쓰여 있어,
         # 파일 순서대로 돌리면 두 가지가 깨진다:
@@ -651,13 +661,13 @@ def main() -> None:
 
     # 체크포인트: 이미 처리된 건 건너뜀
     from backend.fb_check.consistency_verification import PROMPT_VERSION as VER_PROMPT
-    from backend.fb_check.consistency_verification import VERIFY_MODEL
-    from backend.fb_check.forward_labeling import FORWARD_MODEL
     from backend.fb_check.forward_labeling import PROMPT_VERSION as FWD_PROMPT
+    # `.env`의 FORWARD_MODEL/VERIFY_MODEL로 **폴백하지 않는다** — `--model`이 필수라
+    # 항상 값이 있고, 그 폴백이 정확히 막으려던 함정이었다(위 --model 주석 참고).
     expect = {
-        "forward_model":  args.model or FORWARD_MODEL,
+        "forward_model":  args.model,
         "forward_prompt": FWD_PROMPT,
-        "verify_model":   args.model or VERIFY_MODEL,
+        "verify_model":   args.model,
         "verify_prompt":  VER_PROMPT,
     }
     # 두 단계 모델을 **각각** 찍는다 — 하나만 찍으면 forward/verify가 갈린 걸 못 본다.
@@ -675,7 +685,7 @@ def main() -> None:
     if args.only_redo:
         if not redo:
             raise SystemExit("--only-redo는 --redo-reason과 함께 써야 한다")
-        targets = _redo_ids(results_path, redo)
+        targets = _collect_redo_ids(results_path, redo)
         pending = [r for r in pending if r["chunk_id"] in targets]
         logger.info("  ★ --only-redo: 재처리 대상만 처리한다 (미처리분은 건드리지 않는다)")
     log_scope(pending, records, len(done_ids), redo, args.only_redo)

@@ -10,9 +10,11 @@
 
 그래서 스모크는 실제 파이프라인을 300건에서 멈춰 돌린다:
 
-    python -m backend.fb_check --limit 300     # 전량과 같은 경로
-    python -m backend.eval.smoke_check         # 이 스크립트로 채점
-    python -m backend.fb_check                 # 통과하면 resume이 301번부터 이어받는다
+    python -m backend.fb_check --model gpt-4o --limit 300   # 전량과 같은 경로
+    python -m backend.eval.smoke_check                      # 이 스크립트로 채점
+    python -m backend.fb_check --model gpt-4o               # 통과하면 resume이 301번부터 이어받는다
+
+`--model`은 필수다 — 예전에 이 스모크가 `.env`의 gpt-4o-mini로 돌아 빈 배열 63%가 나왔다.
 
 **스모크 비용이 0이 된다** — 300건이 버려지는 게 아니라 전량의 첫 300건이 된다.
 그리고 resume이 실전에서 한 번 검증되고 들어간다(중간에 Ctrl+C를 넣어보면 깨진 줄
