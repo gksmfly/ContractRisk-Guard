@@ -1,4 +1,4 @@
-# tests/test_evidence_selection_agent.py
+# tests/agents/test_evidence_selection_agent.py
 """
 backend/agents/evidence_selection_agent.py의 순수 로직(후보 선택, fallback) 단위 테스트.
 DB·CrossEncoder 불필요.
@@ -17,7 +17,7 @@ DB·CrossEncoder 불필요.
 
 from backend.agents.evidence_selection_agent import (
     _FINAL_K,
-    _fallback_for,
+    _build_fallback,
     evidence_selection_node,
 )
 
@@ -38,7 +38,7 @@ def _candidate(chunk_id: str, court: str = "", in_both: bool = False) -> dict:
 class TestPrecedentOrdering:
     """판례는 RRF 순서를 그대로 써야 한다 — 재랭킹을 되살리는 변경에 대한 회귀 방지."""
 
-    def test_rrf_order_is_preserved(self):
+    def test_rrf_order_is_preserved(self) -> None:
         # _FINAL_K가 몇이든 성립하도록 후보를 넉넉히 만든다 — 상수를 조정할 때마다
         # 테스트를 같이 고치게 되면 "값이 바뀐 것"과 "동작이 깨진 것"을 구분할 수 없다.
         names = [f"cand{i}" for i in range(_FINAL_K + 3)]
@@ -48,7 +48,7 @@ class TestPrecedentOrdering:
         # 법령은 예측한 조에서 매핑되므로 검색 순서와 무관하다. RRF 순서는 판례 쪽에서 본다.
         assert [b.article for b in result["precedent_refs"]] == names[:_FINAL_K]
 
-    def test_real_world_court_values_do_not_reorder(self):
+    def test_real_world_court_values_do_not_reorder(self) -> None:
         """실제 DB 표기값을 넣어도 순서가 바뀌지 않는다.
 
         대법원이 뒤에 있어도 앞으로 끌어올려지면 안 된다 — 실측에서 그 가산이
@@ -61,25 +61,25 @@ class TestPrecedentOrdering:
         result = evidence_selection_node(state)
         assert [b.article for b in result["precedent_refs"]] == [f"c{i}" for i in range(_FINAL_K)]
 
-    def test_empty_precedents_falls_back(self):
+    def test_empty_precedents_falls_back(self) -> None:
         state = {"model_articles": ["제9조"], "retrieval_candidates": {"law": [], "precedent": []}}
         result = evidence_selection_node(state)
-        assert len(result["legal_basis"]) == len(_fallback_for(["제9조"]))
+        assert len(result["legal_basis"]) == len(_build_fallback(["제9조"]))
 
 
 class TestEvidenceSelectionNode:
-    def test_no_candidates_uses_fallback(self):
+    def test_no_candidates_uses_fallback(self) -> None:
         state = {"model_articles": ["제9조"], "retrieval_candidates": {"law": [], "precedent": []}}
         result = evidence_selection_node(state)
-        assert len(result["legal_basis"]) == len(_fallback_for(["제9조"]))
+        assert len(result["legal_basis"]) == len(_build_fallback(["제9조"]))
         assert result["evidence_agreement"] is False
 
-    def test_missing_retrieval_candidates_key_uses_fallback(self):
+    def test_missing_retrieval_candidates_key_uses_fallback(self) -> None:
         state = {"model_articles": ["제7조"]}
         result = evidence_selection_node(state)
-        assert len(result["legal_basis"]) == len(_fallback_for(["제7조"]))
+        assert len(result["legal_basis"]) == len(_build_fallback(["제7조"]))
 
-    def test_evidence_agreement_true_when_any_selected_in_both(self):
+    def test_evidence_agreement_true_when_any_selected_in_both(self) -> None:
         state = {
             "model_articles": ["제9조"],
             "retrieval_candidates": {
@@ -90,7 +90,7 @@ class TestEvidenceSelectionNode:
         result = evidence_selection_node(state)
         assert result["evidence_agreement"] is True
 
-    def test_evidence_agreement_false_when_none_in_both(self):
+    def test_evidence_agreement_false_when_none_in_both(self) -> None:
         state = {
             "model_articles": ["제9조"],
             "retrieval_candidates": {

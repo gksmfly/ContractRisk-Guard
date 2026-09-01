@@ -1,3 +1,4 @@
+# backend/db/migrations/versions/3d077f342ac4_analyses_table_for_saved_results.py
 """analyses table for saved results
 
 로그인한 사용자가 "저장하기"를 누른 분석 결과를 담는 개인 히스토리 테이블.

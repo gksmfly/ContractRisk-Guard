@@ -60,8 +60,9 @@
 
 import json
 import math
+from typing import Any
 
-from backend.api.services.retrieval import _get_cached_embedder, _reciprocal_rank_fusion
+from backend.api.services.retrieval import _fuse_reciprocal_rank, _get_cached_embedder
 from backend.db.connection import get_conn
 from backend.db.loader import embed_texts
 from backend.eval.domain_filter_compare import (
@@ -88,7 +89,7 @@ _KS = (1, 2, 3, 5, 10, 20)
 _SUBSTANTIVE = (6, 14)   # 약관규제법에서 "이 조항이 불공정한가"를 정하는 실질 규범 구간
 
 
-def _dense_range(cur, law_name: str, vec_literal: str, top_k: int, rng: tuple[int, int]) -> list[tuple]:
+def _dense_range(cur: Any, law_name: str, vec_literal: str, top_k: int, rng: tuple[int, int]) -> list[tuple]:
     """`_dense_with_score`와 같은 조건에 조 번호 범위 필터만 더한다."""
     cur.execute(
         """
@@ -105,7 +106,7 @@ def _dense_range(cur, law_name: str, vec_literal: str, top_k: int, rng: tuple[in
     return cur.fetchall()
 
 
-def _sparse_range(cur, law_name: str, query_text: str, top_k: int, rng: tuple[int, int],
+def _sparse_range(cur: Any, law_name: str, query_text: str, top_k: int, rng: tuple[int, int],
                   threshold: float = 0.10) -> list[tuple]:
     """`_sparse_with_score`와 같은 조건(임계값 0.10, `%%` 연산자)에 조 범위 필터만 더한다."""
     cur.execute("SET pg_trgm.similarity_threshold = %s", (threshold,))
@@ -133,7 +134,7 @@ def _load_exaone_predictions() -> dict[str, list[str]]:
     return {r["case_name"]: r["predicted_laws"] for r in rep["per_query"]}
 
 
-def _first_gold_rank(cur, embedder, query_text: str, laws: list[str] | None,
+def _first_gold_rank(cur: Any, embedder: Any, query_text: str, laws: list[str] | None,
                      gold: set[tuple], candidate_k: int,
                      article_range: tuple[int, int] | None = None) -> int | None:
     """정답 조문이 RRF 순위에서 처음 등장하는 위치(1-base). 못 찾으면 None.
@@ -145,7 +146,7 @@ def _first_gold_rank(cur, embedder, query_text: str, laws: list[str] | None,
 
     if laws is None:
         # 필터 없음 — 법령 전체를 한 풀에서 경쟁시킨다(현행 production 기준선).
-        ranked = _reciprocal_rank_fusion(
+        ranked = _fuse_reciprocal_rank(
             _search_dense(cur, ["law"], lit, candidate_k),
             _search_sparse(cur, ["law"], query_text, candidate_k, 0.10),
         )
@@ -160,7 +161,7 @@ def _first_gold_rank(cur, embedder, query_text: str, laws: list[str] | None,
             else:
                 dense.extend(_dense_with_score(cur, law, lit, candidate_k))
                 sparse.extend(_sparse_with_score(cur, law, query_text, candidate_k))
-        ranked = _reciprocal_rank_fusion(
+        ranked = _fuse_reciprocal_rank(
             [r[:4] for r in sorted(dense,  key=lambda x: x[4], reverse=True)],
             [r[:4] for r in sorted(sparse, key=lambda x: x[4], reverse=True)],
         )

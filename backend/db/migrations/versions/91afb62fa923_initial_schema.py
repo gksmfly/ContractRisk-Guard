@@ -1,3 +1,4 @@
+# backend/db/migrations/versions/91afb62fa923_initial_schema.py
 """initial schema
 
 기존 backend/db/loader.py의 DDL(chunks/seed_clauses/clean_clauses/noise_clauses)을

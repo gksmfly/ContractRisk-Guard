@@ -1,6 +1,7 @@
 # backend/api/routers/analyze.py
 import io
 import json
+from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from fastapi.responses import StreamingResponse
@@ -37,14 +38,14 @@ def health(response: Response) -> dict[str, str]:
 
 
 @router.post("/api/analyze", response_model=AnalyzeResponse, dependencies=_protected)
-async def analyze(body: AnalyzeRequest):
+async def analyze(body: AnalyzeRequest) -> AnalyzeResponse:
     if not body.text or len(body.text.strip()) < 20:
         raise HTTPException(status_code=400, detail="계약서 내용이 너무 짧습니다.")
     return await run_analyze(body.text)
 
 
 @router.post("/api/analyze/stream", dependencies=_protected)
-async def analyze_stream(body: AnalyzeRequest):
+async def analyze_stream(body: AnalyzeRequest) -> StreamingResponse:
     if not body.text or len(body.text.strip()) < 20:
         raise HTTPException(status_code=400, detail="계약서 내용이 너무 짧습니다.")
 
@@ -53,7 +54,7 @@ async def analyze_stream(body: AnalyzeRequest):
     # 시작되면 상태 코드를 더 이상 바꿀 수 없다.
     events = await run_analyze_stream(body.text)
 
-    async def sse():
+    async def sse() -> AsyncIterator[str]:
         # 클라이언트가 스트리밍 도중 연결을 끊으면 Starlette은 이 바깥
         # 제너레이터의 aclose()만 호출한다 — async for가 GeneratorExit로 그냥
         # 중단되면 안쪽 제너레이터(events)의 aclose()는 자동으로 안 불려서,
@@ -104,20 +105,20 @@ async def _extract_pdf_text(file: UploadFile) -> str:
 
 
 @router.post("/api/analyze-pdf", response_model=AnalyzeResponse, dependencies=_protected)
-async def analyze_pdf(file: UploadFile = File(...)):
+async def analyze_pdf(file: UploadFile = File(...)) -> AnalyzeResponse:
     text = await _extract_pdf_text(file)
     return await run_analyze(text)
 
 
 @router.post("/api/analyze-pdf/stream", dependencies=_protected)
-async def analyze_pdf_stream(file: UploadFile = File(...)):
+async def analyze_pdf_stream(file: UploadFile = File(...)) -> StreamingResponse:
     text = await _extract_pdf_text(file)
 
     # 검증(확장자·크기·파싱)과 세마포어 획득은 여기서 끝낸다 — StreamingResponse가
     # 시작되면 상태 코드를 더 이상 바꿀 수 없으므로 실패 경로는 첫 바이트 전에 처리한다.
     events = await run_analyze_stream(text)
 
-    async def sse():
+    async def sse() -> AsyncIterator[str]:
         # analyze_stream과 동일한 이유 — 연결 끊김 시 세마포어를 즉시 반납하려면
         # 안쪽 제너레이터를 명시적으로 닫아야 한다.
         try:

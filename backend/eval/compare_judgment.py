@@ -30,7 +30,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from sklearn.metrics import classification_report, confusion_matrix
 
-from backend.agents.judgment_agent import electra_predict
+from backend.agents.judgment_agent import predict_articles
 from backend.eval.retrieval_judgment import retrieval_judge
 from backend.fb_check.forward_labeling import run_forward
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
@@ -79,7 +79,7 @@ def run_koelectra(records: list[dict], span_cache: dict[str, str]) -> list[str |
     preds = []
     for r in records:
         query = span_cache.get(r["chunk_id"]) or r["text"]
-        _, risk, _ = electra_predict(query)
+        _, risk, _ = predict_articles(query)
         preds.append(risk)
     return preds
 

@@ -50,6 +50,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -95,7 +96,7 @@ def _span_by_text() -> dict[str, str]:
     return out
 
 
-def _probs(records: list[dict], model, tokenizer, device, names, bs: int, max_len: int) -> np.ndarray:
+def _probs(records: list[dict], model: Any, tokenizer: Any, device: Any, names: list[str], bs: int, max_len: int) -> np.ndarray:
     ds = ArticleDataset(records, tokenizer, max_len, names)
     P = []
     with torch.no_grad():
@@ -122,7 +123,7 @@ def _paired_ci(d: np.ndarray, seed: int = 42) -> tuple[float, float, float]:
     return float(d.mean() * 100), float(boot[125]), float(boot[4875])
 
 
-def main() -> None:
+def main() -> dict:
     ap = argparse.ArgumentParser(description="운영 입력(evidence_span) vs 학습 입력(원문) 정합 측정")
     ap.add_argument("model_dir")
     ap.add_argument("--gpu", type=int, default=1)
@@ -165,7 +166,7 @@ def main() -> None:
     tokenizer = AutoTokenizer.from_pretrained(str(model_dir))
     model = ArticleMultiLabelElectra.load(model_dir).to(device).eval()
 
-    def as_recs(texts, srcs):
+    def as_recs(texts: list[str], srcs: list[str]) -> list[dict]:
         return [{"text": t, "articles": s["articles"], "group": "g"} for t, s in zip(texts, srcs)]
 
     # 세 조건. serving은 `judgment_node`의 규칙 그대로: evidence_span or clause
@@ -180,7 +181,7 @@ def main() -> None:
     N_serv = _probs(as_recs(n_serv, neg), model, tokenizer, device, names, args.batch_size, args.max_len)
     labels = np.array([[1.0 if a in g["articles"] else 0.0 for a in names] for g in gold])
 
-    def row(P, N):
+    def row(P: Any, N: Any) -> dict:
         return {
             "clause_recall": float(np.mean((P >= thr).any(1))) if len(P) else 0.0,
             "disagree_with_gpt": float(np.mean((N >= thr).any(1))) if len(N) else 0.0,

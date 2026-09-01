@@ -97,6 +97,8 @@ survey 문서 참고.
 관련된다"로 읽어야 한다.
 """
 
+from typing import Any
+
 from backend.api.schemas import LegalBasis
 from backend.db.connection import get_conn
 from backend.db.loader import embed_texts, get_embedder
@@ -113,7 +115,7 @@ _embedder = None
 _law_names_cache: list[str] | None = None
 
 
-def _get_cached_embedder():
+def _get_cached_embedder() -> Any:
     global _embedder
     if _embedder is None:
         _embedder = get_embedder()
@@ -139,7 +141,7 @@ def _truncate(text: str, max_len: int = 100) -> str:
     return text[:max_len] + "..." if len(text) > max_len else text
 
 
-def _law_to_legal_basis(metadata: dict, text: str) -> LegalBasis:
+def _convert_law_to_basis(metadata: dict, text: str) -> LegalBasis:
     """법령 청크를 인용 형태로 바꾼다.
 
     `article_label`은 가지 조문("제19조의2")을 구분해 담는다 — `article_no`만 쓰면
@@ -155,7 +157,7 @@ def _law_to_legal_basis(metadata: dict, text: str) -> LegalBasis:
     return LegalBasis(law=metadata.get("law_name", ""), article=article, description=_truncate(text))
 
 
-def _precedent_to_legal_basis(metadata: dict, text: str) -> LegalBasis:
+def _convert_precedent_to_basis(metadata: dict, text: str) -> LegalBasis:
     metadata = metadata or {}
     court     = metadata.get("court", "")
     case_name = metadata.get("case_name", "")
@@ -165,14 +167,14 @@ def _precedent_to_legal_basis(metadata: dict, text: str) -> LegalBasis:
     return LegalBasis(law=law, article=metadata.get("case_number", ""), description=_truncate(text))
 
 
-def candidate_to_legal_basis(candidate: dict) -> LegalBasis:
+def convert_candidate_to_basis(candidate: dict) -> LegalBasis:
     """fetch_candidates()가 반환한 후보 dict 하나를 LegalBasis로 변환한다."""
     if candidate["source"] == "law":
-        return _law_to_legal_basis(candidate["metadata"], candidate["text"])
-    return _precedent_to_legal_basis(candidate["metadata"], candidate["text"])
+        return _convert_law_to_basis(candidate["metadata"], candidate["text"])
+    return _convert_precedent_to_basis(candidate["metadata"], candidate["text"])
 
 
-def _search_dense(cur, sources: list[str], vec_literal: str, top_k: int) -> list[tuple[str, str, dict, str]]:
+def _search_dense(cur: Any, sources: list[str], vec_literal: str, top_k: int) -> list[tuple[str, str, dict, str]]:
     cur.execute(
         """
         SELECT chunk_id, source, metadata, text
@@ -187,7 +189,7 @@ def _search_dense(cur, sources: list[str], vec_literal: str, top_k: int) -> list
 
 
 def _search_sparse(
-    cur, sources: list[str], query_text: str, top_k: int, similarity_threshold: float = 0.1,
+    cur: Any, sources: list[str], query_text: str, top_k: int, similarity_threshold: float = 0.1,
 ) -> list[tuple[str, str, dict, str]]:
     """pg_trgm 문자 3-gram 유사도 기반 어휘(Sparse) 검색.
 
@@ -220,7 +222,7 @@ _ARTICLE_RANGE_SQL = (
 
 
 def _search_dense_one_law(
-    cur, law_name: str, vec_literal: str, top_k: int, article_range: tuple[int, int] | None = None,
+    cur: Any, law_name: str, vec_literal: str, top_k: int, article_range: tuple[int, int] | None = None,
 ) -> list[tuple[str, str, dict, str, float]]:
     """단일 law_name 파티션 안에서만 dense 검색 — 실제 코사인 유사도 점수도 같이 반환한다
     (파티션을 넘어 병합할 때 순위가 아니라 점수로 비교해야 하기 때문, 아래 docstring 참고)."""
@@ -240,7 +242,7 @@ def _search_dense_one_law(
 
 
 def _search_sparse_one_law(
-    cur, law_name: str, query_text: str, top_k: int, similarity_threshold: float = 0.1,
+    cur: Any, law_name: str, query_text: str, top_k: int, similarity_threshold: float = 0.1,
     article_range: tuple[int, int] | None = None,
 ) -> list[tuple[str, str, dict, str, float]]:
     cur.execute("SET pg_trgm.similarity_threshold = %s", (similarity_threshold,))
@@ -260,7 +262,7 @@ def _search_sparse_one_law(
 
 
 def _search_law_partitioned(
-    cur, vec_literal: str, query_text: str, top_k: int, sparse_similarity_threshold: float,
+    cur: Any, vec_literal: str, query_text: str, top_k: int, sparse_similarity_threshold: float,
     law_names: list[str], article_range: tuple[int, int] | None = None,
 ) -> tuple[list[tuple], list[tuple]]:
     """법령별로 따로 top_k를 확보한 뒤 실제 유사도 점수로 재병합한다.
@@ -288,7 +290,7 @@ def _search_law_partitioned(
     return dense_sorted, sparse_sorted
 
 
-def _reciprocal_rank_fusion(
+def _fuse_reciprocal_rank(
     dense_rows: list[tuple[str, str, dict, str]],
     sparse_rows: list[tuple[str, str, dict, str]],
     k: int = 60,
@@ -372,7 +374,7 @@ def fetch_candidates(
                 sources = ["law", "precedent"]
                 dense  = _search_dense(cur, sources, vec_literal, top_k_per_source)
                 sparse = _search_sparse(cur, sources, query_text, top_k_per_source, sparse_similarity_threshold)
-                fused = _reciprocal_rank_fusion(dense, sparse)
+                fused = _fuse_reciprocal_rank(dense, sparse)
                 result = {"law": [], "precedent": []}
                 for c in fused:
                     result.setdefault(c["source"], []).append(c)
@@ -387,7 +389,7 @@ def fetch_candidates(
                     else:
                         dense  = _search_dense(cur, [source], vec_literal, top_k_per_source)
                         sparse = _search_sparse(cur, [source], query_text, top_k_per_source, sparse_similarity_threshold)
-                    result[source] = _reciprocal_rank_fusion(dense, sparse)
+                    result[source] = _fuse_reciprocal_rank(dense, sparse)
     except Exception as e:
         logger.warning(f"법령/판례 후보 검색 실패, 빈 결과 반환: {e}")
         return {"law": [], "precedent": []}
@@ -405,7 +407,7 @@ def search_legal_basis(query_text: str, top_k: int = 2) -> list[LegalBasis]:
     candidates = fetch_candidates(query_text, top_k_per_source=_CANDIDATE_K)
     law_top       = candidates.get("law", [])[:top_k]
     precedent_top = candidates.get("precedent", [])[:top_k]
-    return [candidate_to_legal_basis(c) for c in law_top + precedent_top]
+    return [convert_candidate_to_basis(c) for c in law_top + precedent_top]
 
 
 # 조항 추천이 검색할 수 있는 테이블 — 문자열을 SQL에 직접 넣으므로 화이트리스트로 제한한다.

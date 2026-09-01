@@ -13,6 +13,8 @@ Cross-Encoder 재랭킹까지 얹은 "종합 콤보" — 각각 33%, 33%까지 �
 실행: .venv/bin/python -m backend.eval.combo_best_compare
 """
 
+from typing import Any
+
 from sentence_transformers import CrossEncoder
 
 from backend.api.services.retrieval import _get_cached_embedder
@@ -46,7 +48,7 @@ _FEWSHOT = [
 ]
 
 
-def combo_best_hit(cur, embedder, reranker: CrossEncoder, clause: str, law_names: list[str], system: str, correct_pairs: list[tuple]) -> bool:
+def combo_best_hit(cur: Any, embedder: Any, reranker: CrossEncoder, clause: str, law_names: list[str], system: str, correct_pairs: list[tuple]) -> bool:
     content = f"계약 조항:\n{clause[:800]}"
     result = generate_json(system, content, max_new_tokens=200, fewshot=_FEWSHOT)
     reformed = (result or {}).get("reformed_query", "").strip() or clause

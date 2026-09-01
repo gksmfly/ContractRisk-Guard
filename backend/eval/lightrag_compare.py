@@ -44,7 +44,7 @@ _QUERY_LOG_EVERY = 50
 
 def build_ground_truth(law_recs: list[dict], n_cases: int, seed: int = 42) -> list[dict]:
     """FTC 근거_법령 전체(3개 법령)를 파싱해 평가 쿼리를 만든다. 정답 조문의 실제 본문도 같이 붙인다."""
-    article_text = {(r["metadata"]["law_name"], r["metadata"]["article_no"]): r["text"] for r in law_recs}
+    extract_article_text = {(r["metadata"]["law_name"], r["metadata"]["article_no"]): r["text"] for r in law_recs}
 
     with open(FTC_PATH, encoding="utf-8") as f:
         cases = json.load(f).get("사례", [])
@@ -60,14 +60,14 @@ def build_ground_truth(law_recs: list[dict], n_cases: int, seed: int = 42) -> li
             m = _PAT.match(g.replace("\n", " ").strip())
             if m:
                 pairs.add((m.group(1).strip(), m.group(2)))
-        pairs = {p for p in pairs if p in article_text}  # 코퍼스에 실제 있는 것만
+        pairs = {p for p in pairs if p in extract_article_text}  # 코퍼스에 실제 있는 것만
         if not pairs:
             continue
         candidates.append({
             "case_name": case.get("사건명", ""),
             "clause": str(clauses[0])[:300],
             "correct_pairs": sorted(pairs),
-            "correct_texts": [article_text[p][:60] for p in pairs],  # 판정용 — 조문 본문 앞부분
+            "correct_texts": [extract_article_text[p][:60] for p in pairs],  # 판정용 — 조문 본문 앞부분
         })
 
     random.seed(seed)

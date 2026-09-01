@@ -9,7 +9,7 @@
 ### `electra.py`
 
 **`ArticleMultiLabelElectra`** (프로덕션) — 같은 인코더 위에 **조 multi-label 헤드** 하나. 한 조항이 여러 조에 걸리는 게 정상이라(공정위 의결서 기준 케이스당 평균 2.08개) softmax가 아니라 sigmoid + `BCEWithLogitsLoss`를 쓴다.
-- 출력 차원이 고정 상수가 아니라 **데이터가 정한 조 목록** 길이 — `article_labels(counts, min_support=5)`가 support 기준으로 고르고, 접힌 조(제13조)는 예측 대상에서 빠진다
+- 출력 차원이 고정 상수가 아니라 **데이터가 정한 조 목록** 길이 — `select_article_labels(counts, min_support=5)`가 support 기준으로 고르고, 접힌 조(제13조)는 예측 대상에서 빠진다
 - `risk_level` 헤드는 **일부러 없다**. 조에서 risk를 유도하는 규칙을 지금 정하면 또 근거 없는 상수가 되고, risk의 gold 자체가 미정이다
 - `save()`/`load()`가 짝이다 — 조 이름·임계값까지 함께 저장해 출력 차원과 조 이름의 대응이 깨지지 않게 한다
 

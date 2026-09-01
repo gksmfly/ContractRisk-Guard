@@ -34,6 +34,7 @@ KoELECTRA 추론이 검색의 임계 경로에 들어왔다. 다만 조항당 �
 """
 
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 from backend.agents.analysis_agent import analysis_node
 from backend.agents.evidence_selection_agent import evidence_selection_node
@@ -66,7 +67,7 @@ def _route_after_verification(state: ClauseState) -> str:
     return "retrieval_strategy" if state.get("should_retry") else END
 
 
-def build_graph():
+def build_graph() -> CompiledStateGraph:
     graph = StateGraph(ClauseState)
     graph.add_node("analysis", analysis_node)
     graph.add_node("retrieval_strategy", retrieval_strategy_node)
@@ -99,7 +100,7 @@ def build_graph():
     return graph.compile()
 
 
-def get_graph():
+def get_graph() -> CompiledStateGraph:
     """컴파일된 그래프를 모듈 레벨에 캐싱해서 반환한다 (요청마다 재컴파일하지 않도록)."""
     global _compiled_graph
     if _compiled_graph is None:

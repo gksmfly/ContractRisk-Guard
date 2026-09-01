@@ -1,5 +1,5 @@
 # tests/fb_check/test_backward_grounding.py
-"""snippet_exists(E ⊂ C) 회귀 테스트.
+"""check_snippet_exists(E ⊂ C) 회귀 테스트.
 
 이 검사가 무르면 발췌가 아닌 문장이 학습 라벨로 들어오고, 빡빡하면 멀쩡한 라벨을 버린다.
 실제로 빡빡한 쪽으로 틀려 있었다 — 라벨링 914건 시점의 `snippet_not_found` 66건 중
@@ -8,7 +8,7 @@
 
 import pytest
 
-from backend.fb_check.backward_grounding import snippet_exists
+from backend.fb_check.backward_grounding import check_snippet_exists
 
 # --- 통과해야 하는 것: PDF 레이아웃 잡음뿐이고 문구는 실존한다 (실제 라벨링 데이터에서 발췌) ---
 SHOULD_PASS = [
@@ -58,10 +58,10 @@ SHOULD_FAIL = [
 
 
 @pytest.mark.parametrize("clause,span", SHOULD_PASS)
-def test_레이아웃_잡음은_통과시킨다(clause, span):
-    assert snippet_exists(clause, span) is True
+def test_레이아웃_잡음은_통과시킨다(clause: str, span: str) -> None:
+    assert check_snippet_exists(clause, span) is True
 
 
 @pytest.mark.parametrize("clause,span", SHOULD_FAIL)
-def test_원문을_바꾼_발췌는_거절한다(clause, span):
-    assert snippet_exists(clause, span) is False
+def test_원문을_바꾼_발췌는_거절한다(clause: str, span: str) -> None:
+    assert check_snippet_exists(clause, span) is False

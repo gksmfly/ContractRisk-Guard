@@ -16,7 +16,7 @@ _TEXT = "제1조(목적) 이 약관은 서비스 이용에 관한 사항을 규�
 
 
 @pytest.fixture(autouse=True)
-def _single_slot_semaphore(monkeypatch):
+def _single_slot_semaphore(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(analyze, "_analyze_semaphore", asyncio.Semaphore(1))
     monkeypatch.setattr(analyze, "_QUEUE_TIMEOUT_SECONDS", 0.5)
     monkeypatch.setattr(analyze, "_get_openai", lambda: object())
@@ -24,7 +24,7 @@ def _single_slot_semaphore(monkeypatch):
 
 
 class TestRunAnalyzeStream:
-    async def test_yields_progress_then_done_and_releases_slot(self):
+    async def test_yields_progress_then_done_and_releases_slot(self) -> None:
         events = await analyze.run_analyze_stream(_TEXT)
         collected = [e async for e in events]
 
@@ -36,7 +36,7 @@ class TestRunAnalyzeStream:
         async for _ in events2:
             pass
 
-    async def test_closing_generator_early_releases_slot_immediately(self):
+    async def test_closing_generator_early_releases_slot_immediately(self) -> None:
         """스트림을 끝까지 안 읽고 중간에 닫아도(클라이언트 연결 끊김과 동일)
         세마포어가 즉시 반납돼야 한다 — 반납이 GC 타이밍에 맡겨지면, 이어지는
         요청들이 (남은 슬롯이 없어) 503을 받게 되는 실제 버그였다.

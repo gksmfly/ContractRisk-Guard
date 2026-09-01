@@ -16,7 +16,9 @@ domain_filter_compare.py(옵션2)는 16개 파티션을 전부 검색해서 점�
 실행: .venv/bin/python -m backend.eval.raptor_lite_compare
 """
 
-from backend.api.services.retrieval import _get_cached_embedder, _reciprocal_rank_fusion
+from typing import Any
+
+from backend.api.services.retrieval import _fuse_reciprocal_rank, _get_cached_embedder
 from backend.db.connection import get_conn
 from backend.db.loader import embed_texts
 from backend.eval.domain_filter_compare import _dense_with_score, _law_names, _sparse_with_score, rrf_baseline_hit
@@ -44,7 +46,7 @@ _FEWSHOT = [
 ]
 
 
-def routed_hit(cur, embedder, query_text: str, predicted_laws: list[str], correct_pairs: list[tuple]) -> bool:
+def routed_hit(cur: Any, embedder: Any, query_text: str, predicted_laws: list[str], correct_pairs: list[tuple]) -> bool:
     if not predicted_laws:
         return False
     query_vec = embed_texts(embedder, [query_text], prefix="query: ")[0]
@@ -57,7 +59,7 @@ def routed_hit(cur, embedder, query_text: str, predicted_laws: list[str], correc
 
     dense_sorted  = [row[:4] for row in sorted(all_dense, key=lambda r: r[4], reverse=True)]
     sparse_sorted = [row[:4] for row in sorted(all_sparse, key=lambda r: r[4], reverse=True)]
-    ranked = _reciprocal_rank_fusion(dense_sorted, sparse_sorted)[:_TOP_K]
+    ranked = _fuse_reciprocal_rank(dense_sorted, sparse_sorted)[:_TOP_K]
     found = {(c["metadata"].get("law_name"), c["metadata"].get("article_no")) for c in ranked}
     return bool(found & set(map(tuple, correct_pairs)))
 

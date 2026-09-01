@@ -28,6 +28,7 @@
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -47,7 +48,7 @@ logger = load_logger("maxlen_harm_check.log")
 OUT_PATH = PROJECT_ROOT / "data/eval/maxlen_harm_check.json"
 
 
-def _score(model_dir: Path, texts: list[str], gpu: int, bs: int = 16):
+def _score(model_dir: Path, texts: list[str], gpu: int, bs: int = 16) -> tuple[Any, Any, list[str], int, float]:
     """체크포인트를 **자기 학습 시 max_len으로** 채점한다 — 배포하면 그렇게 도니까."""
     metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
     names = metrics["article_names"]
@@ -68,7 +69,7 @@ def _score(model_dir: Path, texts: list[str], gpu: int, bs: int = 16):
     return np.concatenate(P), thr, names, max_len, trunc
 
 
-def _f1_rows(P, thr, labels):
+def _f1_rows(P: Any, thr: float, labels: list[str]) -> list[dict]:
     f = []
     for p, y in zip(P >= thr, labels > 0.5):
         tp = int((p & y).sum())

@@ -9,6 +9,7 @@
 
 import asyncio
 import json
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -22,7 +23,7 @@ _TEXT = "제1조(목적) 이 약관은 서비스 이용에 관한 사항을 규�
 
 
 @pytest.fixture
-def client(monkeypatch):
+def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setattr(auth, "API_KEY", "")
     monkeypatch.setattr(analyze_service, "_get_openai", lambda: object())
     monkeypatch.setattr(analyze_service, "_process_clause", lambda client, clause, index: None)
@@ -32,7 +33,7 @@ def client(monkeypatch):
 
 
 class TestAnalyzeStreamRoute:
-    def test_stream_yields_progress_then_done(self, client):
+    def test_stream_yields_progress_then_done(self, client: Any) -> None:
         with client.stream("POST", "/api/analyze/stream", json={"text": _TEXT}) as resp:
             assert resp.status_code == 200
             lines = [line for line in resp.iter_lines() if line.startswith("data: ")]
@@ -41,7 +42,7 @@ class TestAnalyzeStreamRoute:
         assert events[-1]["type"] == "done"
         assert any(e["type"] == "progress" for e in events)
 
-    def test_early_disconnect_releases_semaphore(self, client, monkeypatch):
+    def test_early_disconnect_releases_semaphore(self, client: Any, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(analyze_service, "_analyze_semaphore", asyncio.Semaphore(1))
         monkeypatch.setattr(analyze_service, "_QUEUE_TIMEOUT_SECONDS", 0.5)
 

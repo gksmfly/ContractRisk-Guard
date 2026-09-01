@@ -7,14 +7,14 @@ from backend.preprocess.cleaner import clean_precedent_content, clean_text
 _LAW_HEADER = re.compile(r"^제\d+장\s")
 
 
-def _as_list(x: Any) -> list:
+def _ensure_list(x: Any) -> list:
     """법령 API는 항목이 하나면 dict, 여럿이면 list로 준다 — 항상 list로 맞춘다."""
     if x is None:
         return []
     return x if isinstance(x, list) else [x]
 
 
-def article_text(a: dict[str, Any]) -> str:
+def extract_article_text(a: dict[str, Any]) -> str:
     """조문 하나를 본문 + 항 + 호 + 목까지 합쳐 한 덩어리 텍스트로 만든다.
 
     예전에는 `조문내용`(본문)만 썼다. 그런데 약관규제법 제6~14조처럼 **규범 내용이 전부
@@ -31,17 +31,17 @@ def article_text(a: dict[str, Any]) -> str:
     한 칸으로 접기 때문에, 먼저 합치면 호 사이 경계가 사라진다.
     """
     parts = [clean_text(str(a.get("조문내용", "")))]
-    for h in _as_list(a.get("항")):
+    for h in _ensure_list(a.get("항")):
         if not isinstance(h, dict):
             parts.append(clean_text(str(h)))
             continue
         parts.append(clean_text(str(h.get("항내용", ""))))
-        for ho in _as_list(h.get("호")):
+        for ho in _ensure_list(h.get("호")):
             if not isinstance(ho, dict):
                 parts.append(clean_text(str(ho)))
                 continue
             parts.append(clean_text(str(ho.get("호내용", ""))))
-            for mok in _as_list(ho.get("목")):
+            for mok in _ensure_list(ho.get("목")):
                 parts.append(clean_text(str(mok.get("목내용", "")) if isinstance(mok, dict) else str(mok)))
     return "\n".join(p for p in parts if p)
 
@@ -49,7 +49,7 @@ def article_text(a: dict[str, Any]) -> str:
 def extract_law(doc: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
     law  = doc.get("법령", {})
     info = law.get("기본정보", {})
-    articles = _as_list(law.get("조문", {}).get("조문단위", []))
+    articles = _ensure_list(law.get("조문", {}).get("조문단위", []))
 
     base_meta = {
         "law_name":   info.get("법령명_한글", ""),
@@ -66,7 +66,7 @@ def extract_law(doc: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
             continue
         if _LAW_HEADER.match(head) or head.startswith("부칙"):
             continue
-        text = article_text(a)
+        text = extract_article_text(a)
         # 조문가지번호: "제19조의2"의 "2". 이걸 안 담으면 제19조·제19조의2·제19조의3이
         # 모두 article_no="19"로 뭉개져 **인용이 틀린다**(상법 제287조는 가지 조문이 54개다).
         # 기존 지표·매칭이 article_no 기준이라 그 값은 그대로 두고, 가지번호와 표시용

@@ -21,7 +21,7 @@
 import json
 from collections import Counter
 
-from backend.api.services.retrieval import _get_cached_embedder, _reciprocal_rank_fusion
+from backend.api.services.retrieval import _fuse_reciprocal_rank, _get_cached_embedder
 from backend.db.connection import get_conn
 from backend.db.loader import embed_texts
 from backend.eval.domain_filter_compare import _dense_with_score, _sparse_with_score
@@ -73,7 +73,7 @@ def main() -> None:
 
             dense_sorted  = [r[:4] for r in sorted(all_dense,  key=lambda r: r[4], reverse=True)]
             sparse_sorted = [r[:4] for r in sorted(all_sparse, key=lambda r: r[4], reverse=True)]
-            ranked = _reciprocal_rank_fusion(dense_sorted, sparse_sorted)
+            ranked = _fuse_reciprocal_rank(dense_sorted, sparse_sorted)
 
             rank = _first_correct_rank(ranked, correct)
             # 정답 조문이 그 법령 파티션 안에 애초에 존재하는지(코퍼스 커버리지 확인)

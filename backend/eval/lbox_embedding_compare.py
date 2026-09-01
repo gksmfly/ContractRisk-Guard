@@ -20,6 +20,8 @@ Dense-only 순수 비교(contextual_retrieval_compare.py와 동일 방법론) �
 실행: .venv/bin/python -m backend.eval.lbox_embedding_compare
 """
 
+from typing import Any
+
 import numpy as np
 import torch
 from transformers import AutoModel, AutoTokenizer
@@ -37,7 +39,7 @@ _MAX_LEN = 256
 _DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
-def _load_lbox():
+def _load_lbox() -> tuple[Any, Any]:
     tokenizer = AutoTokenizer.from_pretrained(_MODEL_ID)
     model = AutoModel.from_pretrained(_MODEL_ID).to(_DEVICE)
     model.eval()
@@ -51,7 +53,7 @@ def _mean_pool(last_hidden_state: torch.Tensor, attention_mask: torch.Tensor) ->
     return summed / counts
 
 
-def _encode_all(model, tokenizer, texts: list[str]) -> np.ndarray:
+def _encode_all(model: Any, tokenizer: Any, texts: list[str]) -> np.ndarray:
     vecs = []
     for i in range(0, len(texts), _BATCH):
         batch = texts[i:i + _BATCH]

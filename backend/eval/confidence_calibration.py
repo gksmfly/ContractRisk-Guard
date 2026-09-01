@@ -3,7 +3,7 @@
 A-3 진단 — KoELECTRA가 계산해놓고 버리는 softmax 확률이 실제 정답률과 상관이 있는가.
 
 현재 상태의 문제:
-  `judgment_agent.electra_predict()`는 `F.softmax(...)`로 확률을 구한 뒤 `argmax`만 쓰고
+  `judgment_agent.predict_articles()`는 `F.softmax(...)`로 확률을 구한 뒤 `argmax`만 쓰고
   확률은 버린다. **softmax는 순서를 바꾸지 않으므로, 라벨만 쓸 거면 이 두 줄은 지워도
   결과가 완전히 동일하다** — 계산만 하고 안 쓰는 죽은 연산이다.
   그런데 `analyze.py`는 `confidence = 1.0 if verified else 0.7`이라는 **별도의 하드코딩**을

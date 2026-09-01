@@ -37,6 +37,7 @@
 
 import argparse
 from math import comb
+from typing import Any
 
 from backend.agents.evidence_selection_agent import _FINAL_K, evidence_selection_node
 from backend.api.services.retrieval import fetch_candidates
@@ -53,7 +54,7 @@ _WEIGHT_CANDIDATES = (0.0, 0.0003, 0.001, 0.01, 0.1)
 # 운영 코드(`evidence_selection_agent`)에서는 제거됐지만, before/after 비교를 다시 돌릴 수
 # 있어야 "고쳐서 좋아졌다"는 주장이 재현 가능하다. 운영 코드가 이걸 다시 import하면 안 된다.
 _LEGACY_COURT_WEIGHT = {"대법원": 0.10, "고등법원": 0.05}
-_RRF_K = 60  # retrieval._reciprocal_rank_fusion과 동일한 k
+_RRF_K = 60  # retrieval._fuse_reciprocal_rank과 동일한 k
 
 
 def _legacy_court_boost(court: str) -> float:
@@ -76,7 +77,7 @@ def fixed_court_boost(court: str, top_weight: float) -> float:
     return 0.0
 
 
-def _rerank_with(candidates: list[dict], boost_fn) -> list[dict]:
+def _rerank_with(candidates: list[dict], boost_fn: Any) -> list[dict]:
     """수정 전과 동일한 점수 체계(RRF 순위 → 점수 환산 + 가산)에 가산 함수만 주입한다."""
     def score(indexed: tuple[int, dict]) -> float:
         rank, cand = indexed

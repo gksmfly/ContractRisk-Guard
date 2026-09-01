@@ -10,7 +10,7 @@
 손으로 하면 다음 승격 때 똑같이 빠진다. 절차를 코드로 굳힌다:
 
     1. 인코더 왕복 확인   safetensors 키와 재로드된 state_dict의 차이가 0인가
-    2. 지문 계산·기록     **`model._fingerprint()`** — `save()`가 쓰는 바로 그 함수
+    2. 지문 계산·기록     **`model._compute_fingerprint()`** — `save()`가 쓰는 바로 그 함수
     3. 승격 기록          metrics.json에 출처·사유·측정치
     4. load() 왕복 확인   기록한 지문으로 실제 통과하는가
 
@@ -66,7 +66,7 @@ def verify_encoder(path: Path) -> tuple[int, float]:
 def stamp(path: Path, note: dict | None = None) -> float:
     """지문을 계산해 `heads.pt`에 기록한다. 원자적 쓰기 + 백업."""
     model = ArticleMultiLabelElectra.load(path)          # 지문 없어도 로드는 된다(경고만)
-    fp = model._fingerprint()                            # save()가 쓰는 그 함수
+    fp = model._compute_fingerprint()                            # save()가 쓰는 그 함수
 
     heads = torch.load(path / "heads.pt", map_location="cpu", weights_only=False)
     heads["fingerprint_f64"] = fp

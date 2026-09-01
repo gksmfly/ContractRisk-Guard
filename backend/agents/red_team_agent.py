@@ -51,7 +51,7 @@ _SYSTEM = """당신은 한국 계약법 전문가입니다. 방금 어떤 조항
 {"rebuttal": "반박 근거 텍스트"}"""
 
 
-def _fallback_note(neighbor: dict) -> str:
+def _build_fallback_note(neighbor: dict) -> str:
     """LLM 호출이 실패했을 때 쓰는 안전망 — 이전 버전의 템플릿 문구."""
     return (
         f"유사도 {neighbor['similarity']:.2f}로 매우 비슷한 조항이 "
@@ -134,6 +134,6 @@ def red_team_node(state: ClauseState, config: RunnableConfig) -> dict:
         if neighbor["similarity"] >= _SIMILARITY_THRESHOLD and set(theirs) != mine:
             client = config["configurable"]["client"]
             rebuttal = _generate_rebuttal(client, state["clause"], sorted(mine), neighbor)
-            return {"redteam_note": rebuttal or _fallback_note(neighbor)}
+            return {"redteam_note": rebuttal or _build_fallback_note(neighbor)}
 
     return {"redteam_note": ""}

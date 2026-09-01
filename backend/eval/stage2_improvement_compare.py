@@ -23,8 +23,9 @@ LLM 호출 절약).
 """
 
 import json
+from typing import Any
 
-from backend.api.services.retrieval import _get_cached_embedder, _reciprocal_rank_fusion
+from backend.api.services.retrieval import _fuse_reciprocal_rank, _get_cached_embedder
 from backend.db.connection import get_conn
 from backend.db.loader import embed_texts
 from backend.eval.domain_filter_compare import _dense_with_score, _sparse_with_score
@@ -61,7 +62,7 @@ def _candidate_label(c: dict) -> str:
     return f"{head}: {c['text'][:_RERANK_TEXT_LEN].strip()}"
 
 
-def _ranked(cur, embedder, query_text: str, laws: list[str], pool_k: int, _vec_cache: dict) -> list[dict]:
+def _ranked(cur: Any, embedder: Any, query_text: str, laws: list[str], pool_k: int, _vec_cache: dict) -> list[dict]:
     """라우팅된 법령 파티션별로 pool_k씩 확보 → 실제 점수로 병합 → RRF 융합한 전체 순위."""
     if not laws or not query_text.strip():
         return []
@@ -77,7 +78,7 @@ def _ranked(cur, embedder, query_text: str, laws: list[str], pool_k: int, _vec_c
 
     dense_sorted  = [r[:4] for r in sorted(all_dense,  key=lambda r: r[4], reverse=True)]
     sparse_sorted = [r[:4] for r in sorted(all_sparse, key=lambda r: r[4], reverse=True)]
-    return _reciprocal_rank_fusion(dense_sorted, sparse_sorted)
+    return _fuse_reciprocal_rank(dense_sorted, sparse_sorted)
 
 
 def _hit_at(ranked: list[dict], correct: set[tuple], k: int) -> bool:

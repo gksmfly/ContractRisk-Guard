@@ -23,7 +23,9 @@ lightrag_compare_final.py와 같은 쿼리 세트로 직접 비교 가능.
 실행: .venv/bin/python -m backend.eval.domain_filter_compare
 """
 
-from backend.api.services.retrieval import _get_cached_embedder, _reciprocal_rank_fusion, _search_dense, _search_sparse
+from typing import Any
+
+from backend.api.services.retrieval import _fuse_reciprocal_rank, _get_cached_embedder, _search_dense, _search_sparse
 from backend.db.connection import get_conn
 from backend.db.loader import embed_texts
 from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, build_ground_truth
@@ -36,12 +38,12 @@ _CANDIDATE_K = 8  # 파티션당 확보할 후보 수(production _CANDIDATE_K와
 _TOP_K = 5
 
 
-def _law_names(cur) -> list[str]:
+def _law_names(cur: Any) -> list[str]:
     cur.execute("SELECT DISTINCT metadata->>'law_name' FROM chunks WHERE source = 'law'")
     return [row[0] for row in cur.fetchall() if row[0]]
 
 
-def _dense_with_score(cur, law_name: str, vec_literal: str, top_k: int) -> list[tuple]:
+def _dense_with_score(cur: Any, law_name: str, vec_literal: str, top_k: int) -> list[tuple]:
     """파티션 안에서 dense 검색 — 실제 코사인 유사도 점수를 같이 반환(파티션 간 비교용)."""
     cur.execute(
         """
@@ -56,7 +58,7 @@ def _dense_with_score(cur, law_name: str, vec_literal: str, top_k: int) -> list[
     return cur.fetchall()
 
 
-def _sparse_with_score(cur, law_name: str, query_text: str, top_k: int, threshold: float = 0.10) -> list[tuple]:
+def _sparse_with_score(cur: Any, law_name: str, query_text: str, top_k: int, threshold: float = 0.10) -> list[tuple]:
     """파티션 안에서 sparse(pg_trgm) 검색 — 실제 유사도 점수를 같이 반환(파티션 간 비교용)."""
     cur.execute("SET pg_trgm.similarity_threshold = %s", (threshold,))
     cur.execute(
@@ -72,7 +74,7 @@ def _sparse_with_score(cur, law_name: str, query_text: str, top_k: int, threshol
     return cur.fetchall()
 
 
-def domain_filtered_hit(cur, embedder, query_text: str, law_names: list[str], correct_pairs: list[tuple]) -> bool:
+def domain_filtered_hit(cur: Any, embedder: Any, query_text: str, law_names: list[str], correct_pairs: list[tuple]) -> bool:
     query_vec = embed_texts(embedder, [query_text], prefix="query: ")[0]
     vec_literal = "[" + ",".join(repr(x) for x in query_vec) + "]"
 
@@ -86,18 +88,18 @@ def domain_filtered_hit(cur, embedder, query_text: str, law_names: list[str], co
     dense_sorted  = [row[:4] for row in sorted(all_dense, key=lambda r: r[4], reverse=True)]
     sparse_sorted = [row[:4] for row in sorted(all_sparse, key=lambda r: r[4], reverse=True)]
 
-    ranked = _reciprocal_rank_fusion(dense_sorted, sparse_sorted)[:_TOP_K]
+    ranked = _fuse_reciprocal_rank(dense_sorted, sparse_sorted)[:_TOP_K]
     found = {(c["metadata"].get("law_name"), c["metadata"].get("article_no")) for c in ranked}
     return bool(found & set(map(tuple, correct_pairs)))
 
 
-def rrf_baseline_hit(cur, embedder, query_text: str, correct_pairs: list[tuple]) -> bool:
+def rrf_baseline_hit(cur: Any, embedder: Any, query_text: str, correct_pairs: list[tuple]) -> bool:
     """비교 기준 — 파티션 없이 법령 전체를 한 풀에서 RRF(현재 production 방식과 동일)."""
     query_vec = embed_texts(embedder, [query_text], prefix="query: ")[0]
     vec_literal = "[" + ",".join(repr(x) for x in query_vec) + "]"
     dense = _search_dense(cur, ["law"], vec_literal, _CANDIDATE_K)
     sparse = _search_sparse(cur, ["law"], query_text, _CANDIDATE_K, 0.10)
-    ranked = _reciprocal_rank_fusion(dense, sparse)[:_TOP_K]
+    ranked = _fuse_reciprocal_rank(dense, sparse)[:_TOP_K]
     found = {(c["metadata"].get("law_name"), c["metadata"].get("article_no")) for c in ranked}
     return bool(found & set(map(tuple, correct_pairs)))
 

@@ -1,3 +1,4 @@
+# backend/db/migrations/versions/c60a634f06aa_nextauth_postgres_adapter_tables.py
 """nextauth postgres adapter tables
 
 프론트엔드(Next.js) Google 로그인용 — @auth/pg-adapter(next-auth 공식 Postgres

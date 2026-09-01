@@ -1,4 +1,4 @@
-# tests/test_analyze_integration.py
+# tests/analyze/test_analyze_integration.py
 """
 backend/api/services/analyze.py의 run_analyze() 통합 테스트.
 
@@ -19,7 +19,7 @@ pytestmark = pytest.mark.integration
 
 
 class TestNormalContracts:
-    async def test_high_risk_termination_clause(self):
+    async def test_high_risk_termination_clause(self) -> None:
         text = (
             "제15조(해지) 회사는 이용자에게 사전 통보 없이 언제든지 본 서비스 이용계약을 "
             "즉시 해지할 수 있으며, 이로 인해 발생하는 손해에 대하여 회사는 어떠한 책임도 지지 아니한다."
@@ -33,7 +33,7 @@ class TestNormalContracts:
         assert clause.articles, "무통보 해지 + 전면 면책 조항인데 아무 조도 지목하지 않았다"
         assert len(clause.legal_basis) > 0
 
-    async def test_mixed_risk_multi_clause_contract(self):
+    async def test_mixed_risk_multi_clause_contract(self) -> None:
         text = (
             "제15조(해지) 회사는 이용자에게 사전 통보 없이 언제든지 본 서비스 이용계약을 "
             "즉시 해지할 수 있으며, 이로 인해 발생하는 손해에 대하여 회사는 어떠한 책임도 지지 아니한다.\n\n"
@@ -50,17 +50,17 @@ class TestNormalContracts:
 
 
 class TestEdgeCases:
-    async def test_empty_text_raises_400(self):
+    async def test_empty_text_raises_400(self) -> None:
         with pytest.raises(HTTPException) as exc_info:
             await run_analyze("")
         assert exc_info.value.status_code == 400
 
-    async def test_too_short_text_raises_400(self):
+    async def test_too_short_text_raises_400(self) -> None:
         with pytest.raises(HTTPException) as exc_info:
             await run_analyze("짧음")
         assert exc_info.value.status_code == 400
 
-    async def test_non_korean_text_does_not_crash(self):
+    async def test_non_korean_text_does_not_crash(self) -> None:
         text = (
             "This is a sample termination clause. The company may terminate this agreement "
             "at any time without prior notice and shall not be liable for any resulting damages."
@@ -69,7 +69,7 @@ class TestEdgeCases:
         # 도메인 판단이 어느 쪽이든(해당없음 포함) 예외 없이 응답 스키마를 지켜야 한다
         assert result.total_clauses == len(result.clauses)
 
-    async def test_plain_non_clause_text_does_not_crash(self):
+    async def test_plain_non_clause_text_does_not_crash(self) -> None:
         text = (
             "이것은 계약서가 아니라 그냥 일반적인 안내문입니다. 아무 조항도 없고 "
             "그냥 설명글입니다. 이런 텍스트가 들어와도 서버가 죽으면 안 됩니다."
@@ -77,7 +77,7 @@ class TestEdgeCases:
         result = await run_analyze(text)
         assert result.total_clauses == len(result.clauses)
 
-    async def test_repeated_whitespace_only_raises_400(self):
+    async def test_repeated_whitespace_only_raises_400(self) -> None:
         with pytest.raises(HTTPException) as exc_info:
             await run_analyze("   \n\n   \n   ")
         assert exc_info.value.status_code == 400

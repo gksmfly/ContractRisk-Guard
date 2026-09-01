@@ -18,6 +18,8 @@ Dense-only 비교(프리픽스 유무)로 순수하게 이 효과만 격리한�
 실행: .venv/bin/python -m backend.eval.contextual_retrieval_compare
 """
 
+from typing import Any
+
 import numpy as np
 
 from backend.api.services.retrieval import _get_cached_embedder
@@ -37,7 +39,7 @@ def _prefixed_text(rec: dict) -> str:
     return f"[법령: {meta['law_name']} 제{meta['article_no']}조]\n{rec['text']}"
 
 
-def _encode_all(embedder, texts: list[str]) -> np.ndarray:
+def _encode_all(embedder: Any, texts: list[str]) -> np.ndarray:
     vecs = []
     for i in range(0, len(texts), _BATCH):
         vecs.extend(embed_texts(embedder, texts[i:i + _BATCH], prefix="passage: "))

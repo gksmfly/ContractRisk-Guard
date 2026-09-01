@@ -1,3 +1,4 @@
+# tests/agents/test_judgment_agent.py
 """judgment_node의 **입력**을 고정하는 회귀 테스트.
 
 2026-08-31까지 `evidence_span or clause`를 모델에 넣었다. `models/v4`(span 증강 학습)
@@ -17,35 +18,35 @@ from backend.agents.judgment_agent import judgment_node
 
 
 class TestJudgmentInput:
-    def test_full_clause_is_passed_not_evidence_span(self):
+    def test_full_clause_is_passed_not_evidence_span(self) -> None:
         """span이 있어도 **조항 원문**이 모델에 들어가야 한다."""
-        with patch("backend.agents.judgment_agent.electra_predict", return_value=[]) as pred:
+        with patch("backend.agents.judgment_agent.predict_articles", return_value=[]) as pred:
             judgment_node({"clause": "제9조 (해지) 회사는 언제든 계약을 해지할 수 있다",
                            "evidence_span": "언제든 계약을 해지할 수 있다"})
         pred.assert_called_once_with("제9조 (해지) 회사는 언제든 계약을 해지할 수 있다")
 
-    def test_missing_span_still_uses_clause(self):
-        with patch("backend.agents.judgment_agent.electra_predict", return_value=[]) as pred:
+    def test_missing_span_still_uses_clause(self) -> None:
+        with patch("backend.agents.judgment_agent.predict_articles", return_value=[]) as pred:
             judgment_node({"clause": "조항 원문"})
         pred.assert_called_once_with("조항 원문")
 
 
 class TestJudgmentOutput:
-    def test_needs_review_is_binary_on_article_hit(self):
-        with patch("backend.agents.judgment_agent.electra_predict", return_value=["제9조"]):
+    def test_needs_review_is_binary_on_article_hit(self) -> None:
+        with patch("backend.agents.judgment_agent.predict_articles", return_value=["제9조"]):
             out = judgment_node({"clause": "c", "articles": ["제9조"]})
         assert out["model_articles"] == ["제9조"]
         assert out["needs_review"] is True
         assert out["verified"] is True          # GPT와 같은 조를 짚었다
 
-    def test_no_article_means_no_review(self):
-        with patch("backend.agents.judgment_agent.electra_predict", return_value=[]):
+    def test_no_article_means_no_review(self) -> None:
+        with patch("backend.agents.judgment_agent.predict_articles", return_value=[]):
             out = judgment_node({"clause": "c", "articles": ["제9조"]})
         assert out["needs_review"] is False
         assert out["verified"] is False
 
-    def test_verified_is_intersection_not_gpt_echo(self):
+    def test_verified_is_intersection_not_gpt_echo(self) -> None:
         """`verified`는 GPT 라벨의 복사가 아니라 **교집합**이다."""
-        with patch("backend.agents.judgment_agent.electra_predict", return_value=["제9조"]):
+        with patch("backend.agents.judgment_agent.predict_articles", return_value=["제9조"]):
             out = judgment_node({"clause": "c", "articles": ["제6조"]})
         assert out["verified"] is False

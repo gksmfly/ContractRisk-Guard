@@ -47,7 +47,7 @@ RISK_MAP       = {name: i for i, name in enumerate(RISK_NAMES)}
 INV_RISK_MAP   = {v: k for k, v in RISK_MAP.items()}
 
 
-def risk_scheme(name: str = _DEFAULT_RISK_SCHEME) -> tuple[dict[str, int], dict[int, str], list[str]]:
+def get_risk_scheme(name: str = _DEFAULT_RISK_SCHEME) -> tuple[dict[str, int], dict[int, str], list[str]]:
     """(RISK_MAP, INV_RISK_MAP, RISK_NAMES)를 체계별로 만들어 준다.
 
     모듈 전역 상수는 3class로 고정돼 있다(judgment_agent·backward_grounding 등 기존
@@ -113,13 +113,13 @@ class DualHeadElectra(nn.Module):
 #
 # **어떤 조를 헤드에 둘지는 데이터가 정한다.** FTC 1,163건 기준 제13조(대리인 책임 가중)는
 # gold 0건, 제12조도 희소하다. 학습 표본이 없는 조에 출력 뉴런을 두면 그 조는 절대 학습되지
-# 않으면서 macro 평균만 끌어내린다. `article_labels(counts, min_support)`가 support 기준으로
+# 않으면서 macro 평균만 끌어내린다. `select_article_labels(counts, min_support)`가 support 기준으로
 # 골라내고, 접힌 조는 예측 대상에서 제외된다.
 
 _MIN_ARTICLE_SUPPORT = 5
 
 
-def article_labels(gold_counts: dict[str, int], min_support: int = _MIN_ARTICLE_SUPPORT) -> list[str]:
+def select_article_labels(gold_counts: dict[str, int], min_support: int = _MIN_ARTICLE_SUPPORT) -> list[str]:
     """support가 충분한 조만 헤드 라벨로 고른다(조 번호 순 정렬 — 인덱스 안정성)."""
     kept = [a for a, n in gold_counts.items() if n >= min_support]
     return sorted(kept, key=lambda a: int(a.strip("제조")))
@@ -164,7 +164,7 @@ class ArticleMultiLabelElectra(nn.Module):
         cls = self.dropout(out.last_hidden_state[:, 0, :])
         return self.article_head(cls)
 
-    def _fingerprint(self) -> float:
+    def _compute_fingerprint(self) -> float:
         """인코더+헤드 **전 파라미터**의 norm 합. 랜덤 초기화면 값이 확 달라진다.
 
         **float64로, 기기와 무관하게 계산한다.** float32로 하면 GPU와 CPU의 감산 순서가
@@ -186,7 +186,7 @@ class ArticleMultiLabelElectra(nn.Module):
         torch.save(
             {"article_head": self.article_head.state_dict(),
              "article_names": self.article_names,
-             "fingerprint_f64": self._fingerprint()},
+             "fingerprint_f64": self._compute_fingerprint()},
             path / "heads.pt",
         )
 
@@ -221,7 +221,7 @@ class ArticleMultiLabelElectra(nn.Module):
             logger.warning(f"  {path.name}: float64 지문이 없는 옛 체크포인트다 — 가중치 검사를 건너뛴다. "
                            f"다시 학습하면 찍힌다")
         else:
-            got = model._fingerprint()
+            got = model._compute_fingerprint()
             if abs(got - want) > max(1e-6, abs(want) * 1e-9):   # float64 왕복 오차보다 훨씬 큰 값만 잡는다
                 raise ValueError(
                     f"가중치가 저장 시점과 다르다 — 인코더나 헤드가 안 실렸다 "
@@ -234,7 +234,7 @@ class ArticleMultiLabelElectra(nn.Module):
         return torch.load(path / "heads.pt", map_location="cpu", weights_only=True)["article_names"]
 
 
-def article_pos_weight(gold_counts: dict[str, int], names: list[str], n_samples: int) -> torch.Tensor:
+def compute_article_pos_weight(gold_counts: dict[str, int], names: list[str], n_samples: int) -> torch.Tensor:
     """조별 양성 가중치 = (음성 수 / 양성 수). 불균형이 심한 조가 무시되지 않게 한다.
 
     제6조는 정답의 36%에 붙는 사실상 다수 클래스이고 제7·12조는 한 자릿수다 —

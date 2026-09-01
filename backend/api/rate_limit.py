@@ -22,7 +22,7 @@ _MAX_REQUESTS_PER_WINDOW = int(os.environ.get("RATE_LIMIT_PER_MINUTE", "20"))
 _hits: dict[str, list[float]] = defaultdict(list)
 
 
-def _client_key(request: Request) -> str:
+def _get_client_key(request: Request) -> str:
     api_key = request.headers.get("x-api-key")
     if api_key:
         return f"key:{api_key}"
@@ -31,7 +31,7 @@ def _client_key(request: Request) -> str:
 
 
 async def enforce_rate_limit(request: Request) -> None:
-    key = _client_key(request)
+    key = _get_client_key(request)
     now = time.monotonic()
     window_start = now - _WINDOW_SECONDS
 

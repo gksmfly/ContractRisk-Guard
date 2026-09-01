@@ -47,7 +47,7 @@ _INK, _MUTED, _GRID = "#0b0b0b", "#52514e", "#e3e2df"
 _SURFACE = "#fcfcfb"
 
 
-def _line(ax, xs, ys, color, label):
+def _line(ax: Any, xs: list, ys: list, color: str, label: str) -> None:
     """2px 선 + 8px 마커 + 선 끝 직접 라벨(범례에만 의존하지 않게)."""
     ax.plot(xs, ys, color=color, linewidth=2, marker="o", markersize=5,
             markeredgecolor=_SURFACE, markeredgewidth=1, label=label, zorder=3)
@@ -55,7 +55,7 @@ def _line(ax, xs, ys, color, label):
                 color=color, fontsize=9, va="center", fontweight="medium")
 
 
-def _style(ax, ylabel):
+def _style(ax: Any, ylabel: str) -> None:
     ax.set_facecolor(_SURFACE)
     ax.grid(True, color=_GRID, linewidth=0.8, zorder=0)
     ax.set_axisbelow(True)
@@ -67,7 +67,7 @@ def _style(ax, ylabel):
     ax.set_ylabel(ylabel, color=_INK, fontsize=10)
 
 
-def _mark_epoch(ax, epoch, color, text, va="top", last_epoch=None):
+def _mark_epoch(ax: Any, epoch: int, color: str, text: str, va: str="top", last_epoch: int=None) -> None:
     """세로선 + 라벨. 선이 오른쪽 끝에 가까우면 라벨을 왼쪽으로 눕힌다.
 
     마지막 epoch가 최고점인 경우(5시드 중 2개가 그랬다) 라벨이 축 밖으로 나가

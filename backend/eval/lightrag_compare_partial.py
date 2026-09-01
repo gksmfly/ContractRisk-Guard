@@ -38,7 +38,7 @@ async def main() -> None:
     indexed_recs = all_recs[:1500]  # 실제로 인덱싱된 부분(로그로 확인됨)
     logger.info(f"  기존 인덱스 재사용(재인덱싱 없음) — 인덱싱된 청크: {len(indexed_recs)}/{len(all_recs)}")
 
-    # 정답이 인덱싱된 법령 안에 있는 케이스만 남긴다(build_ground_truth가 article_text에
+    # 정답이 인덱싱된 법령 안에 있는 케이스만 남긴다(build_ground_truth가 extract_article_text에
     # 없는 pair는 자동 제외 — indexed_recs만 넘기면 민법 인용 케이스가 자연히 걸러짐)
     queries = build_ground_truth(indexed_recs, n_cases=_N_QUERIES)
     logger.info(f"  평가 쿼리 {len(queries)}건 생성(약관규제법 등 이미 인덱싱된 법령만 대상)")

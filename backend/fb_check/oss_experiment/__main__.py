@@ -28,7 +28,7 @@ from typing import Any
 import torch
 from transformers import ElectraTokenizerFast
 
-from backend.fb_check.backward_grounding import load_model, predict, snippet_exists
+from backend.fb_check.backward_grounding import check_snippet_exists, load_model, predict
 from backend.fb_check.oss_experiment.local_labeling import (
     MODELS,
     load_local_model,
@@ -78,7 +78,7 @@ def run_fb_check_oss(
     })
 
     # --- Backward Grounding: E ⊂ C 검증 + KoELECTRA (GPT-4o 버전과 동일하게 재사용) ---
-    span_exists = snippet_exists(clause_text, evidence_span)
+    span_exists = check_snippet_exists(clause_text, evidence_span)
     backward_domain, backward_risk = predict(clause_text, koelectra_model, koelectra_tokenizer, koelectra_device)
     result.update({
         "snippet_exists":  span_exists,

@@ -43,7 +43,7 @@ import numpy as np
 from sklearn.metrics import accuracy_score, f1_score
 
 from backend.eval.ensemble_compare import GT_PATH, SPAN_CACHE_PATH, predict_probs
-from backend.model.electra import risk_scheme
+from backend.model.electra import get_risk_scheme
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("risk_scheme_compare.log")
@@ -73,8 +73,8 @@ def _score(pred: np.ndarray, y: np.ndarray) -> dict:
     }
 
 
-def main(limit: int | None = None) -> None:
-    map3, _, _ = risk_scheme("3class")
+def main(limit: int | None = None) -> dict:
+    map3, _, _ = get_risk_scheme("3class")
     spans = {r["chunk_id"]: r["evidence_span"] for r in load_jsonl(SPAN_CACHE_PATH)}
 
     # High/Low 정답만 채점 대상 (통제 2)

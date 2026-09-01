@@ -18,7 +18,7 @@ KoELECTRA(v4) vs 검색 기반(KoE5+GPT-4o-mini few-shot) 판단 방식 비교 �
 ### `compare_judgment.py`
 메인 비교 스크립트.
 1. **evidence_span 추출**(KoELECTRA용): `backend.fb_check.forward_labeling.run_forward()`로 원문에서 evidence_span만 뽑는다(domain·risk_level 출력은 버림 — 비교 대상 오염 방지). `data/eval/evidence_span_cache.jsonl`에 한 건씩 즉시 append — 1,052건 중간에 API 오류로 끊겨도 재실행 시 이어서 진행
-2. **KoELECTRA 평가**: evidence_span을 `backend.agents.judgment_agent.electra_predict()`에 입력(프로덕션과 동일 입력 분포)
+2. **KoELECTRA 평가**: evidence_span을 `backend.agents.judgment_agent.predict_articles()`에 입력(프로덕션과 동일 입력 분포)
 3. **검색기반 평가**: 원문 그대로 `retrieval_judge()`에 입력 — 기존 실험에서 검색기반은 원문이 evidence_span보다 오히려 살짝 나았기 때문에, 각 방식이 실제로 쓰는 입력 형태로 공정하게 비교
 4. `sklearn.metrics`로 class별 precision/recall/F1 + confusion matrix 산출 → `data/eval/compare_judgment_report.json`
 

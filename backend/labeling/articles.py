@@ -131,7 +131,7 @@ def derive_domain(articles: list[str] | None) -> str:
     return "기타_조항" if articles else "해당없음"
 
 
-def prompt_block() -> str:
+def build_prompt_block() -> str:
     """LLM 프롬프트에 그대로 넣을 유형 목록. 각 호까지 포함해야 판정 일관성이 유지된다."""
     out = []
     for art, spec in ARTICLES.items():
@@ -142,7 +142,7 @@ def prompt_block() -> str:
 
 
 # ── 프롬프트 블록 변형 (A/B/C 실험용) ────────────────────────────────────────
-# `prompt_block()`(전문)이 forward+verify 입력의 45%(조항당 2,252토큰)를 차지한다.
+# `build_prompt_block()`(전문)이 forward+verify 입력의 45%(조항당 2,252토큰)를 차지한다.
 # 조문 전문을 매번 보내는 게 실제로 값을 하는지는 **측정된 적이 없다** — "법 조문을
 # 보여주면 잘하겠지"라는 가정이 측정 없이 들어간 컴포넌트다.
 #
@@ -163,10 +163,10 @@ def _clip(text: str, n: int) -> str:
     return text if len(text) <= n else text[:n].rstrip() + "…"
 
 
-def prompt_block_variant(kind: str = "full") -> str:
+def build_prompt_block_variant(kind: str = "full") -> str:
     """A/B/C 실험용 조문 블록. `kind`는 full / summary / title."""
     if kind == "full":
-        return prompt_block()
+        return build_prompt_block()
     if kind not in ("summary", "title"):
         raise ValueError(f"알 수 없는 변형: {kind} (full/summary/title)")
 

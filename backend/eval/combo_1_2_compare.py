@@ -14,6 +14,8 @@ domain_filter_compare.py와 같은 쿼리 세트라 4개 리포트를 직접 비
 실행: .venv/bin/python -m backend.eval.combo_1_2_compare
 """
 
+from typing import Any
+
 from sentence_transformers import CrossEncoder
 
 from backend.api.services.retrieval import _get_cached_embedder
@@ -32,7 +34,7 @@ _POOL_CAP = 40  # 재랭킹 전 후보 풀 상한(파티션이 16개라 무제�
 _TOP_K = 5
 
 
-def combo_hit(cur, embedder, reranker: CrossEncoder, query_text: str, law_names: list[str], correct_pairs: list[tuple]) -> bool:
+def combo_hit(cur: Any, embedder: Any, reranker: CrossEncoder, query_text: str, law_names: list[str], correct_pairs: list[tuple]) -> bool:
     query_vec = embed_texts(embedder, [query_text], prefix="query: ")[0]
     vec_literal = "[" + ",".join(repr(x) for x in query_vec) + "]"
 

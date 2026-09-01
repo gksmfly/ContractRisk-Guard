@@ -60,7 +60,7 @@ def _device() -> torch.device:
 def predict_probs(model_dir: Path, texts: list[str], num_risk_labels: int | None = None) -> np.ndarray:
     """체크포인트 하나로 risk_level 확률을 배치 추론한다. 반환 shape: (N, num_risk_labels).
 
-    `judgment_agent.electra_predict`와 동일한 토크나이즈 설정(max_length=256,
+    `judgment_agent.predict_articles`와 동일한 토크나이즈 설정(max_length=256,
     padding="max_length")을 쓴다 — 다르면 기존 기록 수치와 비교가 성립하지 않는다.
 
     num_risk_labels를 안 주면 3class(기본)로 헤드를 만든다 — 2class 체크포인트를 읽을
@@ -102,7 +102,7 @@ def _score(probs: np.ndarray, y_true: list[int]) -> dict:
     }
 
 
-def main(limit: int | None = None) -> None:
+def main(limit: int | None = None) -> dict:
     gt = load_jsonl(GT_PATH)
     spans = {r["chunk_id"]: r["evidence_span"] for r in load_jsonl(SPAN_CACHE_PATH)}
     rows = [r for r in gt if spans.get(r["chunk_id"])]

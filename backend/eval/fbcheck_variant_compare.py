@@ -25,11 +25,11 @@ KoELECTRA가 "Low"만 찍는 상수였다면 59.5%   ← 실제보다 높다
 | 이름 | 규칙 |
 |---|---|
 | `current` | forward·verify·KoELECTRA 2/3 다수결 (현행) |
-| `two_way` | forward == verify (KoELECTRA는 `snippet_exists` 필터 역할만) |
+| `two_way` | forward == verify (KoELECTRA는 `check_snippet_exists` 필터 역할만) |
 | `exaone_3way` | forward·verify·**EXAONE** 2/3 다수결 (독립 검증자로 교체) |
 | `unanimous` | forward == verify == EXAONE (전원 일치, 가장 엄격) |
 
-`snippet_exists`(E⊂C)는 순수 문자열 매칭이라 모델과 무관하며, 모든 변형에서 사전 조건으로
+`check_snippet_exists`(E⊂C)는 순수 문자열 매칭이라 모델과 무관하며, 모든 변형에서 사전 조건으로
 동일하게 적용된다 — 그래서 "KoELECTRA를 필터로만 쓴다"(C안)는 `two_way`와 동일하다.
 
 ## 무엇으로 좋고 나쁨을 가리나
@@ -111,7 +111,7 @@ def _majority(votes: list[str | None]) -> tuple[str | None, int]:
 
 
 def decide(r: dict, rule: str, exaone: str | None) -> tuple[bool, str | None]:
-    """규칙별 (CLEAN 여부, 확정 라벨). snippet_exists는 모든 규칙의 공통 사전 조건."""
+    """규칙별 (CLEAN 여부, 확정 라벨). check_snippet_exists는 모든 규칙의 공통 사전 조건."""
     if r.get("snippet_exists") is False:
         return False, None
     f, v, b = r.get("forward_label"), r.get("verify_label"), r.get("backward_risk")

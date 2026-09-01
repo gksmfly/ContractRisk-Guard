@@ -24,13 +24,14 @@ Medium을 가리킨다"(agreement 높음 = 근거 있는 판단)면 그대로 �
 
 import json
 import os
+from typing import Any
 
 from dotenv import load_dotenv
 from openai import OpenAI
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 
-from backend.agents.judgment_agent import electra_predict
+from backend.agents.judgment_agent import predict_articles
 from backend.eval.retrieval_judgment import retrieval_judge
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
@@ -68,7 +69,7 @@ def get_predictions(records: list[dict], client: OpenAI) -> list[dict]:
     with open(PRED_CACHE_PATH, "a", encoding="utf-8") as f:
         for i, r in enumerate(records):
             span = span_cache.get(r["chunk_id"]) or r["text"]
-            _, koelectra_pred, _ = electra_predict(span)
+            _, koelectra_pred, _ = predict_articles(span)
 
             cached = pred_cache.get(r["chunk_id"])
             if cached is not None:
@@ -113,7 +114,7 @@ _RULES = {
 }
 
 
-def _macro_f1(preds: list[dict], rule) -> float:
+def _macro_f1(preds: list[dict], rule: Any) -> float:
     y_true = [p["true"] for p in preds if p["retrieval"] is not None]
     y_pred = [rule(p) for p in preds if p["retrieval"] is not None]
     report = classification_report(y_true, y_pred, labels=_LABELS, output_dict=True, zero_division=0)

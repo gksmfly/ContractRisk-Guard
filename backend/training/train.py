@@ -40,7 +40,7 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoTokenizer  # 백본 교체 비교를 위해 계열 비의존으로 로드한다
 
-from backend.model.electra import DOMAIN_MAP, DOMAIN_NAMES, RISK_SCHEMES, DualHeadElectra, risk_scheme
+from backend.model.electra import DOMAIN_MAP, DOMAIN_NAMES, RISK_SCHEMES, DualHeadElectra, get_risk_scheme
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("train_koelectra.log")
@@ -401,7 +401,7 @@ def main() -> None:
     device = torch.device(f"cuda:{args.gpu}") if torch.cuda.is_available() else torch.device("cpu")
     if torch.cuda.is_available():
         torch.cuda.set_device(device)
-    risk_map, _, risk_names = risk_scheme(args.risk_scheme)
+    risk_map, _, risk_names = get_risk_scheme(args.risk_scheme)
     logger.info(f"========== KoELECTRA 학습 시작 | device={device} | data_source={args.data_source} "
                 f"| seed={args.seed} | risk={args.risk_scheme}({'/'.join(risk_names)}) ==========")
 

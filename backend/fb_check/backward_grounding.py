@@ -3,7 +3,7 @@
 Backward Grounding: evidence_span ⊂ C 인덱스 검증
 
 **검증하는 것은 하나뿐이다.**
-  - `snippet_exists`: GPT가 추출한 evidence_span이 원문에 실제로 존재하는지 확인.
+  - `check_snippet_exists`: GPT가 추출한 evidence_span이 원문에 실제로 존재하는지 확인.
     완전일치 → 레이아웃 제거 → 퍼지(0.85) 순. **순수 문자열 검사이고 모델을 쓰지 않는다.**
 
 `predict`(KoELECTRA domain·risk_level)는 **판정에 쓰지 않는다.** `--record-backward`를
@@ -72,7 +72,7 @@ def _strip_layout(text: str) -> str:
     return _WHITESPACE.sub("", _BOX_DRAWING.sub("", _PAGE_MARKER.sub(" ", text)))
 
 
-def snippet_exists(clause_text: str, evidence_span: str) -> bool:
+def check_snippet_exists(clause_text: str, evidence_span: str) -> bool:
     """evidence_span이 clause_text 안에 있는지 확인한다.
 
     완전 일치 → 레이아웃 제거 후 완전 일치 → 퍼지 매칭 순으로 확인한다. PDF에서 텍스트를

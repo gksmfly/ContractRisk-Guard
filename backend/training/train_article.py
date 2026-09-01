@@ -50,8 +50,8 @@ from transformers import AutoTokenizer
 from backend.labeling.articles import ARTICLE_IDS, normalize
 from backend.model.electra import (
     ArticleMultiLabelElectra,
-    article_labels,
-    article_pos_weight,
+    compute_article_pos_weight,
+    select_article_labels,
 )
 from backend.training.train import BASE_MODEL, _document_group, split_by_document
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
@@ -446,7 +446,7 @@ def constant_baseline_f1(records: list[dict], names: list[str], k: int) -> dict:
 
 
 @torch.no_grad()
-def infer(model, loader, device) -> tuple[np.ndarray, np.ndarray, float]:
+def infer(model: Any, loader: Any, device: Any) -> tuple[np.ndarray, np.ndarray, float]:
     model.eval()
     P, Y, loss_sum, n = [], [], 0.0, 0
     crit = nn.BCEWithLogitsLoss()
@@ -521,7 +521,7 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit("학습 레코드가 없다 — 라벨 생성이 끝났는지 확인할 것")
 
     counts = Counter(a for r in records for a in r["articles"])
-    names = article_labels(dict(counts), args.min_support)
+    names = select_article_labels(dict(counts), args.min_support)
     folded = sorted(set(ARTICLE_IDS) - set(names), key=lambda a: int(a.strip("제조")))
     logger.info(f"  조 분포: {dict(counts.most_common())}")
     logger.info(f"  헤드 라벨({len(names)}): {names}")
@@ -572,7 +572,7 @@ def main(argv: list[str] | None = None) -> None:
                     batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
 
     model = ArticleMultiLabelElectra(BASE_MODEL, names).to(device)
-    pos_w = article_pos_weight(dict(counts), names, len(train_recs)).to(device)
+    pos_w = compute_article_pos_weight(dict(counts), names, len(train_recs)).to(device)
     crit  = nn.BCEWithLogitsLoss(pos_weight=pos_w)
     optim = torch.optim.AdamW(model.parameters(), lr=args.lr)
     logger.info(f"  pos_weight: {dict(zip(names, [round(x, 1) for x in pos_w.tolist()]))}")

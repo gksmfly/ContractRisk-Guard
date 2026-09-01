@@ -1,6 +1,6 @@
-# tests/test_retrieval_strategy_agent.py
+# tests/agents/test_retrieval_strategy_agent.py
 """
-backend/api/services/retrieval.py의 _reciprocal_rank_fusion() 단위 테스트 +
+backend/api/services/retrieval.py의 _fuse_reciprocal_rank() 단위 테스트 +
 backend/agents/retrieval_strategy_agent.py의 법령 라우팅 통합(1회차만 라우팅,
 재시도는 필터 해제) 단위 테스트.
 
@@ -11,8 +11,12 @@ fetch_candidates를 monkeypatch로 대체해 GPU·DB 없이 노드의 분기 로
 실행: pytest tests/test_retrieval_strategy_agent.py
 """
 
+from typing import Any
+
+import pytest
+
 import backend.agents.retrieval_strategy_agent as retrieval_strategy_agent
-from backend.api.services.retrieval import _reciprocal_rank_fusion
+from backend.api.services.retrieval import _fuse_reciprocal_rank
 
 
 def _row(chunk_id: str, source: str = "law") -> tuple[str, str, dict, str]:
@@ -20,59 +24,59 @@ def _row(chunk_id: str, source: str = "law") -> tuple[str, str, dict, str]:
 
 
 class TestReciprocalRankFusion:
-    def test_both_empty_returns_empty_list(self):
-        assert _reciprocal_rank_fusion([], []) == []
+    def test_both_empty_returns_empty_list(self) -> None:
+        assert _fuse_reciprocal_rank([], []) == []
 
-    def test_dense_only_preserves_dense_order(self):
+    def test_dense_only_preserves_dense_order(self) -> None:
         dense = [_row("a"), _row("b"), _row("c")]
-        fused = _reciprocal_rank_fusion(dense, [])
+        fused = _fuse_reciprocal_rank(dense, [])
         assert [c["chunk_id"] for c in fused] == ["a", "b", "c"]
 
-    def test_sparse_only_preserves_sparse_order(self):
+    def test_sparse_only_preserves_sparse_order(self) -> None:
         sparse = [_row("x"), _row("y")]
-        fused = _reciprocal_rank_fusion([], sparse)
+        fused = _fuse_reciprocal_rank([], sparse)
         assert [c["chunk_id"] for c in fused] == ["x", "y"]
 
-    def test_item_ranked_first_in_both_lists_wins(self):
+    def test_item_ranked_first_in_both_lists_wins(self) -> None:
         dense  = [_row("a"), _row("b"), _row("c")]
         sparse = [_row("a"), _row("c"), _row("b")]
-        fused = _reciprocal_rank_fusion(dense, sparse)
+        fused = _fuse_reciprocal_rank(dense, sparse)
         assert fused[0]["chunk_id"] == "a"
 
-    def test_item_only_in_one_list_still_included(self):
+    def test_item_only_in_one_list_still_included(self) -> None:
         dense  = [_row("a"), _row("b")]
         sparse = [_row("c")]
-        fused = _reciprocal_rank_fusion(dense, sparse)
+        fused = _fuse_reciprocal_rank(dense, sparse)
         ids = {c["chunk_id"] for c in fused}
         assert ids == {"a", "b", "c"}
 
-    def test_duplicate_across_lists_not_duplicated_in_output(self):
+    def test_duplicate_across_lists_not_duplicated_in_output(self) -> None:
         dense  = [_row("a"), _row("b")]
         sparse = [_row("b"), _row("a")]
-        fused = _reciprocal_rank_fusion(dense, sparse)
+        fused = _fuse_reciprocal_rank(dense, sparse)
         ids = [c["chunk_id"] for c in fused]
         assert len(ids) == len(set(ids)) == 2
 
-    def test_appearing_in_both_ranks_above_appearing_in_one(self):
+    def test_appearing_in_both_ranks_above_appearing_in_one(self) -> None:
         dense  = [_row("only_dense"), _row("both")]
         sparse = [_row("only_sparse"), _row("both")]
-        fused = _reciprocal_rank_fusion(dense, sparse)
+        fused = _fuse_reciprocal_rank(dense, sparse)
         ranked_ids = [c["chunk_id"] for c in fused]
         assert ranked_ids.index("both") < ranked_ids.index("only_dense")
         assert ranked_ids.index("both") < ranked_ids.index("only_sparse")
 
-    def test_in_both_flag_set_correctly(self):
+    def test_in_both_flag_set_correctly(self) -> None:
         dense  = [_row("both"), _row("only_dense")]
         sparse = [_row("both"), _row("only_sparse")]
-        fused = _reciprocal_rank_fusion(dense, sparse)
+        fused = _fuse_reciprocal_rank(dense, sparse)
         by_id = {c["chunk_id"]: c["in_both"] for c in fused}
         assert by_id["both"] is True
         assert by_id["only_dense"] is False
         assert by_id["only_sparse"] is False
 
-    def test_source_field_preserved(self):
+    def test_source_field_preserved(self) -> None:
         dense = [_row("a", source="precedent")]
-        fused = _reciprocal_rank_fusion(dense, [])
+        fused = _fuse_reciprocal_rank(dense, [])
         assert fused[0]["source"] == "precedent"
 
 
@@ -88,17 +92,17 @@ class TestRetrievalStrategyNodeRouting:
     이 테스트는 라우터를 되살리는 변경에 대한 회귀 방지다.
     """
 
-    def _patch(self, monkeypatch):
+    def _patch(self, monkeypatch: pytest.MonkeyPatch) -> dict:
         calls = {"fetch": []}
 
-        def fake_fetch(query, law_names=None, **kwargs):
+        def fake_fetch(query: str, law_names: list[str] | None = None, **kwargs: Any) -> dict:
             calls["fetch"].append({"query": query, "law_names": law_names, **kwargs})
             return {"law": [], "precedent": []}
 
         monkeypatch.setattr(retrieval_strategy_agent, "fetch_candidates", fake_fetch)
         return calls
 
-    def test_first_attempt_pins_primary_law(self, monkeypatch):
+    def test_first_attempt_pins_primary_law(self, monkeypatch: pytest.MonkeyPatch) -> None:
         calls = self._patch(monkeypatch)
         state = {"clause": "제9조 계약 해지 조항", "evidence_span": "해지 조항", "retry_count": 0}
 
@@ -107,7 +111,7 @@ class TestRetrievalStrategyNodeRouting:
         assert calls["fetch"][0]["law_names"] == [retrieval_strategy_agent._PRIMARY_LAW]
         assert retrieval_strategy_agent._PRIMARY_LAW == "약관의 규제에 관한 법률"
 
-    def test_first_attempt_uses_single_partition(self, monkeypatch):
+    def test_first_attempt_uses_single_partition(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """파티션을 하나만 더 붙여도 성능이 42%p 떨어졌다 — 반드시 1개여야 한다."""
         calls = self._patch(monkeypatch)
         state = {"clause": "제9조 계약 해지 조항", "evidence_span": "해지 조항", "retry_count": 0}
@@ -116,7 +120,7 @@ class TestRetrievalStrategyNodeRouting:
 
         assert len(calls["fetch"][0]["law_names"]) == 1
 
-    def test_retry_passes_no_filter(self, monkeypatch):
+    def test_retry_passes_no_filter(self, monkeypatch: pytest.MonkeyPatch) -> None:
         calls = self._patch(monkeypatch)
         state = {"clause": "제9조 계약 해지 조항", "evidence_span": "해지 조항", "retry_count": 1}
 
@@ -125,7 +129,7 @@ class TestRetrievalStrategyNodeRouting:
         assert calls["fetch"][0]["law_names"] is None
         assert result == {"retrieval_candidates": {"law": [], "precedent": []}}
 
-    def test_no_llm_router_is_called(self, monkeypatch):
+    def test_no_llm_router_is_called(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """모듈이 EXAONE 라우터를 다시 import·호출하지 않는지 확인하는 트립와이어."""
         import backend.agents.query_router as qr
 

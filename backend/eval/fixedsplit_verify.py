@@ -56,7 +56,7 @@ def _source_map() -> dict[str, str]:
     return m
 
 
-def predict(model_dir, texts: list[str], device: torch.device) -> np.ndarray:
+def predict(model_dir: str, texts: list[str], device: torch.device) -> np.ndarray:
     model = DualHeadElectra(str(model_dir))
     heads = torch.load(model_dir / "heads.pt", map_location=device, weights_only=True)
     model.domain_head.load_state_dict(heads["domain_head"])

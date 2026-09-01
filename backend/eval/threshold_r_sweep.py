@@ -59,6 +59,7 @@ r마다 물리적으로 섞으면 풀 크기에 묶인다:
 import argparse
 import random
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -84,7 +85,7 @@ _GRID = np.arange(0.05, 0.96, 0.01)
 _VIOLATION_FLOOR = 0.38
 
 
-def _probs(model_dir: str, texts: list[str], device) -> tuple[np.ndarray, list[str]]:
+def _probs(model_dir: str, texts: list[str], device: Any) -> tuple[np.ndarray, list[str]]:
     m = ArticleMultiLabelElectra.load(Path(model_dir)).to(device).eval()
     tok = AutoTokenizer.from_pretrained(model_dir)
     recs = [{"text": t, "articles": [], "group": "g"} for t in texts]
