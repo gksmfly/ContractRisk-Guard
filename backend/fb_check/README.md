@@ -4,6 +4,65 @@ Forward-Backward Consistency Check(FB-Check) — LLM 자동 라벨링 결과를 
 
 ---
 
+## ⚠️ 라벨링 재개 절차 — 먼저 읽을 것 (2026-09-01)
+
+라벨링은 **52.3%에서 멈춰 있다.** 08-23에 OpenAI 크레딧이 소진돼 중단됐고, 그 상태 그대로다.
+
+    총 입력    4,466건
+    확보       2,335건 (52.3%)   CLEAN 1,786 / NOISE 549
+    미처리     2,131건 (47.7%)   status=ERROR로 기록됨 → 재개 시 자동으로 재시도 대상
+
+### 반드시 `--model gpt-4o`를 붙일 것
+
+**기존 2,335건은 전량 `gpt-4o`로 만들어졌다**(레코드의 `forward_model`/`verify_model` 필드로
+확인 가능). 그런데 `.env`는 `FORWARD_MODEL=gpt-4o-mini`다 — 아래 "결론" 절의 07-06 권고가
+그대로 남아 있어서인데, **그 권고는 실행되지 않았다.**
+
+그냥 재개하면 [`_load_checkpoint`](__main__.py)의 stale 가드가 작동해서 **기존 레코드를
+"모델 불일치 → 재처리 대상"으로 잡는다.** 조용한 오염(gpt-4o 라벨과 mini 라벨이 한 파일에
+섞이는 것)은 구조적으로 막히지만, 대신 처리 대상이 두 배가 된다.
+
+**09-01 `--dry-scope` 실측 — 플래그 하나로 $17.5 차이가 난다:**
+
+| 명령 | 경고 | 처리 대상 | 예상 비용 |
+|---|---|---|---|
+| `--model gpt-4o --dry-scope` | 없음 | **2,131건** | **$15.98** |
+| `--dry-scope` (`.env`=mini) | `모델·프롬프트가 다른 레코드 2482건 → 재처리 대상` | 4,468건 | $33.51 |
+
+```bash
+# ① 먼저 범위를 확인한다 — API를 한 번도 호출하지 않고, GPU도 안 쓴다
+.venv/bin/python -m backend.fb_check --model gpt-4o --dry-scope
+
+#    기대 출력:  ★ forward: gpt-4o   ★ verify : gpt-4o
+#               처리 대상  2131건    예상 비용 $15.98
+#    "모델·프롬프트가 다른 레코드 N건" 경고가 **한 줄이라도 뜨면 실행하지 말 것** —
+#    --model을 빠뜨렸거나 프롬프트 버전이 바뀐 것이다.
+
+# ② 범위가 맞으면 실행
+.venv/bin/python -m backend.fb_check --model gpt-4o --gpu 1
+```
+
+`.env`를 `FORWARD_MODEL=gpt-4o`로 바꿔도 결과는 같다. 다만 `.env`는 실험 스크립트도 함께
+읽으므로(`label_pilot`이 gpt-4o, `fb_check`이 mini를 쓰던 것이 정확히 이 문제였다),
+**어느 쪽을 고르든 재개 전에 `--dry-scope`로 확인하는 절차 자체는 건너뛰지 말 것.**
+
+`--dry-scope`를 건너뛰지 말 것 — 08-24에 `--redo-reason snippet_not_found`가 의도한 146건이
+아니라 2,277건을 대상으로 잡아 $1짜리 작업이 $17이 될 뻔한 적이 있다
+(`_redo_ids` docstring 참고).
+
+### 재개 후 반드시 다시 돌려야 하는 것
+
+라벨이 늘면 아래 수치가 전부 움직인다. 라벨 구성만 바뀐 08-25 재처리(148건 재실행, 86건이
+NOISE→CLEAN)만으로도 출처 교락이 +0.9%p → +2.4%p로 2.7배가 됐다.
+
+```bash
+.venv/bin/python -m backend.eval.confound_articles      # 출처 교락 (학습 전 필수)
+.venv/bin/python -m backend.eval.noise_reason_audit      # FB-Check 게이트가 값을 하는지
+.venv/bin/python -m backend.training.train_article --gpu 1 --num-workers 0
+```
+
+---
+
 ## 파일 목록
 
 ### `forward_labeling.py`
@@ -112,8 +171,27 @@ Qwen(40→60%)·Llama(40→70%)는 개선됐지만, **EXAONE만 오히려 악화
 
 오픈소스 로컬 모델(Qwen/Llama)은 Consistency Verification 단계(evidence_span만 다룸)에서는
 쓸만하지만(domain 90%, risk 60~70%), gpt-4o-mini가 비용도 더 싸고 품질도 더 좋아서 오픈소스를
-쓸 이유가 없다. **FB-Check 전체 재실행은 `FORWARD_MODEL=gpt-4o-mini`, `VERIFY_MODEL=gpt-4o-mini`로
-설정해서 진행하는 것을 권장한다.**
+쓸 이유가 없다. ~~**FB-Check 전체 재실행은 `FORWARD_MODEL=gpt-4o-mini`, `VERIFY_MODEL=gpt-4o-mini`로
+설정해서 진행하는 것을 권장한다.**~~
+
+> **[정정 2026-09-01] 이 권고는 따르지 말 것 — `.env`가 mini인 이유가 여기다.**
+>
+> 이 권고는 `.env`에 반영됐지만 **실제 라벨링은 gpt-4o로 실행됐다**(현재 2,335건 전량의
+> `forward_model`/`verify_model`이 `gpt-4o`). 즉 `.env`와 산출물이 갈린 채로 남아 있고,
+> 그대로 재개하면 위 "라벨링 재개 절차"의 두 배 비용 문제가 그대로 터진다.
+>
+> 권고 자체의 근거도 지금은 약하다:
+> - **표본 20건**이고, 비교 기준이 "GPT-4o와 얼마나 일치하는가"이지 외부 정답 대비
+>   정확도가 아니다. 저 표는 mini가 옳다는 근거가 아니라 mini가 4o를 닮았다는 근거다.
+> - **2-도메인 taxonomy 시절**(2026-07-06) 측정이다. 지금 라벨은 §6~14 multi-label이라
+>   과제 자체가 다르다.
+> - 표본이 책임제한 18 / 해지 2로 치우쳐 있다고 같은 문단이 이미 밝히고 있다.
+>
+> **판단**: 이미 절반이 gpt-4o로 만들어졌으므로 **일관성을 위해 gpt-4o로 마저 돌린다.**
+> 비용을 아끼려고 지금 mini로 갈아타면 한 학습 세트 안에 두 판정자가 섞여, 앞으로 나오는
+> 모든 수치에서 "모델 차이인지 데이터 차이인지" 영영 못 가린다. mini 전환을 진짜로
+> 검토하려면 §6~14 taxonomy에서 **FTC 근거_법령 대비** 다시 재고, 그때는 라벨을
+> 새로 다 만드는 것이 전제다.
 
 ---
 

@@ -1,9 +1,12 @@
 # backend/agents/state.py
 """LangGraph 파이프라인이 조항 하나를 처리하며 공유하는 상태.
 
-Analysis → Retrieval Strategy → Judgment 순서로 노드를 지나며 필드가 하나씩
-채워진다. Evidence Selection/Red-team/Evidence Verification 에이전트가
-추가되면 그때 필요한 필드를 여기 보강한다.
+    Analysis(GPT) → Judgment(모델) → ┬ Red-team
+                                      └ Retrieval Strategy → Evidence Selection
+                                        → Evidence Verification (재검색 최대 3회)
+
+순서대로 필드가 채워진다. **Judgment가 게이트다** — `model_articles`가 비면 두 브랜치를
+건너뛰고 끝난다(`graph.py` 참고). 예전에는 Analysis 직후 GPT의 `domain`으로 끊었다.
 """
 
 from typing import TypedDict
@@ -14,7 +17,9 @@ from backend.api.schemas import LegalBasis
 class ClauseState(TypedDict, total=False):
     clause: str            # 그래프 시작 시 필수로 채워짐, 나머지는 각 노드가 순서대로 채움
     articles: list[str]    # 약관규제법 위반 소지 유형("제9조" 등, 복수) — Analysis가 채우는 1차 라벨
-    domain: str            # articles에서 파생된 옛 2-도메인 값 — judgment_agent의 verified 비교용
+    # articles에서 파생된 옛 2-도메인 값. **판단에 쓰이지 않는다** — `verified`는 아래
+    # articles ↔ model_articles를 비교한다. 저장된 옛 결과와의 응답 호환용으로만 남긴다.
+    domain: str
     evidence_span: str
     reasoning: str
     retrieval_candidates: dict[str, list[dict]]  # 중간 산물 — Evidence Selection이 소비, 최종 응답엔 안 씀

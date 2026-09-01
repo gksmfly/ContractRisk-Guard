@@ -83,20 +83,28 @@ describe("SummaryBar", () => {
     ).toBeInTheDocument();
   });
 
-  it("정상 케이스에서 위험도 비율을 정확히 계산한다", () => {
+  // 위험도 3단계(고/중/저 %)를 검증하던 테스트를 대체한다 — 2026-08-31에 등급 자체가
+  // 사라졌다(조 multi-label 모델에 risk 헤드가 없다). 지금 화면이 주장하는 것은
+  // "입력 N건 중 M건을 확인해야 한다"이고, **나머지는 '안전'이 아니라 '확인되지 않음'** 이다.
+  it("확인 필요 비율의 분모는 입력 조항 수이고, 나머지는 '확인되지 않음'으로 센다", () => {
     const result: FullAnalyzeResult = {
-      total_clauses: 4,
-      review_count: 4,
-      high_count: 1,
-      medium_count: 1,
-      low_count: 2,
+      total_clauses: 1,
+      review_count: 1,
+      input_clauses: 4,   // 입력 4건 중 1건만 확인 필요 → 25%
       clauses: [],
     };
     render(<SummaryBar result={result} />);
 
-    expect(screen.getByText("고위험 25%")).toBeInTheDocument();
-    expect(screen.getByText("중위험 25%")).toBeInTheDocument();
-    expect(screen.getByText("저위험 50%")).toBeInTheDocument();
+    expect(screen.getByText("확인 필요 1건 / 입력 4건 (25%)")).toBeInTheDocument();
+
+    // 확인 필요 1 / 확인되지 않음 3 — 두 칸이 각자 제 값을 든다.
+    const review = screen.getByText("확인 필요").parentElement!;
+    expect(within(review).getByText("1")).toBeInTheDocument();
+    const unchecked = screen.getByText("확인되지 않음").parentElement!;
+    expect(within(unchecked).getByText("3")).toBeInTheDocument();
+
+    // "안전"·"저위험"으로 읽힐 문구가 화면에 없어야 한다 — 거짓 안심을 막는 것이 이 설계의 요점이다.
+    expect(screen.queryByText(/안전|저위험|고위험|중위험/)).not.toBeInTheDocument();
   });
 });
 
@@ -209,20 +217,25 @@ describe("ContractAnalyzer 전체 흐름", () => {
     expect(workspace.getByText(/회사는 사전 통지 없이/)).toBeInTheDocument();
     expect(workspace.getByText("두 판단 일치")).toBeInTheDocument();
     expect(workspace.queryByText("근거 미확정")).not.toBeInTheDocument();
-    expect(workspace.getByText(/약관규제법 제9조/)).toBeInTheDocument();
+    // 헤더가 **모델이 지목한 조**를 보여준다. `약관규제법 제9조`는 관련 조문 인용
+    // (LegalQuote의 <span>)에도 나오므로 태그로 갈라야 한다 — 그냥 찾으면 2건이 걸린다.
+    expect(
+      workspace.getByText(
+        (_, el) => el?.tagName === "P" && el.textContent === "약관규제법 제9조"
+      )
+    ).toBeInTheDocument();
 
-    // 사이드바에서 두 번째 조항(저위험, 근거 미확정)을 선택하면 상세가 전환된다.
+    // 사이드바에서 두 번째 조항(근거 미확정)을 선택하면 상세가 전환된다.
     await user.click(sidebar.getByRole("button", { name: /§2/ }));
 
     expect(workspace.getByText(/30일 전 서면 통지/)).toBeInTheDocument();
     expect(workspace.getByText("근거 미확정")).toBeInTheDocument();
     expect(workspace.queryByText(/회사는 사전 통지 없이/)).not.toBeInTheDocument();
 
-    // 고위험 필터를 적용하면 저위험 조항은 목록/상세에서 사라진다.
-    await user.click(screen.getByRole("tab", { name: /고위험/ }));
-
-    expect(workspace.getByText(/회사는 사전 통지 없이/)).toBeInTheDocument();
-    expect(sidebar.queryByRole("button", { name: /§2/ })).not.toBeInTheDocument();
+    // 위험도 필터를 검증하던 블록을 제거했다 — 2026-08-31에 등급을 내지 않기로 하면서
+    // 필터할 축 자체가 사라졌다(ContractAnalyzer.tsx의 "위험도 필터 제거" 주석 참고).
+    // 등급이 화면에 되살아나면 이 자리에서 다시 걸리도록 아래를 남긴다.
+    expect(screen.queryByRole("tablist", { name: "위험도 필터" })).not.toBeInTheDocument();
   });
 
   it("미니맵을 클릭하면 해당 조항 상세로 전환된다", async () => {

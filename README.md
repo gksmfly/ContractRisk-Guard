@@ -25,11 +25,13 @@ Act (약관규제법) — unilateral termination (§9), liability limitation (§
 ## Approach
 
 - **FB-Check to filter hallucinations from auto-labeled data**: Forward Labeling (GPT-4o generates label L and evidence span E from clause C) → Backward Grounding (1st-generation KoELECTRA validates E ⊂ C at index level) → Consistency Verification (re-labels from E alone; L′ == L → CLEAN, otherwise NOISE)
-- ~~**Data Flywheel**: CLEAN data trains a 2nd-generation model that replaces the Backward Grounding
-  agent~~ — **retracted.** A pipeline's own output cannot serve as that pipeline's validator: the
-  2nd-generation model inherits exactly the errors it is asked to detect. Backward Grounding is now
-  a pure string check (`E ⊂ C` at index level), which is what the paper defined it as; no model is
-  loaded in the labeling path.
+- **Data Flywheel** — *suspended, not disproven.* The 2nd-generation model was removed from the
+  labeling path after it was measured to **worsen** source confound (75.5% → 96.9%): it had learned
+  the corpus shortcut and rejected exactly the samples that broke it. Re-measured 2026-08-31 under
+  the article-level taxonomy, where that shortcut is gone (+0.9%p): adding the model as a third
+  voter **no longer degrades confound** (+2.7%p → +2.9%p) and moves label quality +2.5%p at −6% yield
+  — but that gain is **not significant** (95% CI [−6.9, +12.1], n=114 scoreable). Backward Grounding
+  is currently a pure string check (`E ⊂ C`), which is what the paper defined it as.
 - **KoELECTRA as the inference engine**: The fine-tuned classifier makes all risk judgments; GPT-4o is strictly limited to explanation generation and search query construction — reducing LLM calls, latency, and cost while keeping judgments consistent
 - **A fixed 6-stage pipeline** (not agentic): Analysis → Retrieval Strategy → Evidence Selection →
   Judgment (fine-tuned KoELECTRA) → Red-team → Evidence Verification. **No LLM controls the flow.**
@@ -172,7 +174,7 @@ decision rules and the analyses that failed, are in
 
 | Claim | Status | Basis |
 |---|---|---|
-| Data Flywheel | **Retracted** | A pipeline's output cannot validate that pipeline |
+| Data Flywheel | **Suspended, not disproven** | Failed via source confound under the 2-domain taxonomy; that mechanism does not recur now, but the benefit is unmeasurable at n=114 |
 | 6-agent multi-agent system | **Restated** as a fixed 6-stage pipeline | LLM routing lost 0–100 to a constant; 18% → 81% retrieval after removal |
 | FB-Check filters hallucinated labels | **Validated externally** | +8.8%p [+5.1, +12.7] against FTC-cited articles, on non-empty predictions — first external check of this claim |
 | 2-domain taxonomy | **Replaced** by §6–§14 | The old scheme discarded 56.7% of input |

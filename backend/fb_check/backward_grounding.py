@@ -1,10 +1,20 @@
 # backend/fb_check/backward_grounding.py
 """
-Backward Grounding: evidence_span ⊂ C 검증 + KoELECTRA 예측
+Backward Grounding: evidence_span ⊂ C 인덱스 검증
 
-두 가지 검증을 수행한다.
-  1. snippet_exists: GPT가 추출한 evidence_span이 원문에 실제로 존재하는지 확인
-  2. predict: KoELECTRA로 조항 텍스트의 domain·risk_level을 독립적으로 예측
+**검증하는 것은 하나뿐이다.**
+  - `snippet_exists`: GPT가 추출한 evidence_span이 원문에 실제로 존재하는지 확인.
+    완전일치 → 레이아웃 제거 → 퍼지(0.85) 순. **순수 문자열 검사이고 모델을 쓰지 않는다.**
+
+`predict`(KoELECTRA domain·risk_level)는 **판정에 쓰지 않는다.** `--record-backward`를
+줬을 때 레코드에 기록만 하고, CLEAN/NOISE 결정은 `L == L'`(논문 정의)만 본다.
+
+## 왜 모델이 투표하지 않는가 (Data Flywheel 철회)
+
+원래 설계는 "CLEAN 데이터로 학습한 2세대 모델이 Backward Grounding 에이전트를 대체한다"
+였고, 한때 3-way 다수결(forward/verify/backward 중 2개 일치)로 판정했다. **파이프라인의
+산출물이 그 파이프라인의 검증자가 될 수 없다** — 2세대 모델은 자신이 검출해야 할 오류를
+그대로 물려받는다. 논문이 정의한 2-way(`L == L'`)로 되돌렸다.
 """
 
 import difflib
