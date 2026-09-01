@@ -29,7 +29,7 @@ r 워크시트의 실제 약관 99건은 **라벨이 없다.** 그래서 정확�
     (a) 입력 분포가 이동해 모델이 반응을 못 한다      ← 문제
     (b) 실제 약관에 진짜로 위반이 적다 (r이 낮다)     ← 정상. 그게 r을 재는 이유다
 
-**둘을 가르는 것은 사람 판단 50건이다.** 여기서는 표면 지표와 분리 가능성으로
+**둘을 가르려면 사람 판단이 필요한데, 이 연구에서는 하지 않는다(한계).** 표면 지표와 분리 가능성으로
 (a)의 여지를 좁힐 뿐이다 — 표면이 비슷하고 판별이 안 되면 (a)는 닫히고 낮은 지목률은
 (b)의 증거가 된다. 그 순서로 읽을 것.
 
@@ -60,6 +60,7 @@ import json
 import os
 import re
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -132,14 +133,14 @@ def _separability(a: list[str], b: list[str], seed: int = 42) -> dict:
     return {"auc": float(roc_auc_score(y, p)), "n": [len(a), len(b)]}
 
 
-def _truncation(texts: list[str], tokenizer, max_len: int) -> dict:
+def _truncation(texts: list[str], tokenizer: Any, max_len: int) -> dict:
     """`max_len`에서 잘리는 비율. **보고값과 운영이 갈리는 지점이 여기다.**"""
     n = np.array([len(tokenizer(t)["input_ids"]) for t in texts])
     return {"token_median": float(np.median(n)), "token_p90": float(np.percentile(n, 90)),
             "truncated_rate": float((n > max_len).mean())}
 
 
-def _severity(texts: list[str], tokenizer, max_len: int = 256) -> dict:
+def _severity(texts: list[str], tokenizer: Any, max_len: int = 256) -> dict:
     """절단 **정도**. 절단률(몇 %가 잘리나)과 다른 질문이다 — 얼마나 잘리나.
 
     `max_len` 개입의 무해 확인을 gold 절단분(n=18)에서 하고 "놓침 0"을 얻었는데,
@@ -161,7 +162,7 @@ def _severity(texts: list[str], tokenizer, max_len: int = 256) -> dict:
             "over_512": int((cut > 512).sum())}
 
 
-def _probs(texts: list[str], model, tokenizer, device, names, bs: int, max_len: int) -> np.ndarray:
+def _probs(texts: list[str], model: Any, tokenizer: Any, device: Any, names: list[str], bs: int, max_len: int) -> np.ndarray:
     recs = [{"text": t, "articles": [], "group": "g"} for t in texts]
     ds = ArticleDataset(recs, tokenizer, max_len, names)
     P = []
@@ -283,7 +284,7 @@ def main() -> None:
                 f"← **뒷부분에 신호가 있다.** 잘림이 공짜가 아니라는 뜻")
 
     logger.info("    ⚠ 실제 약관의 지목률이 낮다고 '분포 이동'으로 읽지 말 것 — **r이 낮아서**일 수 있다. "
-                "둘을 가르는 것은 사람 판단 50건이다. 여기서는 표면·분리 가능성으로 "
+                "둘을 가르려면 사람 판단이 필요하나 이 연구에서는 하지 않는다(한계). 표면·분리 가능성으로 "
                 "분포 이동의 여지를 좁힐 뿐이다")
 
     save_json({"model_dir": str(model_dir), "surface": surf, "separability": sep, "model_response": resp,

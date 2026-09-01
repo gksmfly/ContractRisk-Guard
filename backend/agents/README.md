@@ -79,7 +79,9 @@ GPT-4o Forward Labeling(`backend.fb_check.forward_labeling.run_forward()`) 재�
 
 **위험도 3단계(High/Medium/Low)는 더 이상 내지 않는다**(2026-08-31). 조 taxonomy로 바꾸면서 risk의 gold를 정의할 방법이 없어 헤드를 일부러 뺐고, 그 위에 얹혀 있던 `confidence_band` 실측치도 v4 전용이라 옮길 수 없다. 지금 내는 것은 `model_articles`(빈 리스트 가능)와 `needs_review`(지목 여부 = 이진)다.
 
-실측(배포 임계값, `backend/eval/article_gold_eval.py`): 조항 단위 재현 **78.0%** · 오경보 **2.6%**. 조 단위 per-sample F1은 38.6%로 상수 기준선 36.1% 대비 +2.5%p [-3.7, +9.2] **미판정** — 그래서 화면에서 **조 이름은 단정하지 않고 참고로만** 붙인다. 상세는 `models/README.md`.
+실측(배포 임계값, `backend/eval/article_gold_eval.py`, clean gold n=255): 조항 단위 재현 **78.4%**(`article_v2`. `article_v1`은 78.0%). 조 단위 per-sample F1은 38.5%로 상수 기준선 36.1% 대비 **미판정** — 그래서 화면에서 **조 이름은 단정하지 않고 참고로만** 붙인다.
+
+**오경보율은 아직 없다.** 예전에 여기 "오경보 2.6%"가 함께 적혀 있었는데, 그 값은 음성 풀의 정답이 `agreed_articles`(= GPT 라벨) 그 자체라 **순환**이었다 — 모델이 GPT보다 잘 찾아 짚은 것도 오경보로 세어진다. `disagree_with_gpt`로 개명했다. **이 연구 범위에서는 측정하지 않는다.** 독립 준거를 만들려면 법률 비전문가가 약관 조항 수백 건을 이진 판단해야 하는데, 그 판단 자체의 신뢰도를 담보할 방법이 없어 **한계로 남긴다.** 평가셋(`data/eval/prevalence/evalset_v1.json`, 149건)은 얼려 두었으므로 나중에 판단자가 생기면 그대로 쓸 수 있다. 상세는 `models/README.md`.
 
 ### `red_team_node` (`red_team_agent.py`)
 충돌 사례 탐색은 LLM 미호출 — `clean_clauses` 임베딩 최근접 이웃 중 유사도 0.75 이상인데 **다른 조**로 판정된 사례가 있으면 편향 의심으로 간주한다. 임계값은 leave-one-out 실험으로 검증(탐지율 2.3%). 탐지된 경우에만 LLM(`gpt-4o-mini`)을 호출해 반박 근거를 생성 — 출력 스키마에 판정 필드가 없어 LLM이 판단 자체를 못 바꾸도록 구조적으로 막아둠. 호출 실패 시 템플릿 문구로 폴백.

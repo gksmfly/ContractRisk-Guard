@@ -7,6 +7,26 @@
 
 ---
 
+> ## ⚠️ 이 문서는 시간순 로그다 — 중간을 인용하기 전에 여기를 볼 것 (2026-09-01)
+>
+> 아래 본문은 **그때 믿었던 것**을 그대로 남긴다. 과거 항목을 고치지 않는 이유는,
+> "언제 무엇을 믿었나"가 사라지면 나중에 결론을 되짚을 수 없기 때문이다
+> (오늘 08-16 결론 셋을 뒤집을 수 있었던 것이 그 기록 덕분이다).
+>
+> **다만 아래 값들은 이후 항목이 무효화했다. 중간 절만 읽고 인용하면 안 된다:**
+>
+> | 본문에 있는 값 | 상태 | 무엇으로 대체됐나 |
+> |---|---|---|
+> | 오경보 2.6% (여러 절) | **철회** | 준거가 `agreed_articles`(= GPT 라벨)라 순환. 독립 오경보율은 `evalset_v1` 149건 사람 판단이 나와야 생긴다 |
+> | 정밀도 61~84% (r 함수) | **철회** | 위 오경보율이 분모에 들어간다 |
+> | 조 단위 "38.2% vs 상수 40.3%" | **무효** | 옛 gold 327건 정의(22%가 채점 불가). clean 지층은 38.6% vs 36.1%, CI [-3.7,+9.2] 미판정 |
+> | "학생 +9.1%p [+5.6,+12.6]" (l.1258 등) | **무효** | 축2가 0.6%로 붕괴해 **기각한 `ratio 0.25` 팔**의 값. 방어 가능한 `ratio None`은 +2.3%p [-2.0,+6.6] 미판정 |
+> | 재현 78.0% (배포 임계값) | **갱신** | `article_v2`(max_len 512)에서 78.4%. 원문 입력 기준이며 evidence_span 조각 입력이 아니다 |
+>
+> 각 항목의 철회·정정 근거는 문서 뒤쪽 해당 절에 있다.
+
+---
+
 ## 왜 재는가
 
 `forward`+`verify` 입력의 **45%**가 약관규제법 제6~14조 전문(조항당 2,252토큰)이다.
@@ -3280,3 +3300,59 @@ flywheel에서 1,786건 평균이 미판정이었다가 불일치 17건으로 �
 **"부분모집단으로 좁혀라"의 짝 규칙:** 좁힌 부분모집단이 **겨냥한 구간을 실제로 덮는지**
 확인할 것. 오늘 flywheel에서는 덮었고(불일치 17건이 곧 그 구간), max_len에서는 덜 덮었다
 (gold 절단 18건이 실제 절단 구간의 40%만 덮는다).
+
+---
+
+# 함수 개명 대응표 (2026-09-01)
+
+`Claude.md`의 "함수는 동사로 시작" 규칙에 맞춰 배포 경로 함수 23개를 개명했다.
+**아래 본문의 옛 이름은 그대로 둔다** — 날짜별 기록이라 덮어쓰면 그때 무엇을 봤는지가 사라진다.
+옛 이름으로 grep한 사람이 현재 코드를 찾아갈 수 있도록 대응만 남긴다.
+
+    옛 이름                      현재 이름
+    ────────────────────────────────────────────────────────
+    model_version                get_model_version
+    electra_predict              predict_articles
+    _fallback_for                _build_fallback
+    _fallback_note               _build_fallback_note
+    _client_key                  _get_client_key
+    _span_from_norm              _map_span_from_norm
+    _law_to_legal_basis          _convert_law_to_basis
+    _precedent_to_legal_basis    _convert_precedent_to_basis
+    candidate_to_legal_basis     convert_candidate_to_basis
+    _reciprocal_rank_fusion      _fuse_reciprocal_rank
+    _existing_ids                _fetch_existing_ids
+    stratified_limit             apply_stratified_limit
+    _redo_ids                    _collect_redo_ids
+    snippet_exists               check_snippet_exists      ← **함수만.** JSONL 필드는 `snippet_exists` 그대로
+    prompt_block                 build_prompt_block
+    prompt_block_variant         build_prompt_block_variant
+    risk_scheme                  get_risk_scheme           ← **함수만.** metrics.json 키는 `risk_scheme` 그대로
+    article_labels               select_article_labels
+    article_pos_weight           compute_article_pos_weight
+    _fingerprint                 _compute_fingerprint
+    _as_list                     _ensure_list
+    article_text                 extract_article_text
+    unhandled_exception_handler  handle_unhandled_exception
+    _events / _one               _stream_events / _process_one
+
+**개명하지 않은 것**: `forward`(nn.Module 오버라이드) · `lifespan`(FastAPI) · FastAPI 라우트
+핸들러(`analyze` 등) — 프레임워크가 이름을 정한다. `eval/`·`tests/`도 손대지 않았다(실험 기록).
+
+## ⚠️ 이 개명이 낸 사고 — 단어 경계 치환이 **문자열 리터럴까지** 바꿨다
+
+    fb_check/__main__.py:168    result["snippet_exists"]  → result["check_snippet_exists"]
+    fbcheck_variant_compare:115 r.get("snippet_exists")   → r.get("check_snippet_exists")
+    oss_experiment/__main__:84  같은 키
+    plot_history.py:167         metrics.get('risk_scheme') → 'get_risk_scheme'
+    train.py:404,406,467        args.risk_scheme          → args.get_risk_scheme  (argparse 속성)
+
+가장 나쁜 건 첫 줄이다 — **라벨링을 재개했다면 새 2,131건이 기존 2,335건과 다른 필드명으로
+쌓였을 것이다.** 테스트는 전부 통과했다(그 경로가 `integration` 마크라 CI에서 안 돈다).
+
+AST로 문자열 상수 안의 새 이름을 전수 조사해 22곳을 찾았고, 그중 데이터 키 5곳만 복구했다
+(나머지 17곳은 docstring·monkeypatch 대상이라 개명이 맞다). 저장된 산출물과 대조해
+`fb_check_results.jsonl`의 실제 키가 `snippet_exists`임을 확인했다.
+
+**교훈**: 식별자 일괄 개명은 정규식으로 하면 안 된다. 최소한 사후에 문자열 리터럴을
+AST로 훑어야 하고, **데이터 스키마와 함수명이 같은 단어를 쓰는 곳**이 특히 위험하다.

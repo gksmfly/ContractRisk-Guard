@@ -133,7 +133,7 @@ def clause_level(probs: np.ndarray, thr: np.ndarray, neg_probs: np.ndarray) -> d
     return out
 
 
-def _tune(probs: np.ndarray, labels: np.ndarray, thr0: np.ndarray, idx) -> np.ndarray:
+def _tune(probs: np.ndarray, labels: np.ndarray, thr0: np.ndarray, idx: list[int]) -> np.ndarray:
     """건별 F1을 최대화하는 조별 임계값을 탐욕적으로 찾는다. **진단 전용.**"""
     thr = thr0.copy()
     for _ in range(3):
@@ -326,7 +326,8 @@ def main() -> None:
                 f"{d['precision_at_r0.15'] * 100:>7.0f}%   ← 지금 배포하면 나오는 값")
     logger.info("    ⚠ **'GPT불일치'는 오경보율이 아니다.** 음성 풀의 정답이 GPT 라벨"
                 "(forward ∩ verify) 그 자체이므로, 모델이 GPT보다 잘 찾아서 짚은 것도 여기 들어간다. "
-                "독립 준거로 잰 오경보율은 **아직 없다** — 표준계약서 조항을 사람이 판단해야 한다")
+                "독립 준거로 잰 오경보율은 **이 연구에서 측정하지 않는다**(한계). "
+                "평가셋은 data/eval/prevalence/evalset_v1.json에 얼려 뒀다")
     logger.info("    ⚠ 따라서 오른쪽 **정밀도 열도 절대값으로 인용하면 안 된다** — 분모에 이 값이 "
                 "들어간다. 설정 간 상대 비교에는 쓸 수 있다(모두 같은 자로 쟀다)")
     logger.info("    ── 상수 ──")

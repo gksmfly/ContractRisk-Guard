@@ -46,7 +46,7 @@ McNemar p=0.035. 작은 가중치(0.0003·0.001)도 시도했으나 폐지 대�
 
 from backend.agents.state import ClauseState
 from backend.api.schemas import LegalBasis
-from backend.api.services.retrieval import candidate_to_legal_basis
+from backend.api.services.retrieval import convert_candidate_to_basis
 from backend.labeling.articles import ARTICLES, LAW_NAME
 
 # 최종 노출 개수. 2였다가 5로 올렸다 — 약관규제법 고정 검색에서 정답 조문의 첫 등장
@@ -60,18 +60,22 @@ from backend.labeling.articles import ARTICLES, LAW_NAME
 _FINAL_K = 5
 
 # 후보가 하나도 없을 때(DB 미가동·미적재 등)만 쓰는 최종 fallback.
-def _fallback_for(articles: list[str]) -> list[dict]:
+def _build_fallback(articles: list[str]) -> list[dict]:
     """검색이 아무것도 못 건졌을 때 붙이는 **참고 법령 안내.**
 
     ## 판정이 아니라 안내다
 
-    배포 임계값에서 조 단위 성능은 상수와 구분되지 않는다(38.2% vs 상수 40.3%,
-    CI [-7.7,+3.4] 미판정). **그래서 "이 조항은 제9조 위반"이라고 말하지 않는다** —
-    사용자가 조문을 찾아볼 출발점만 제공한다. 정확도 주장이 아니므로 미판정이
-    문제가 되지 않는 형태다.
+    배포 임계값에서 조 단위 성능은 상수와 구분되지 않는다(clean 지층 38.6% vs
+    상수 36.1%, CI [-3.7,+9.2] 미판정). **그래서 "이 조항은 제9조 위반"이라고
+    말하지 않는다** — 사용자가 조문을 찾아볼 출발점만 제공한다. 정확도 주장이
+    아니므로 미판정이 문제가 되지 않는 형태다.
 
-    제품이 주장하는 것은 조항 지목이고 그건 측정돼 있다(조항 단위 재현 78.0% ·
-    오경보 2.6%). 조는 그 위에 얹는 참고값이다.
+    제품이 주장하는 것은 조항 지목이고 그건 측정돼 있다(조항 단위 재현 78.0%).
+    조는 그 위에 얹는 참고값이다.
+
+    ※ 오경보율은 **아직 없다.** 예전 "2.6%"는 준거가 `agreed_articles`(= GPT 라벨)
+      이라 순환이어서 철회했다(2026-08-31). 독립 준거는 `evalset_v1` 149건 사람
+      판단이 나와야 생긴다.
 
     ## 법령 문구를 손으로 쓰지 않는다
 
@@ -109,7 +113,7 @@ def evidence_selection_node(state: ClauseState) -> dict:
     ## 판례는 "참고 사례"로 격하한다
 
     판례 검색은 hit@5 = 14%다(무작위 5.3%). 화면에 5건을 붙이면 그중 관련 있는 게
-    들어 있을 확률이 14%라는 뜻이다. 같은 화면에서 조 표시는 38.2%(상수와 미판정)라는
+    들어 있을 확률이 14%라는 뜻이다. 같은 화면에서 조 표시는 상수와 미판정이라는
     이유로 판정형에서 안내형으로 낮췄는데, **14%짜리를 "적용 법령"으로 두는 것은
     그 신중함과 모순된다.** 근거가 아니라 참고 사례로 표시한다.
 
@@ -117,7 +121,7 @@ def evidence_selection_node(state: ClauseState) -> dict:
     그것을 본다. 바뀐 것은 **화면에 무엇을 근거로 내보내는가**다.
     """
     # 법령: 예측한 조에서 직접 매핑 (검색 미사용)
-    law_basis = [LegalBasis(**b) for b in _fallback_for(state.get("model_articles") or [])]
+    law_basis = [LegalBasis(**b) for b in _build_fallback(state.get("model_articles") or [])]
 
     candidates = state.get("retrieval_candidates", {}) or {}
     law_top       = candidates.get("law", [])[:_FINAL_K]
@@ -126,7 +130,7 @@ def evidence_selection_node(state: ClauseState) -> dict:
     return {
         "legal_basis": law_basis,
         # 참고 사례 — **근거가 아니다**(hit@5 14%). 화면에서 그렇게 표시할 것.
-        "precedent_refs": [candidate_to_legal_basis(c) for c in precedent_top],
+        "precedent_refs": [convert_candidate_to_basis(c) for c in precedent_top],
         # **화면에 뭘 내보내는지와 별개다.** Dense·Sparse 양쪽에서 나온 후보가 있는지는
         # 검색 품질 신호이고 `evidence_verification`의 재검색 판단에 쓰인다. 법령을 표시에서
         # 뺐다고 해서, 또 판례가 하나도 없다고 해서 그 신호까지 버리면 재검색 루프가 눈이 먼다.
