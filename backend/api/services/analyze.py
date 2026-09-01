@@ -165,12 +165,16 @@ _OUT_OF_SCOPE_REASON = (
 
 
 def _process_clause(client: Any, clause: str, index: int) -> ClauseResult | OutOfScopeClause:
-    """단일 조항을 LangGraph 파이프라인(Analysis→Retrieval Strategy→Judgment)으로 분석한다.
+    """단일 조항을 LangGraph 파이프라인(Analysis→Judgment→근거/반박 브랜치)으로 분석한다.
 
-    domain이 "해당없음"이면 그래프가 검색·판단 단계를 건너뛰므로 판단 결과가 없다.
-    예전에는 이때 None을 반환했고 호출부가 그대로 버려서, **조항이 응답에서 통째로
-    사라졌다**(벤치마크에서 입력 20 → 결과 10건). 사용자는 나머지가 안전하다고 오해한다.
-    지금은 `OutOfScopeClause`로 돌려 목록에는 남기되 **위험도는 붙이지 않는다**.
+    **게이트는 모델이다** — `model_articles`가 비면(조를 하나도 지목하지 않으면) 그래프가
+    근거·반박 브랜치를 건너뛰고, 여기서 `OutOfScopeClause`로 돌린다. 예전에는 GPT의
+    2-도메인 값(`domain == "해당없음"`)으로 끊었다.
+
+    빠진 조항에 **어떤 등급도 붙이지 않는다.** 예전에는 None을 반환하고 호출부가 그대로
+    버려서 **조항이 응답에서 통째로 사라졌다**(벤치마크에서 입력 20 → 결과 10건) — 사용자는
+    나머지가 안전하다고 오해한다. 지금은 목록에 남기되 "확인되지 않았다"로만 표시한다.
+    조 단위 재현이 78%이므로 **약 5건 중 1건은 여기 잘못 들어와 있다**(`schemas.py` 참고).
     """
     graph = get_graph()
     result = graph.invoke({"clause": clause}, config={"configurable": {"client": client}})
