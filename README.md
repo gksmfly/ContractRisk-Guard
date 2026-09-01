@@ -67,7 +67,7 @@ legitimate outcome for the standard-contract half of that corpus.
 | Question | Measurement |
 |---|---|
 | Does FB-Check select better labels? | **+8.8%p** [+5.1, +12.7] — CLEAN 46.3% vs NOISE 37.6% article-F1 (n=630 / 395, non-empty predictions) |
-| Does the model read the clause, or the corpus it came from? | Source-conditional constant beats an unconditional one by only **+0.9%p** — the source shortcut is gone |
+| Does the model read the clause, or the corpus it came from? | Source-conditional constant beats an unconditional one by only **+2.4%p** — the source shortcut is small (was +0.9%p on the 1,700-record snapshot; re-measured on all 1,786) |
 | Does the model beat "always guess the three most common articles"? | **Yes on the scoreable stratum**: teacher (GPT-4o) +9.0%p [+2.9, +15.4], student (110M KoELECTRA) +6.4%p [+1.6, +11.4] |
 | Does a larger model help? | **No.** GPT-4o and the 110M student are statistically tied (−2.4%p [−6.4, +1.7]) |
 | Does more training data help? | **No.** 300 → 900 examples moves gold F1 by −2.1%p (pre-registered threshold: +7%p) |
@@ -82,7 +82,7 @@ as "no significant difference".
 | Corpus | Size |
 |---|---|
 | Legal corpus | 16 laws, 26 interpretations, 1,995 court precedents, 2,488+ FTC cases |
-| Auto-labeled clauses (no human annotators) | 2,348 scored / 1,786 CLEAN |
+| Auto-labeled clauses (no human annotators) | 2,335 scored / 1,786 CLEAN + 549 NOISE (52.3% of the 4,466 seed records; the rest is unprocessed, not discarded) |
 | External evaluation set | 255 FTC cases (single clause **and** single cited article) |
 | Published | KAICTS 2025 |
 
