@@ -25,7 +25,6 @@ import {
 import { MAX_UPLOAD_SIZE_BYTES } from "@/lib/config";
 
 // ── Types ──────────────────────────────────────────────
-type RiskLevel = "High" | "Medium" | "Low";
 type Clause = FullAnalyzeResult["clauses"][0];
 
 // 위험도 3단계를 더 이상 표시하지 않는다 (2026-08-31).
@@ -572,8 +571,8 @@ export function ContractAnalyzer({ initialResult, initialTitle }: ContractAnalyz
   const [fileName, setFileName] = useState<string | null>(initialTitle ?? null);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  // 위험도 필터는 사라졌다(등급이 없다). 남길 이유가 생기면 조 단위 필터로 되살릴 것.
-  const [filter] = useState<"all">("all");
+  // 위험도 필터는 사라졌다(등급을 내지 않으므로 필터할 축이 없다).
+  // 조 단위 필터가 필요해지면 clause.articles로 되살릴 것 — 그때 상태를 다시 만든다.
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detailLevel, setDetailLevel] = useState<"simple" | "detailed">("simple");
   const [inputTab, setInputTab] = useState<"text" | "pdf">("text");
