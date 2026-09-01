@@ -1,15 +1,18 @@
 // frontend/components/sections/ProductPreviewSection.tsx
 import { AlertTriangle, Scale } from "lucide-react";
 
+// 점은 두 상태뿐이다 — 확인이 필요한 조항(seal)과 지목된 조가 없는 조항(회색).
+// ochre/forest 3색은 위험도 3단계 시절의 잔재라 쓰지 않는다(2026-08-31 이후 등급 없음).
 const SIDEBAR = [
   { label: "제1조 (해지권 부여)", dot: "bg-seal" },
   { label: "제2조 (책임 제한)", dot: "bg-seal" },
-  { label: "제3조 (환불 정책)", dot: "bg-ochre" },
-  { label: "제4조 (개인정보 처리)", dot: "bg-forest" },
+  { label: "제3조 (환불 정책)", dot: "bg-slate-300" },
+  { label: "제4조 (개인정보 처리)", dot: "bg-slate-300" },
 ];
 
-// 실제 /analyze 결과 화면의 위험도 배지·법령 인용 스타일을 그대로 재현한 정적 목업.
+// 실제 /analyze 결과 화면의 이진 배지·법령 인용 스타일을 그대로 재현한 정적 목업.
 // ExamplesSection의 "즉시 해지권 부여" 사례와 동일한 데이터를 재사용해 실제 화면과 어긋나지 않게 한다.
+// **실제 화면이 안 내는 것을 여기서 내지 말 것** — 위험도 등급과 신뢰도 수치가 그것이다.
 export function ProductPreviewSection() {
   return (
     <section aria-labelledby="preview-heading" className="px-4 pb-20 -mt-6 relative z-10">
@@ -54,9 +57,9 @@ verilex.app/analyze
             <div className="flex-1 p-6 space-y-4 text-left">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-seal-soft text-seal border border-seal/20 rounded-full px-3 py-1">
-                  <AlertTriangle className="h-3 w-3" aria-hidden /> 고위험 · 신뢰도 93%
+                  <AlertTriangle className="h-3 w-3" aria-hidden /> 확인 필요
                 </span>
-                <span className="text-[10px] text-slate-400 font-mono">해지_조항</span>
+                <span className="text-[10px] text-slate-400 font-mono">제9조 · 제7조 관련</span>
               </div>
 
               <p className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-700 leading-relaxed">
@@ -78,11 +81,11 @@ verilex.app/analyze
               <div className="space-y-2">
                 <div className="flex items-center gap-1.5 text-xs text-slate-500">
                   <Scale className="h-3 w-3" aria-hidden />
-                  <span>적용 법령</span>
+                  <span>확인해 볼 조문</span>
                 </div>
                 <div className="flex items-start gap-2 bg-navy-soft/40 border border-navy/10 rounded-lg p-2.5 text-xs">
                   <span className="text-navy font-mono font-semibold shrink-0">약관규제법 §9</span>
-                  <span className="text-slate-600">고객에게 부당하게 불리한 해제·해지권 부여 조항 무효</span>
+                  <span className="text-slate-600">사업자에게 법률에 없는 해지권을 부여해 고객에게 부당한 불이익을 주는 조항</span>
                 </div>
               </div>
             </div>

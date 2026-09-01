@@ -15,12 +15,17 @@ import {
 
 // 랜딩 페이지 데모용 정적 데이터의 타입 — 백엔드 `ClauseResult`와 별개다(API를 부르지 않음).
 // 그래서 어긋나도 타입 검사·테스트에 안 걸리니, 실제 시스템이 낼 수 있는 형태만 담을 것.
-// 이전엔 `confidence: 0.93` 같은 값을 보여줬는데 당시 백엔드는 1.0/0.7 두 값만 생성할 수
-// 있었고, 실제 분석 화면은 신뢰도를 표시하지도 않았다 — 데모만 제품보다 정밀해 보였다.
-// 지금 백엔드는 구간(높음/중간/낮음)만 내보내며(judgment_agent.py), 화면 표시는 미채택.
+//
+// **데모가 제품보다 정밀해 보이는 것을 두 번 겪었다.** 처음엔 `confidence: 0.93`을 보여줬는데
+// 당시 백엔드는 1.0/0.7 두 값만 낼 수 있었고 실제 화면은 신뢰도를 표시하지도 않았다. 다음엔
+// 위험도 3단계(High/Medium/Low)를 보여줬는데, 2026-08-31에 조 multi-label로 옮기면서 risk
+// 헤드를 뺐고(gold 미정의) 실제 화면은 이진 판정만 낸다.
+//
+// 지금 실제 화면이 내는 것과 맞춘다 — 이진 판정(`needsReview`) + 참고용 조 목록(`articles`).
+// 조 이름을 단정형으로 쓰지 않는 것도 실제 화면과 같은 이유다(조 단위 성능이 상수와 미판정).
 interface ExampleResult {
-  domain: string;
-  riskLevel: "High" | "Medium" | "Low";
+  articles: string[];
+  needsReview: boolean;
   highlights: { text: string }[];
   legalBasis: { law: string; article: string; desc: string }[];
   summary: string;
@@ -40,19 +45,19 @@ const EXAMPLES: Example[] = [
     clause:
       "회사는 이용자에게 사전 통지 없이 언제든지 서비스 이용 계약을 즉시 해지하거나 서비스 제공을 중단할 수 있으며, 이로 인한 손해에 대해 어떠한 책임도 지지 않습니다.",
     result: {
-      domain: "해지_조항",
-      riskLevel: "High",
+      articles: ["제9조", "제7조"],
+      needsReview: true,
       highlights: [
         { text: "사전 통지 없이" },
         { text: "즉시 해지" },
         { text: "어떠한 책임도 지지 않습니다" },
       ],
       legalBasis: [
-        { law: "약관규제법", article: "§9", desc: "고객에게 부당하게 불리한 해제·해지권 부여 조항 무효" },
-        { law: "민법", article: "§544", desc: "계약 해제 시 상당한 기간을 정한 최고 요건" },
+        { law: "약관규제법", article: "§9", desc: "사업자에게 법률에 없는 해지권을 부여해 고객에게 부당한 불이익을 주는 조항" },
+        { law: "약관규제법", article: "§7", desc: "상당한 이유 없이 사업자의 손해배상 범위를 제한하는 조항" },
       ],
       summary:
-        "사전 통지 없는 즉시 해지권을 사업자에게 일방적으로 부여하고 이에 따른 손해 책임마저 면제하는 조항입니다. 약관규제법 §9에 따라 무효 처리될 가능성이 높습니다.",
+        "사전 통지 없는 즉시 해지권을 사업자에게 일방적으로 부여하고, 그에 따른 손해 책임까지 면제하는 조항입니다. 약관규제법 제9조·제7조를 함께 확인해 보시기 바랍니다.",
     },
   },
   {
@@ -61,63 +66,53 @@ const EXAMPLES: Example[] = [
     clause:
       "회사는 서비스 이용과 관련하여 발생한 이용자의 손해에 대하여 회사의 귀책사유 유무에 관계없이 일체의 배상 책임을 부담하지 아니합니다.",
     result: {
-      domain: "책임제한_조항",
-      riskLevel: "High",
+      articles: ["제7조"],
+      needsReview: true,
       highlights: [
         { text: "귀책사유 유무에 관계없이" },
         { text: "일체의 배상 책임을 부담하지 아니합니다" },
       ],
       legalBasis: [
-        { law: "약관규제법", article: "§7", desc: "사업자 고의·과실로 인한 법률상 책임 배제 조항 무효" },
-        { law: "민법", article: "§750", desc: "불법행위 손해배상 책임" },
+        { law: "약관규제법", article: "§7", desc: "사업자의 고의 또는 중대한 과실로 인한 법률상의 책임을 배제하는 조항" },
       ],
       summary:
-        "사업자의 귀책사유(고의·과실)와 무관하게 모든 손해배상을 면제하는 포괄적 면책 조항입니다. 약관규제법 §7에 의해 무효가 됩니다.",
+        "사업자의 귀책사유와 무관하게 모든 손해배상을 면제하는 포괄적 면책 조항입니다. 약관규제법 제7조를 확인해 보시기 바랍니다.",
     },
   },
   {
     id: 3,
-    label: "표준 해지 조항 (정상)",
+    label: "표준 해지 조항",
     clause:
       "계약 당사자는 상대방에게 30일 이상의 사전 서면 통지를 통해 본 계약을 해지할 수 있으며, 해지 시 미이행 채무에 대한 정산은 쌍방 합의에 따릅니다.",
     result: {
-      domain: "해지_조항",
-      riskLevel: "Low",
+      articles: [],
+      needsReview: false,
       highlights: [],
-      legalBasis: [
-        { law: "민법", article: "§543", desc: "해지권 행사의 일반 원칙" },
-      ],
+      legalBasis: [],
       summary:
-        "30일 사전 서면 통지를 요구하는 표준적인 해지 조항으로, 양 당사자의 권리를 균형 있게 보호합니다. 법적 리스크가 낮습니다.",
+        "30일 사전 서면 통지를 요구하고 양 당사자에게 같은 해지권을 두고 있어, 모델이 위반 소지가 있는 조를 지목하지 않았습니다. 다만 이는 '확인되지 않았다'는 뜻이며 '문제가 없다'는 판정은 아닙니다.",
     },
   },
 ];
 
-// /analyze 실제 결과 화면(ContractAnalyzer.tsx의 RISK_CONFIG)과 동일한 seal/ochre/forest 토큰을 사용한다.
-const RISK_CONFIG = {
-  High: {
+// /analyze 실제 결과 화면과 같은 이진 표시다. 등급이 없으므로 ochre(중간)는 쓰지 않는다 —
+// 세 번째 색이 있으면 "중간 위험"이라는 없는 상태를 화면이 암시하게 된다.
+const REVIEW_CONFIG = {
+  review: {
     badgeClass: "bg-seal-soft text-seal border-seal/20",
     icon: AlertTriangle,
     iconClass: "text-seal",
     ringClass: "ring-seal/20",
     metricText: "text-seal",
-    label: "고위험",
+    label: "확인 필요",
   },
-  Medium: {
-    badgeClass: "bg-ochre-soft text-ochre border-ochre/20",
-    icon: AlertTriangle,
-    iconClass: "text-ochre",
-    ringClass: "ring-ochre/20",
-    metricText: "text-ochre",
-    label: "중위험",
-  },
-  Low: {
-    badgeClass: "bg-forest-soft text-forest border-forest/20",
+  silent: {
+    badgeClass: "bg-slate-100 text-slate-500 border-slate-200",
     icon: CheckCircle2,
-    iconClass: "text-forest",
-    ringClass: "ring-forest/20",
-    metricText: "text-forest",
-    label: "저위험",
+    iconClass: "text-slate-400",
+    ringClass: "ring-slate-200",
+    metricText: "text-slate-500",
+    label: "지목된 조 없음",
   },
 };
 
@@ -166,8 +161,8 @@ function HighlightedClause({
 
 function ExampleCard({ ex }: { ex: Example }) {
   const [expanded, setExpanded] = useState(false);
-  const cfg = RISK_CONFIG[ex.result.riskLevel];
-  const RiskIcon = cfg.icon;
+  const cfg = REVIEW_CONFIG[ex.result.needsReview ? "review" : "silent"];
+  const StateIcon = cfg.icon;
 
   return (
     <article className="bg-white border border-slate-200 rounded-2xl overflow-hidden hover:border-slate-300 hover:shadow-md transition-all">
@@ -175,7 +170,7 @@ function ExampleCard({ ex }: { ex: Example }) {
       <div className="p-5 flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className={`p-2 rounded-lg bg-slate-100 ring-2 ${cfg.ringClass}`}>
-            <RiskIcon className={`h-4 w-4 ${cfg.iconClass}`} aria-hidden />
+            <StateIcon className={`h-4 w-4 ${cfg.iconClass}`} aria-hidden />
           </div>
           <div>
             <span className="text-xs text-slate-400">예시 {ex.id}</span>
@@ -184,7 +179,7 @@ function ExampleCard({ ex }: { ex: Example }) {
         </div>
         <Badge
           className={`${cfg.badgeClass} border text-xs shrink-0`}
-          aria-label={`위험도: ${cfg.label}`}
+          aria-label={`판정: ${cfg.label}`}
         >
           {cfg.label}
         </Badge>
@@ -216,20 +211,24 @@ function ExampleCard({ ex }: { ex: Example }) {
           {/* Metrics row */}
           <div className="flex gap-3 pt-4">
             <div className="flex-1 bg-slate-50 rounded-lg p-3 text-center border border-slate-100">
-              <p className="text-[10px] text-slate-400 mb-0.5">분류</p>
-              <p className="text-sm font-semibold text-slate-900">{ex.result.domain}</p>
+              <p className="text-[10px] text-slate-400 mb-0.5">판정</p>
+              <p className={`text-sm font-bold ${cfg.metricText}`}>{cfg.label}</p>
             </div>
             <div className="flex-1 bg-slate-50 rounded-lg p-3 text-center border border-slate-100">
-              <p className="text-[10px] text-slate-400 mb-0.5">위험도</p>
-              <p className={`text-sm font-bold ${cfg.metricText}`}>{cfg.label}</p>
+              <p className="text-[10px] text-slate-400 mb-0.5">관련으로 보이는 조</p>
+              <p className="text-sm font-semibold text-slate-900">
+                {ex.result.articles.length > 0 ? ex.result.articles.join(" · ") : "—"}
+              </p>
             </div>
           </div>
 
           {/* Legal basis */}
-          <div className="space-y-1.5">
+          {/* 지목된 조가 없으면 법령 목록 자체를 내지 않는다 — 빈 "적용 법령" 머리말만 남으면
+              근거가 있는데 비어 있는 것처럼 읽힌다. */}
+          <div className="space-y-1.5" hidden={ex.result.legalBasis.length === 0}>
             <div className="flex items-center gap-1.5 text-xs text-slate-500">
               <Shield className="h-3 w-3" aria-hidden />
-              <span>적용 법령</span>
+              <span>확인해 볼 조문</span>
             </div>
             {ex.result.legalBasis.map((lb) => (
               <div
