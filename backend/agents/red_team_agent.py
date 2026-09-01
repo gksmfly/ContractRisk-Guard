@@ -72,6 +72,18 @@ def _generate_rebuttal(client: OpenAI, clause: str, verdict: object, neighbor: d
     return None
 
 
+# `clean_clauses`가 조 라벨을 갖고 있는가. **첫 검색 결과에서 배운다** —
+# 별도 프로브 질의를 던지면 아끼려던 DB 왕복이 그대로 든다.
+# `None`=아직 모름, `False`=옛 라벨만 있음(이후 검색 자체를 건너뜀).
+_NEIGHBORS_LABELED: bool | None = None
+
+
+def reset_neighbor_cache() -> None:
+    """테스트 전용 — 모듈 캐시를 비운다. `clean_clauses` 재적재 후에도 쓸 수 있다."""
+    global _NEIGHBORS_LABELED
+    _NEIGHBORS_LABELED = None
+
+
 def red_team_node(state: ClauseState, config: RunnableConfig) -> dict:
     """비슷한 조항이 **다르게** 판정된 적이 있으면 반박 메모를 붙인다.
 
@@ -87,10 +99,24 @@ def red_team_node(state: ClauseState, config: RunnableConfig) -> dict:
 
     되살리려면 `clean_clauses`를 새 `clean.jsonl`(조 multi-label)로 재적재해야 한다.
     """
-    query = state.get("evidence_span") or state["clause"]
+    global _NEIGHBORS_LABELED
     mine = set(state.get("model_articles") or [])
+    if not mine:
+        return {"redteam_note": ""}
 
+    # 이웃이 옛 라벨만 갖고 있다는 걸 한 번 알았으면 **검색 자체를 건너뛴다.**
+    # 어차피 산출이 0인데 조항마다 임베딩 최근접 검색이 돈다(30조항이면 30번).
+    if _NEIGHBORS_LABELED is False:
+        return {"redteam_note": ""}
+
+    query = state.get("evidence_span") or state["clause"]
     neighbors = search_similar_labeled_clauses(query, top_k=_TOP_K)
+    if neighbors and all(n.get("articles") is None for n in neighbors):
+        _NEIGHBORS_LABELED = False
+        logger.info("  Red-team 비활성 — clean_clauses에 조 라벨이 없다. "
+                    "새 clean.jsonl로 재적재하고 프로세스를 재시작하면 되살아난다")
+        return {"redteam_note": ""}
+    _NEIGHBORS_LABELED = True
     for neighbor in neighbors:
         theirs = neighbor.get("articles")
         if theirs is None:

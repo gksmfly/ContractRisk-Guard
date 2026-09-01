@@ -192,6 +192,7 @@ def _process_clause(client: Any, clause: str, index: int) -> ClauseResult | OutO
         domain            = result.get("domain", ""),      # 과거 결과 호환용 파생값
         evidence_spans    = _extract_spans(clause, evidence_span),
         legal_basis       = result.get("legal_basis", []),
+        precedent_refs    = result.get("precedent_refs", []),
         reasoning         = result.get("reasoning", ""),
         verified          = bool(result.get("verified", False)),
         redteam_note      = result.get("redteam_note", ""),

@@ -43,7 +43,8 @@ class TestPrecedentOrdering:
         candidates = [_candidate(n) for n in names]
         state = {"model_articles": ["제9조"], "retrieval_candidates": {"law": [], "precedent": candidates}}
         result = evidence_selection_node(state)
-        assert [b.article for b in result["legal_basis"]] == names[:_FINAL_K]
+        # 법령은 예측한 조에서 매핑되므로 검색 순서와 무관하다. RRF 순서는 판례 쪽에서 본다.
+        assert [b.article for b in result["precedent_refs"]] == names[:_FINAL_K]
 
     def test_real_world_court_values_do_not_reorder(self):
         """실제 DB 표기값을 넣어도 순서가 바뀌지 않는다.
@@ -56,7 +57,7 @@ class TestPrecedentOrdering:
         candidates = [_candidate(f"c{i}", court=c) for i, c in enumerate(courts)]
         state = {"model_articles": ["제9조"], "retrieval_candidates": {"law": [], "precedent": candidates}}
         result = evidence_selection_node(state)
-        assert [b.article for b in result["legal_basis"]] == [f"c{i}" for i in range(_FINAL_K)]
+        assert [b.article for b in result["precedent_refs"]] == [f"c{i}" for i in range(_FINAL_K)]
 
     def test_empty_precedents_falls_back(self):
         state = {"model_articles": ["제9조"], "retrieval_candidates": {"law": [], "precedent": []}}

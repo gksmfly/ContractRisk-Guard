@@ -43,7 +43,7 @@ from backend.agents.state import ClauseState
 from backend.model.electra import ArticleMultiLabelElectra
 from backend.utils import PROJECT_ROOT
 
-MODEL_DIR = Path(os.environ.get("MODEL_DIR", str(PROJECT_ROOT / "models/_article_rNone")))
+MODEL_DIR = Path(os.environ.get("MODEL_DIR", str(PROJECT_ROOT / "models/article_v1")))
 
 
 def model_version() -> str:

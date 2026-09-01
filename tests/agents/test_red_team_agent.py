@@ -9,7 +9,17 @@ search_similar_labeled_clauses()는 DB 호출, OpenAI 호출은 client.chat.comp
 
 import json
 
+import pytest
+
 import backend.agents.red_team_agent as red_team_agent
+
+
+@pytest.fixture(autouse=True)
+def _reset_cache():
+    """모듈 캐시(`_NEIGHBORS_LABELED`)가 테스트 간에 새지 않게 한다."""
+    red_team_agent.reset_neighbor_cache()
+    yield
+    red_team_agent.reset_neighbor_cache()
 
 _CONFIG = {"configurable": {"client": None}}  # client는 각 테스트에서 필요시 교체
 

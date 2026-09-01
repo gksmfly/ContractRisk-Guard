@@ -30,7 +30,8 @@ scripts/ → domain/ → preprocess/ → labeling/seed.py → db/loader.py
                                                        → fb_check/ (forward → backward → verify)
                                                        → training/train.py → models/v*/
                                                        → db/loader.py --source clean (RAG용 재적재)
-agents/(6-agent 그래프)는 models/v4를 로드해 판단 — 현재 프로덕션 버전 및 판단 근거는 ../models/README.md 참고
+agents/(6-agent 그래프)는 models/article_v1(조 multi-label)을 로드해 판단
+       — 현재 프로덕션 버전 및 판단 근거는 ../models/README.md 참고
 api/(server.py)는 agents/graph.py를 호출해 서빙
 eval/은 scripts/rebuild_ftc_ground_truth.py + extract_precedent_ground_truth.py로 만든
        data/eval/ground_truth_3class.jsonl 위에서 판단 메커니즘 자체를 비교 평가

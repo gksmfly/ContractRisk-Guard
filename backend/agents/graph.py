@@ -1,22 +1,36 @@
 # backend/agents/graph.py
-"""6-agent 파이프라인의 LangGraph 배선.
+"""LangGraph 배선 — Analysis → Judgment → (근거·반박 브랜치).
 
-Analysis 이후 두 브랜치가 병렬로 실행된다:
-  - 판단 브랜치: Judgment → Red-team
-  - 근거 브랜치: Retrieval Strategy → Evidence Selection → Evidence Verification
-                (근거 부족 시 Retrieval Strategy로 최대 3회 재검색)
+    START → analysis(GPT) → judgment(모델) → ┬→ red_team → END
+                                              └→ retrieval_strategy → evidence_selection
+                                                 → evidence_verification → (재검색 최대 3회) → END
 
-이 둘은 서로 상태 의존성이 없다 — Judgment는 evidence_span/clause만 읽고
-retrieval_candidates·legal_basis를 쓰지 않고, Evidence Verification은
-legal_basis·evidence_agreement만 읽고 risk_level·redteam_note를 쓰지 않는다
-(state.py 필드별 read/write 주석 참고). 원래는 이 둘을 한 줄로 억지로 이어붙여서
-직렬 실행했는데, 실제 의존성이 없으므로 fan-out(Analysis에서 두 브랜치로 분기)
-시켜도 결과가 달라지지 않는다 — KoELECTRA GPU 추론과 DB 벡터 검색이 동시에
-돌아가 지연시간이 줄어든다. 두 브랜치는 길이가 달라도(판단 브랜치는 고정 2단계,
-근거 브랜치는 재검색 루프로 가변) 문제없다 — LangGraph는 각 브랜치가 독립적으로
-END에 도달하는 걸 허용하고, 전체 invoke()는 모든 브랜치가 끝날 때까지 기다린다.
+## 왜 judgment가 앞에 오나 (2026-08-31, 이전에는 병렬이었다)
 
-domain이 "해당없음"이면 두 브랜치 모두 건너뛰고 바로 끝난다.
+**게이트 주체가 GPT에서 모델로 바뀌었다.** 예전에는 `analysis` 직후 GPT의 2-도메인 값
+(`domain == "해당없음"`)으로 분기했는데, 조 multi-label 서빙으로 옮기면서 판단 주체가
+분류 모델이 됐다. 라우팅을 안 고치면 **judgment가 실행되기도 전에 GPT 기준으로 끊긴다** —
+게이트 이전이 반쪽이 된다.
+
+## 병렬을 포기한 이유 — 이제 의존성이 **있다**
+
+이전 docstring은 "두 브랜치는 서로 상태 의존성이 없다"고 적혀 있었다. **더 이상 아니다.**
+`evidence_selection`이 `model_articles`를 읽어 조문 원문을 매핑한다(법령 검색을 안 쓴다).
+병렬로 되돌리면 LangGraph에서 두 브랜치가 서로의 상태를 못 보므로 **`legal_basis`가
+조용히 빈 목록이 된다** — 화면에 근거가 사라지는데 예외는 안 난다.
+
+    되돌리지 말 것. 되돌리려면 evidence_selection이 model_articles를 안 읽게 먼저 바꿀 것.
+
+### 직렬화 비용
+
+KoELECTRA 추론이 검색의 임계 경로에 들어왔다. 다만 조항당 총 지연은 GPT 왕복(~10초)이
+지배하고 인코더 forward는 로컬 110M 한 번(수십 ms)이라 실질 영향은 작다. 그리고 조를
+하나도 못 지목한 조항은 **검색 브랜치를 아예 안 타므로** 오히려 아끼는 쪽이다.
+
+## 분기 조건
+
+모델이 조를 하나도 지목하지 않으면(`model_articles`가 비면) 두 브랜치 모두 건너뛰고
+바로 끝난다 — `analyze.py`가 그 조항을 `OutOfScopeClause`로 돌려준다.
 """
 
 from langgraph.graph import END, START, StateGraph

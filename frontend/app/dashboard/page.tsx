@@ -17,8 +17,11 @@ interface HistoryRow {
   title: string;
   created_at: string;
   total_clauses: number;
-  review_count: number;
-  high_count: number;   // 옛 저장분 호환용
+  // 새 결과에만 있다. 옛 행(v4, 위험도 3단계)은 null이라 개수를 표시하지 않는다 —
+  // v4의 high_count와 지금의 review_count는 **정의가 다른 값**이라 같은 열에 나란히
+  // 놓으면 비교 가능한 것처럼 보인다. 오늘 여러 번 잡은 "모집단이 다른 두 값 병치"다.
+  review_count: number | null;
+  model_version: string | null;
   medium_count: number;
   low_count: number;
 }
@@ -44,8 +47,8 @@ export default async function DashboardPage() {
          (result->>'total_clauses')::int AS total_clauses,
          -- 2026-08-31부터 위험도 3단계를 내지 않는다. 새 결과는 review_count를 쓰고,
          -- 옛 저장분(high_count)은 그대로 남아 있으므로 COALESCE로 둘 다 받는다.
-         COALESCE((result->>'review_count')::int, (result->>'high_count')::int, 0) AS review_count,
-         (result->>'high_count')::int AS high_count
+         (result->>'review_count')::int AS review_count,
+         result->>'model_version' AS model_version
        FROM analyses
        WHERE user_id = $1
        ORDER BY created_at DESC`,
@@ -105,7 +108,9 @@ export default async function DashboardPage() {
                 className="flex items-center justify-between gap-4 px-5 py-4 hover:bg-slate-50 transition-colors"
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  {item.review_count > 0 ? (
+                  {item.review_count === null ? (
+                    <span className="w-2 h-2 rounded-full bg-slate-200 shrink-0" aria-hidden />
+                  ) : item.review_count > 0 ? (
                     <span className="w-2 h-2 rounded-full bg-ochre shrink-0" aria-hidden />
                   ) : (
                     <span className="w-2 h-2 rounded-full bg-slate-300 shrink-0" aria-hidden />
@@ -114,7 +119,12 @@ export default async function DashboardPage() {
                     <p className="text-sm font-medium text-slate-900 truncate flex items-center gap-1.5">
                       <FileText className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden />
                       {item.title}
-                      {item.review_count > 0 ? (
+                      {item.review_count === null ? (
+                        // 옛 버전(v4, 위험도 3단계) 결과 — 개수 체계가 달라 나란히 못 놓는다
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400">
+                          이전 버전으로 분석됨
+                        </span>
+                      ) : item.review_count > 0 ? (
                         <span className="inline-flex items-center gap-1 text-[11px] font-medium text-ochre">
                           <AlertTriangle className="h-3 w-3" aria-hidden /> 확인 필요 {item.review_count}건
                         </span>

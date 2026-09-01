@@ -122,10 +122,10 @@ function ClauseListItem({
       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cfg.dotCls}`} aria-hidden />
       <span className="text-xs text-slate-400 font-mono shrink-0">§{clause.id}</span>
       <span className="flex-1 text-xs text-slate-600 truncate">
-        {clause.domain === "해당없음" ? "분류 불가" : clause.domain}
+        {clause.articles?.join(" · ") || ""}
       </span>
       {clause.verified && (
-        <CheckCircle2 className="h-3 w-3 text-navy shrink-0" aria-label="검증됨" />
+        <CheckCircle2 className="h-3 w-3 text-navy shrink-0" aria-label="두 판단 일치" />
       )}
     </button>
   );
@@ -215,7 +215,7 @@ function exportClauseAsText(clause: Clause) {
   const cfg = REVIEW_CFG;
   const lines = [
     `Verilex — 조항 §${clause.id} 분석 결과`,
-    `도메인: ${clause.domain} · 위험도: ${cfg.label}`,
+    `판정: ${cfg.label} · 관련 법령: 약관규제법 ${(clause.articles ?? []).join(" · ") || "—"}`,
     "",
     "[원문]",
     clause.original,
@@ -270,14 +270,14 @@ function ClauseDetail({
     <article className="border border-rule bg-white print:break-inside-avoid print:border-slate-300">
       {/* Letterhead bar */}
       <div className="bg-navy text-navy-soft px-5 py-2 flex items-center justify-between gap-3 font-mono text-[10px] tracking-wide">
-        <span>§{clause.id} · AI 리스크 판단 결과</span>
+        <span>§{clause.id} · 확인이 필요한 조항</span>
         <span className="flex items-center gap-2">
           {clause.verified && (
             <span
               className="inline-flex items-center gap-1 bg-forest/20 text-forest-soft rounded-full px-2 py-0.5"
-              aria-label="Red-team 검증 통과"
+              aria-label="GPT 1차 분석과 분류 모델이 같은 조를 지목함"
             >
-              <CheckCircle2 className="h-3 w-3" aria-hidden /> 검증됨
+              <CheckCircle2 className="h-3 w-3" aria-hidden /> 두 판단 일치
             </span>
           )}
           {!clause.evidence_verified && (
@@ -295,10 +295,10 @@ function ClauseDetail({
       <div className="px-5 py-4 flex items-start justify-between gap-4 border-b border-rule">
         <div className="min-w-0">
           <p className="text-[11px] font-mono text-slate-500">
-            {clause.domain === "해당없음" ? "분류 불가" : clause.domain}
+            약관규제법 {clause.articles?.join(" · ") || "—"}
           </p>
           <p className="text-lg font-semibold text-slate-900 mt-0.5">
-            위험도 판단: {cfg.label}
+            {cfg.label}
           </p>
         </div>
         <div
@@ -331,14 +331,30 @@ function ClauseDetail({
         {/* 참고 법령 안내 — 판정이 아니다(articleHint 주석 참고) */}
         {articleHint(clause.articles) && (
           <p className="text-xs text-slate-500 font-mono">
-            {articleHint(clause.articles)}
-            <span className="ml-1.5 text-slate-400">· 조문 확인용 참고이며 위반 판정이 아닙니다</span>
+            {articleHint(clause.articles)}{" "}
+            <span className="ml-1 text-slate-400">&middot; 조문 확인용 참고이며 위반 판정이 아닙니다</span>
           </p>
+        )}
+
+        {(clause.precedent_refs?.length ?? 0) > 0 && (
+          <details className="text-xs text-slate-500">
+            <summary className="cursor-pointer">
+              유사 판례 {clause.precedent_refs!.length}건 (참고)
+            </summary>
+            <p className="mt-1 text-slate-400">
+              검색으로 찾은 사례이며 <b>판단 근거가 아닙니다</b> — 관련 사례가 포함될 확률은 약 14%입니다.
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              {clause.precedent_refs!.map((pr, i) => (
+                <li key={i}>{pr.law} {pr.article}</li>
+              ))}
+            </ul>
+          </details>
         )}
 
         {clause.legal_basis.length > 0 && (
           <div className="space-y-2">
-            <SectionLabel icon={Shield}>참고 법령 원문</SectionLabel>
+            <SectionLabel icon={Shield}>관련 조문 원문</SectionLabel>
             <div className="space-y-2">
               {clause.legal_basis.map((lb, i) => (
                 <LegalQuote
@@ -411,9 +427,8 @@ export function SummaryBar({ result }: { result: FullAnalyzeResult }) {
         </div>
         <div className="flex gap-5">
           {[
-            { label: "고위험", count: result.high_count, color: "text-seal" },
-            { label: "중위험", count: result.medium_count, color: "text-ochre" },
-            { label: "저위험", count: result.low_count, color: "text-forest" },
+            { label: "확인 필요", count: reviewed, color: "text-ochre" },
+            { label: "확인되지 않음", count: Math.max(0, inputTotal - reviewed), color: "text-slate-400" },
           ].map((s) => (
             <div key={s.label} className="text-center">
               <p className="text-xs text-slate-500 mb-0.5">{s.label}</p>
@@ -1023,7 +1038,7 @@ export function ContractAnalyzer({ initialResult, initialTitle }: ContractAnalyz
           )}
 
           <p className="text-xs text-slate-400 text-center pb-2 print:hidden">
-            최대 20개 조항까지 분석됩니다. 전체 조항 분석은 순차 확장 예정입니다.
+            최대 60개 조항까지 분석되며, 초과분은 결과에 별도로 표시됩니다.
           </p>
         </div>
       )}

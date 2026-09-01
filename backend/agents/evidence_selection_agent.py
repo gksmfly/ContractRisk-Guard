@@ -82,17 +82,41 @@ def _fallback_for(articles: list[str]) -> list[dict]:
 
 
 def evidence_selection_node(state: ClauseState) -> dict:
-    # 법령·판례 모두 RRF 순서 그대로 top-K (재랭킹 없음 — 위 docstring 참고)
+    """화면에 붙일 근거를 고른다.
+
+    ## 법령은 검색하지 않고 **예측한 조에서 바로 매핑한다** (2026-08-31)
+
+    예전에는 법령도 RRF 검색 결과 top-K를 그대로 붙였다. 그 결과 서비스 이용약관
+    해지 조항에 **민법 제658조(노무의 내용과 해지권)·제674조의3(여행 계약 해제)·
+    상법 제168조의5(금융리스)** 가 "적용 법령"으로 나왔다. 화면에서 직접 확인했다.
+
+    조를 예측하는 순간 조문 원문은 결정된다 — `articles.py`가 원문 법령 JSON에서
+    생성하므로 검색이 개입할 이유가 없다. 법령 검색은 top-10에서 80%지만
+    **top-K로 자르면 무관한 법이 섞여 들어온다.**
+
+    ## 판례는 "참고 사례"로 격하한다
+
+    판례 검색은 hit@5 = 14%다(무작위 5.3%). 화면에 5건을 붙이면 그중 관련 있는 게
+    들어 있을 확률이 14%라는 뜻이다. 같은 화면에서 조 표시는 38.2%(상수와 미판정)라는
+    이유로 판정형에서 안내형으로 낮췄는데, **14%짜리를 "적용 법령"으로 두는 것은
+    그 신중함과 모순된다.** 근거가 아니라 참고 사례로 표시한다.
+
+    `retrieval_candidates`는 계속 채워진다 — `evidence_verification`의 재검색 루프가
+    그것을 본다. 바뀐 것은 **화면에 무엇을 근거로 내보내는가**다.
+    """
+    # 법령: 예측한 조에서 직접 매핑 (검색 미사용)
+    law_basis = [LegalBasis(**b) for b in _fallback_for(state.get("model_articles") or [])]
+
     candidates = state.get("retrieval_candidates", {}) or {}
     law_top       = candidates.get("law", [])[:_FINAL_K]
     precedent_top = candidates.get("precedent", [])[:_FINAL_K]
-    selected = law_top + precedent_top
 
-    if not selected:
-        # 모델이 지목한 조를 쓴다. 없으면(=out_of_scope로 빠질 조항) 빈 목록이다.
-        fallback = _fallback_for(state.get("model_articles") or [])
-        return {"legal_basis": [LegalBasis(**b) for b in fallback], "evidence_agreement": False}
-
-    legal_basis = [candidate_to_legal_basis(c) for c in selected]
-    evidence_agreement = any(c.get("in_both") for c in selected)
-    return {"legal_basis": legal_basis, "evidence_agreement": evidence_agreement}
+    return {
+        "legal_basis": law_basis,
+        # 참고 사례 — **근거가 아니다**(hit@5 14%). 화면에서 그렇게 표시할 것.
+        "precedent_refs": [candidate_to_legal_basis(c) for c in precedent_top],
+        # **화면에 뭘 내보내는지와 별개다.** Dense·Sparse 양쪽에서 나온 후보가 있는지는
+        # 검색 품질 신호이고 `evidence_verification`의 재검색 판단에 쓰인다. 법령을 표시에서
+        # 뺐다고 해서, 또 판례가 하나도 없다고 해서 그 신호까지 버리면 재검색 루프가 눈이 먼다.
+        "evidence_agreement": any(c.get("in_both") for c in law_top + precedent_top),
+    }

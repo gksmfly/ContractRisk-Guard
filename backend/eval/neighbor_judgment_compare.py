@@ -26,7 +26,8 @@ Medium 등급 처리 방향으로 세 안이 열려 있다(A: 폐지 / B: "판�
 ## 비교 대상
 
   neighbor_k{K}  — 이웃 K개의 라벨 다수결 (동률이면 가장 가까운 이웃의 라벨)
-  koelectra_v4   — 현행 프로덕션 모델 (같은 입력, 같은 평가셋)
+  koelectra_v4   — 당시 프로덕션 모델 (같은 입력, 같은 평가셋)
+                   ※ 지금 프로덕션은 `models/article_v1`(조 multi-label)이고 taxonomy가 다르다
 
 실행: .venv/bin/python -m backend.eval.neighbor_judgment_compare
 """

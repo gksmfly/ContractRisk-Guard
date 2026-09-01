@@ -7,7 +7,7 @@
 `train.py`의 `DualHeadElectra` 경로는 9개 파일이 의존하고 그중 둘이 전량 라벨링 경로다.
 제자리에서 갈아엎으면 라벨 생성이 먼저 깨진다. 그래서 헤드(`ArticleMultiLabelElectra`)도
 학습 루프도 새로 두고, 공유 가능한 것(`split_by_document`, `_document_group`)만 재사용한다.
-`train.py --head article`로도 들어올 수 있다.
+`train.py`에 헤드 선택 옵션은 두지 않았다 — 진입점까지 갈라야 서로를 안 깬다.
 
 single-label과 다른 점이 손실 하나가 아니라 평가 전체다 — 임계값, 조별 지표, 체크포인트
 선택 기준이 전부 달라서 한 함수에 분기를 넣으면 읽을 수 없어진다.

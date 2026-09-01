@@ -1,8 +1,16 @@
 # backend/model/electra.py
 """
-DualHeadElectra 모델 정의 및 공유 레이블 상수
+KoELECTRA 분류 헤드 정의 및 공유 레이블 상수
 
-train.py (학습) 과 fb_check.py (추론) 양쪽에서 공유한다.
+헤드가 둘 있고 **둘 다 살아 있다** — 쓰임이 다르고, 전환이 아직 안 끝났다:
+
+    ArticleMultiLabelElectra   조항 → 약관규제법 조 multi-label. **프로덕션 판단 경로**
+                               (`backend.agents.judgment_agent`, 기본 `models/article_v1`)
+    DualHeadElectra            domain 2-class + risk 3-class. 전량 라벨링 경로
+                               (`backend.fb_check`)와 과거 실험 스크립트가 아직 쓴다
+
+학습도 각각이다 — `backend.training.train_article`(조 multi-label)과
+`backend.training.train`(domain+risk).
 """
 
 from pathlib import Path
@@ -99,9 +107,9 @@ class DualHeadElectra(nn.Module):
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # `DualHeadElectra`(domain 2-class + risk 3-class, 각각 single-label)는 **고치지 않는다.**
-# 9개 파일이 import하고 있고 그중 둘(`fb_check/__main__.py`, `fb_check/backward_grounding.py`)이
+# 지금도 7개 파일이 import하고 있고 그중 둘(`fb_check/__main__.py`, `fb_check/backward_grounding.py`)이
 # 전량 라벨링 경로다 — 제자리에서 갈아엎으면 라벨 생성이 먼저 깨진다. 전환기 동안 둘 다
-# 살아 있어야 하므로 새 클래스로 추가하고 `train.py --head`로 고른다.
+# 살아 있어야 하므로 새 클래스로 추가하고, 학습 진입점도 `train_article.py`로 따로 뒀다.
 #
 # **어떤 조를 헤드에 둘지는 데이터가 정한다.** FTC 1,163건 기준 제13조(대리인 책임 가중)는
 # gold 0건, 제12조도 희소하다. 학습 표본이 없는 조에 출력 뉴런을 두면 그 조는 절대 학습되지

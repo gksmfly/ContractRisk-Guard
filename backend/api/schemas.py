@@ -38,7 +38,11 @@ class ClauseResult(BaseModel):
     needs_review: bool = True
     domain: str = ""          # 옛 2-도메인 파생값. 저장된 과거 결과와의 호환용으로만 남긴다
     evidence_spans: list[EvidenceSpan]
+    # 예측한 조에서 매핑한 약관규제법 조문. 검색을 쓰지 않으므로 무관한 법이 안 섞인다.
     legal_basis: list[LegalBasis]
+    # 검색으로 찾은 유사 판례. **근거가 아니라 참고다** — hit@5 14%(무작위 5.3%)이므로
+    # 화면에서 "적용 법령"과 같은 위계로 두면 안 된다.
+    precedent_refs: list[LegalBasis] = []
     reasoning: str
     verified: bool
     redteam_note: str = ""

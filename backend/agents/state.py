@@ -18,7 +18,8 @@ class ClauseState(TypedDict, total=False):
     evidence_span: str
     reasoning: str
     retrieval_candidates: dict[str, list[dict]]  # 중간 산물 — Evidence Selection이 소비, 최종 응답엔 안 씀
-    legal_basis: list[LegalBasis]
+    legal_basis: list[LegalBasis]      # 예측한 조에서 매핑한 약관규제법 조문 — 근거
+    precedent_refs: list[LegalBasis]   # 검색으로 찾은 유사 판례 — **참고**(hit@5 14%)
     evidence_agreement: bool   # 최종 legal_basis 중 Dense·Sparse 양쪽에서 다 나온 게 있는지(중간 산물)
     # judgment_agent(KoELECTRA)가 낸 조 목록. **`articles`(GPT 1차 라벨)와 별도 필드다** —
     # 같은 이름을 쓰면 judgment 노드가 GPT 값을 덮어써서 `verified` 비교가 자기 자신과의

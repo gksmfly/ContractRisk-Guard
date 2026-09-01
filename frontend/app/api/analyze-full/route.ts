@@ -19,7 +19,10 @@ interface ClauseResult {
   confidence_band?: "높음" | "중간" | "낮음";
   confidence_band_accuracy?: number;
   evidence_spans: { text: string; start: number; end: number }[];
+  // 예측한 조에서 매핑한 약관규제법 조문 — 근거
   legal_basis: { law: string; article: string; description: string }[];
+  // 검색으로 찾은 유사 판례 — **참고**(hit@5 14%). "적용 법령"과 같은 위계로 두지 말 것
+  precedent_refs?: { law: string; article: string; description: string }[];
   reasoning: string;
   verified: boolean;
   redteam_note: string;

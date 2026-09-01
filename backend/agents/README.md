@@ -56,7 +56,11 @@ RAPTOR-lite 실측: RRF 8%→33%, McNemar p<0.0001). 재검색 시도마다(`ret
 후보 풀을 top-2로 재랭킹. RRF 순위를 그대로 쓰되 판례에 한해 법원 심급 가중치(대법원 +0.10, 고등법원 +0.05) 가산. Cross-Encoder 재랭킹은 사전 실험(10.7% vs 20.1% 정답 적중률)에서 성능 저하로 미채택. 후보가 없으면 `LEGAL_BASIS_FALLBACK`(도메인별 하드코딩 법조문) 사용.
 
 ### `judgment_node` (`judgment_agent.py`)
-`models/v4` KoELECTRA 로드 → domain·risk_level 최종 판단. `evidence_span`(없으면 `clause`로 폴백)을 입력으로 씀 — v4가 evidence_span 길이(평균 40자대) 위주로 학습됐기 때문. 검색 기반 방식(KoE5+GPT-4o-mini)으로 교체할지는 미결정 — `models/README.md` 참고.
+`models/article_v1` KoELECTRA 로드 → **위반 소지 조 multi-label** 판단(약관규제법 제6·7·8·9·10·11·12·14조. 제13조는 support 부족으로 접힘). 임계값은 학습 때 dev에서 확정한 조별 값(`thresholds.npy`)을 그대로 쓴다 — 여기서 다시 고르면 그게 평가셋 오염이다. `evidence_span`(없으면 `clause`로 폴백)을 입력으로 씀.
+
+**위험도 3단계(High/Medium/Low)는 더 이상 내지 않는다**(2026-08-31). 조 taxonomy로 바꾸면서 risk의 gold를 정의할 방법이 없어 헤드를 일부러 뺐고, 그 위에 얹혀 있던 `confidence_band` 실측치도 v4 전용이라 옮길 수 없다. 지금 내는 것은 `model_articles`(빈 리스트 가능)와 `needs_review`(지목 여부 = 이진)다.
+
+실측(배포 임계값, `backend/eval/article_gold_eval.py`): 조항 단위 재현 **78.0%** · 오경보 **2.6%**. 조 단위 per-sample F1은 38.6%로 상수 기준선 36.1% 대비 +2.5%p [-3.7, +9.2] **미판정** — 그래서 화면에서 **조 이름은 단정하지 않고 참고로만** 붙인다. 상세는 `models/README.md`.
 
 ### `red_team_node` (`red_team_agent.py`)
 충돌 사례 탐색은 LLM 미호출 — `clean_clauses`(FB-Check 검증 478건) 임베딩 최근접 이웃 중 유사도 0.75 이상인데 risk_level이 다른 사례가 있으면 편향 의심으로 간주한다. 임계값은 leave-one-out 실험으로 검증(탐지율 2.3%, 표본 확인 결과 실제 의미 있는 차이 포착). 탐지된 경우에만(전체의 2.3%) LLM(`gpt-4o-mini`)을 호출해 왜 재고가 필요한지 반박 근거를 생성 — 출력 스키마에 `risk_level`이 없어 LLM이 판단 자체를 못 바꾸도록 구조적으로 막아둠. LLM 호출 실패 시 이전 버전의 템플릿 문구로 폴백.

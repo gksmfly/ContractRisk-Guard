@@ -205,9 +205,9 @@ describe("ContractAnalyzer 전체 흐름", () => {
     workspace = within(screen.getByTestId("clause-workspace"));
     const sidebar = within(workspace.getByRole("navigation", { name: "분석된 조항 목록" }));
 
-    // 기본 선택은 첫 조항(고위험, 검증됨) — 상세 패널에 검증 배지가 보인다.
+    // 기본 선택은 첫 조항 — 상세 패널에 "두 판단 일치" 배지가 보인다.
     expect(workspace.getByText(/회사는 사전 통지 없이/)).toBeInTheDocument();
-    expect(workspace.getByText("검증됨")).toBeInTheDocument();
+    expect(workspace.getByText("두 판단 일치")).toBeInTheDocument();
     expect(workspace.queryByText("근거 미확정")).not.toBeInTheDocument();
     expect(workspace.getByText(/약관규제법 제9조/)).toBeInTheDocument();
 
