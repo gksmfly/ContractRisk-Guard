@@ -5,11 +5,12 @@ import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { CheckCircle2 } from "lucide-react";
 import { Logo } from "@/components/Logo";
+import { ContactEmailLink } from "@/components/ContactEmailLink";
 
 const CHECKLIST = [
-  "분석한 계약서 기록이 저장돼요",
-  "언제든 다시 열어서 확인할 수 있어요",
-  "로그인 없이도 분석 자체는 항상 무료예요",
+  "약관규제법 조문·판례 직접 인용",
+  "공정거래위원회 시정조치 사례 학습",
+  "조항별 위험도 즉시 확인",
 ];
 
 function GoogleIcon() {
@@ -25,7 +26,7 @@ function GoogleIcon() {
 
 export default function LoginPage() {
   const handleGoogleLogin = () => {
-    signIn("google", { callbackUrl: "/dashboard" });
+    signIn("google", { callbackUrl: "/analyze" });
   };
 
   return (
@@ -40,12 +41,12 @@ export default function LoginPage() {
         </Link>
 
         <h1 className="text-3xl md:text-4xl font-extrabold leading-tight mb-4">
-          확인했던 조항,
+          계약서 분석은,
           <br />
-          나중에도 다시 볼 수 있게
+          로그인 후에
         </h1>
         <p className="text-navy-soft/80 text-sm mb-8">
-          로그인은 분석 기록을 저장하기 위한 선택 기능입니다 — 분석 자체는 로그인 없이 이미 완결됩니다.
+          안전한 이용을 위해 Google 계정으로 로그인한 뒤 계약서를 분석할 수 있습니다.
         </p>
 
         <ul className="space-y-3">
@@ -66,7 +67,7 @@ export default function LoginPage() {
           <div>
             <h2 className="text-xl font-bold text-slate-900">로그인</h2>
             <p className="text-sm text-slate-500 mt-1.5">
-              분석 기록을 저장하려면 Google 계정으로 로그인하세요.
+              Google 계정으로 로그인하고 계약서를 분석하세요.
             </p>
           </div>
 
@@ -78,17 +79,8 @@ export default function LoginPage() {
             Google로 계속하기
           </button>
 
-          <p className="text-sm text-center">
-            <Link href="/analyze" className="text-navy font-medium hover:underline">
-              로그인 없이 바로 분석하기 →
-            </Link>
-          </p>
-
           <p className="text-xs text-slate-500 text-center pt-2 border-t border-rule">
-            기업 도입 관련 문의는{" "}
-            <a href="mailto:contact@verilex.example" className="text-navy font-medium hover:underline">
-              여기로 연락해 주세요 →
-            </a>
+            기업 도입 관련 문의는 <ContactEmailLink />
           </p>
         </div>
       </div>

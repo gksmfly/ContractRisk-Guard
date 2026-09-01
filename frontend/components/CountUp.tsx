@@ -60,22 +60,36 @@ export function CountUp({
       return;
     }
 
+    // 화면에 들어올 때마다 다시 재생한다 — disconnect()로 한 번만 트는 대신, 나갈 때
+    // 0으로 되돌려서 다음에 다시 스크롤해 들어와도 눈에 보이게 다시 올라가게 한다.
+    // token으로 이전 애니메이션 프레임 루프를 무효화해 빠르게 들락날락해도 안 꼬이게 한다.
+    let token = 0;
+
+    const animate = () => {
+      const myToken = ++token;
+      const start = performance.now();
+      const tick = (now: number) => {
+        if (myToken !== token) return;
+        const progress = Math.min((now - start) / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        if (progress < 1) {
+          setDisplay(format(parsed.num * eased, parsed));
+          requestAnimationFrame(tick);
+        } else {
+          setDisplay(value);
+        }
+      };
+      requestAnimationFrame(tick);
+    };
+
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (!entry.isIntersecting) return;
-        observer.disconnect();
-        const start = performance.now();
-        const tick = (now: number) => {
-          const progress = Math.min((now - start) / duration, 1);
-          const eased = 1 - Math.pow(1 - progress, 3);
-          if (progress < 1) {
-            setDisplay(format(parsed.num * eased, parsed));
-            requestAnimationFrame(tick);
-          } else {
-            setDisplay(value);
-          }
-        };
-        requestAnimationFrame(tick);
+        if (entry.isIntersecting) {
+          animate();
+        } else {
+          token++; // 진행 중이던 애니메이션 프레임을 무효화
+          setDisplay(format(0, parsed));
+        }
       },
       { threshold: 0.4 }
     );

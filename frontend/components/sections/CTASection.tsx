@@ -26,7 +26,7 @@ export function CTASection() {
                 지금 계약서를 검토해보세요
               </h2>
               <p className="text-slate-600 text-lg max-w-lg mx-auto leading-relaxed">
-                회원가입 없이, 무료로, 10초 안에.
+                Google 로그인 후, 무료로, 10초 안에.
                 <br />
                 계약 체결 전 한 번만 확인해도 다릅니다.
               </p>

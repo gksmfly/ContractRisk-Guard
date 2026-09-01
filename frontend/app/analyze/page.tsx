@@ -1,6 +1,9 @@
 // frontend/app/analyze/page.tsx
 import dynamic from "next/dynamic";
+import { redirect } from "next/navigation";
+import { getServerSession } from "next-auth";
 import type { Metadata } from "next";
+import { authOptions } from "@/lib/auth";
 import { AnalyzeShell } from "./AnalyzeShell";
 
 export const metadata: Metadata = {
@@ -20,7 +23,15 @@ const ContractAnalyzer = dynamic(
   }
 );
 
-export default function AnalyzePage() {
+export default async function AnalyzePage() {
+  const session = await getServerSession(authOptions);
+
+  // Google OAuth 자격증명이 아직 없어 로컬에서는 로그인 자체가 안 된다 — /dashboard,
+  // /analyze/[id]와 같은 패턴으로 프로덕션에서만 강제하고 개발 환경은 그대로 미리본다.
+  if (!session && process.env.NODE_ENV === "production") {
+    redirect("/login");
+  }
+
   return (
     <AnalyzeShell
       title="계약서 전체 분석"

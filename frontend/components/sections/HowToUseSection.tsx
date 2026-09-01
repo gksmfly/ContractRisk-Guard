@@ -24,8 +24,8 @@ const STEPS = [
     stepBadgeBg: "bg-violet-100 border-violet-200 text-violet-700",
     iconWrap: "bg-violet-100",
     title: "AI가 조항별로 분석합니다",
-    desc: "공정위 시정조치 2,488건을 학습한 AI가 각 조항의 유형과 위험도를 판단합니다.",
-    chips: ["6단계 AI 파이프라인", "위험도 미니맵"],
+    desc: "공정위 시정조치 의결서 1,163건에서 추출한 조항을 학습한 모델이, 각 조항이 약관규제법 제6~14조 중 어느 조에 걸릴 소지가 있는지 판단합니다.",
+    chips: ["6단계 파이프라인", "조항별 확인 필요 판정"],
   },
   {
     num: "03",
@@ -36,7 +36,7 @@ const STEPS = [
     stepBadgeBg: "bg-emerald-100 border-emerald-200 text-emerald-700",
     iconWrap: "bg-emerald-100",
     title: "리스크 레포트를 확인하세요",
-    desc: "위험도·분류·관련 법령·위험 문구 하이라이트가 담긴 조항별 분석 결과를 바로 확인합니다.",
+    desc: "확인이 필요한 조항, 관련 조문, 위험 문구 하이라이트가 담긴 분석 결과를 바로 확인합니다.",
     chips: ["법령 원문 직접 인용", "근거 하이라이트 연결"],
   },
 ];
@@ -60,7 +60,7 @@ export function HowToUseSection() {
             3단계로 끝납니다
           </h2>
           <p className="text-slate-500 max-w-xl mx-auto">
-            &ldquo;예쁘다&rdquo;가 아니라 &ldquo;이거 진짜 근거 있네&rdquo;가 이겨야 합니다 — 회원가입도 설치도 필요 없습니다.
+            &ldquo;예쁘다&rdquo;가 아니라 &ldquo;이거 진짜 근거 있네&rdquo;가 이겨야 합니다 — 설치 없이, Google 로그인만으로 바로 시작하세요.
           </p>
         </div>
 

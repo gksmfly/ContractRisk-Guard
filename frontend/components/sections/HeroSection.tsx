@@ -65,7 +65,7 @@ export function HeroSection() {
             약관 분석 무료로 시작하기
             <span aria-hidden>→</span>
           </Link>
-          <p className="text-slate-400 text-xs mt-3">로그인 없이 바로 시작 · 원하면 나중에 저장 가능</p>
+          <p className="text-slate-400 text-xs mt-3">Google 로그인 후 이용할 수 있어요 · 무료</p>
         </div>
 
         {/* Stats */}
