@@ -27,12 +27,23 @@ services:
       # (localhost:5432)이라, 컨테이너 네트워크 안에서는 서비스명으로 덮어써야
       # postgres 컨테이너에 닿는다.
       DATABASE_URL: postgresql://${POSTGRES_USER:-contractrisk-guard-db}:${POSTGRES_PASSWORD:-1234}@postgres:5432/${POSTGRES_DB:-contractrisk-guard-db}
+      # 캐시를 :ro로 붙였으므로 다운로드·lock 파일 쓰기를 시도하지 않게 한다.
+      # 캐시에 없는 모델은 느린 다운로드 대신 "없다"는 에러로 즉시 드러난다.
+      HF_HUB_OFFLINE: "1"
+      # `load_logger()`가 **import 시점에** FileHandler를 연다(backend/utils.py).
+      # 기본 경로가 `PROJECT_ROOT/data/logs`인데 아래에서 data/를 :ro로 마운트하므로,
+      # 이걸 안 옮기면 `import backend.api.server`가 PermissionError로 죽는다 —
+      # 서버가 기동조차 못 한다. data/는 참조용이라 :ro가 맞고, 로그만 옮긴다.
+      LOG_DIR: /tmp/logs
     ports:
       - "8000:8000"
     volumes:
       # models/, data/는 git에 없는 아티팩트라 이미지에 안 굽고 호스트에서 마운트한다.
       - ../models:/app/models:ro
       - ../data:/app/data:ro
+      # HuggingFace 캐시(KoE5 약 2GB 등). 없으면 첫 검색 요청에서 다운로드를 시도하고,
+      # 망이 막혀 있으면 그때 실패한다 — /health는 DB만 보므로 여기까지 안 잡힌다.
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface:ro
     depends_on:
       - postgres
     # GPU(KoE5 임베더, KoELECTRA 판단)를 쓰려면 호스트에 nvidia-container-toolkit이

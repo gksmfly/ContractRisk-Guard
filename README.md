@@ -152,14 +152,22 @@ ContractRisk-Guard/
 
 ## Getting Started
 
+All backend commands run from the **repository root** — the code uses absolute imports
+(`from backend.api...`), so running from inside `backend/` fails with `ModuleNotFoundError`.
+
 ```bash
-# Backend
-cd backend
+# Backend (from the repository root, not backend/)
 pip install -r requirements.txt
 cp .env.example .env
-# Set: OPENAI_API_KEY, DATABASE_URL
+# Fill in at minimum: OPENAI_API_KEY, DATABASE_URL, FORWARD_MODEL
+#   FORWARD_MODEL is required by the *server*, not just the labeling pipeline —
+#   the Analysis stage reuses run_forward(). Without it the server refuses to start
+#   and names the missing variable.
 
-uvicorn api.server:app --reload --port 8000
+# Postgres + pgvector
+docker compose -f docker/docker-compose.yml up -d postgres
+
+uvicorn backend.api.server:app --reload --port 8000
 
 # Frontend
 cd frontend

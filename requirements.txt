@@ -15,6 +15,16 @@
 # 데이터 수집·전처리·토픽모델링(크롤링, EDA)까지 포함한 전체 개발 환경이 필요하면
 # requirements-dev.txt를 쓸 것.
 
+# ⚠ **이 파일은 이미지를 짓지 않는다.** Dockerfile은 `requirements-lock.txt`를 쓴다.
+#
+#   이 파일          사람이 쓰는 **의도**. `>=` 하한만 둔다
+#   requirements-lock.txt   기계가 만든 **실제로 도는 조합**(pip freeze)
+#
+# 하한만으로 이미지를 지으면 빌드할 때마다 최신 메이저로 올라간다 — 2026-09-01에
+# openai 2→3 · pandas 2→3 · sentence-transformers 5→6 만큼 벌어진 채로 빌드됐다.
+# 버전을 올리려면 여기를 고치고 **락을 다시 뜬 뒤 재빌드까지 확인**한다
+# (락이 이미지를 못 만들면 없느니만 못하다).
+
 fastapi
 uvicorn[standard]
 pydantic
@@ -24,7 +34,7 @@ python-dotenv>=1.0.0
 psycopg2-binary>=2.9.0
 openai>=1.30.0                  # GPT-4o-mini LLM Zero-shot 분류 (domain_filter 3단계)
 langgraph>=0.2.0
-torch>=2.1.0
+torch>=2.1.0                    # 이미지는 이 하한을 안 쓴다 — Dockerfile이 ARG TORCH_VERSION으로 핀하고 CPU 인덱스에서 받는다
 transformers>=4.36.0
 sentencepiece>=0.1.99
 sentence-transformers>=2.7.0    # KoE5 임베더 — server.py lifespan이 기동 시 워밍업(backend/db/loader.py get_embedder())

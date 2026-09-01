@@ -9,7 +9,7 @@ reasoning을 출력한다. 퓨샷 예시를 포함하여 일관된 판단 기준
 
 이전 버전은 도메인을 `해지_조항 / 책임제한_조항 / 해당없음` 3택으로 물었다. 그 결과
 FB-Check 입력 2,218건 중 **1,257건(56.7%)이 `해당없음`으로 판정**됐고, `해당없음`은
-evidence_span이 빈 문자열이라 `snippet_exists=False`가 되어 **전량 NOISE로 탈락**했다
+evidence_span이 빈 문자열이라 `check_snippet_exists=False`가 되어 **전량 NOISE로 탈락**했다
 (`data/fb_check/fb_check_report.json`의 `노이즈_원인.domain_none`). 탈락분에는 공정위가
 불공정으로 확정한 ftc_case 조항 349건이 포함돼 있었다.
 
@@ -32,7 +32,6 @@ FTC `근거_법령`과 같은 어휘를 써야 "LLM 판정 vs 공정위 확정"�
 """
 
 import json
-import os
 import time
 
 from dotenv import load_dotenv
@@ -41,17 +40,22 @@ from openai import OpenAI
 from backend.fb_check.api_errors import raise_if_fatal
 from backend.labeling.articles import (
     ARTICLE_IDS,
+    build_prompt_block_variant,
     derive_domain,
-    prompt_block_variant,
 )
-from backend.utils import load_logger
+from backend.utils import lazy_env, load_logger, require_env
 
 load_dotenv()
 
 logger = load_logger("forward_labeling.log")
 
 MAX_GPT_CHARS = 3000
-FORWARD_MODEL = os.environ["FORWARD_MODEL"]
+# **최상단에서 `os.environ["FORWARD_MODEL"]`을 쓰지 않는다.** 이 모듈은 오프라인
+# 라벨링용이지만 `agents/analysis_agent.py`가 `run_forward`를 재사용하므로 **서빙
+# import 체인이 여기를 지난다.** 예전에는 이 줄 때문에 `FORWARD_MODEL`이 없는 배포에서
+# `import backend.api.server` 자체가 raw `KeyError`로 죽었다 — `_validate_required_env()`가
+# 돌기도 전이라 "무엇이 없는지"를 알려줄 기회조차 없었다. 검사는 `run_forward()`로 옮겼다.
+FORWARD_MODEL = lazy_env("FORWARD_MODEL")
 
 # 프롬프트를 고칠 때마다 올린다 — 라벨 레코드에 함께 기록되어 어느 프롬프트가
 # 어느 라벨을 만들었는지 사후에 구분할 수 있게 한다.
@@ -230,7 +234,7 @@ _DEFAULT_BLOCK = "summary"
 
 def build_system(block: str = _DEFAULT_BLOCK) -> str:
     """`block`은 full(전문) / summary(제목+각 호 앞부분) / title(제목만)."""
-    return _SYSTEM_HEAD + prompt_block_variant(block) + _SYSTEM_TAIL
+    return _SYSTEM_HEAD + build_prompt_block_variant(block) + _SYSTEM_TAIL
 
 
 _SYSTEM = build_system(_DEFAULT_BLOCK)
@@ -265,6 +269,9 @@ def _normalize(out: dict, model: str) -> dict:
 
 def run_forward(client: OpenAI, clause_text: str, retries: int = 3,
                 model: str = FORWARD_MODEL, block: str = _DEFAULT_BLOCK) -> dict | None:
+    # 모듈 최상단 대신 **여기서** 검사한다(위 FORWARD_MODEL 주석 참고). `--model`로
+    # 명시해 부르면 그 값이 그대로 통과하므로 라벨링 경로 동작은 달라지지 않는다.
+    model = require_env(model, "FORWARD_MODEL", "Forward Labeling(라벨링 · Analysis Agent)")
     messages = [{"role": "system", "content": build_system(block) if block != _DEFAULT_BLOCK else _SYSTEM}]
     messages.extend(_FEW_SHOT_EXAMPLES)
     messages.append({"role": "user", "content": f"계약 조항:\n{clause_text[:MAX_GPT_CHARS]}"})

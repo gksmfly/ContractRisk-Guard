@@ -42,7 +42,10 @@
 
 import argparse
 import csv
+import hashlib
 import html
+import json
+import random
 import re
 from pathlib import Path
 
@@ -55,6 +58,17 @@ OUT_DIR = PROJECT_ROOT / "data/eval/prevalence"
 SHEET = OUT_DIR / "worksheet.csv"
 PRED = OUT_DIR / "predictions.json"
 REPORT = OUT_DIR / "prevalence_report.json"
+
+# **평가셋은 얼린다.** 워크시트를 다시 만들 때마다 대상이 달라지면 이건 자산이 아니라
+# 일회용이다. 얼린 셋(`EVALSET`)이 진실이고 CSV는 그걸 사람이 채우도록 편 표일 뿐이다.
+EVALSET_VERSION = "v1"
+_N_NEGATIVE = 50          # 표준계약서 음성 holdout에서 뽑을 건수
+_NEG_SEED = 42
+_SHUFFLE_SEED = 20260901  # 순서 단서 제거. 얼린 파일에 기록된다
+EVALSET = OUT_DIR / f"evalset_{EVALSET_VERSION}.json"
+# 판단은 **CSV가 아니라 여기** 쌓인다. CSV를 지우거나 다시 만들어도 판단이 살아남는다 —
+# 오늘 워크시트를 재생성할 때 판단이 0건이라 손실이 없었던 것은 운이었다.
+JUDGMENTS = OUT_DIR / "judgments.jsonl"
 
 _MIN_CHARS = 40          # 목차 항목(제목만 있는 줄)을 걸러낸다
 _HEAD = re.compile(r"제\s*\d+\s*조\s*[（(]")
@@ -119,7 +133,7 @@ def _dedup(rows: list[dict], thr: float = 0.80) -> tuple[list[dict], int]:
     return kept, dropped
 
 
-def _truncated_flags(texts: list[str], max_len: int = 256) -> list[bool]:
+def _truncated_flags(texts: list[str], max_len: int = 256) -> tuple[list[bool], list[int]]:
     """모델 입력(`max_len` 토큰)에서 **잘리는** 조항 표시.
 
     실제 약관은 조 하나에 항이 여럿 붙어 학습 텍스트보다 2.4배 길고, 35.4%가 잘린다
@@ -133,10 +147,131 @@ def _truncated_flags(texts: list[str], max_len: int = 256) -> list[bool]:
     try:
         from transformers import AutoTokenizer
         tok = AutoTokenizer.from_pretrained(str(PROJECT_ROOT / "models/article_v2"))
-        return [len(tok(t)["input_ids"]) > max_len for t in texts]
+        n = [len(tok(t)["input_ids"]) for t in texts]
     except Exception as e:                                   # noqa: BLE001
         logger.warning(f"  토크나이저 없이 글자 수로 근사한다 ({e})")
-        return [len(t) > int(max_len * 2.3) for t in texts]
+        n = [int(len(t) / 2.3) for t in texts]
+    return [x > max_len for x in n], n
+
+
+def _uid(text: str) -> str:
+    """조항의 **안정 ID**. 공백을 지운 본문의 해시라 재생성·정렬·중복제거 규칙이 바뀌어도 같다.
+
+    예전 ID는 `kakao:3`처럼 **파일 안 순번**이었다. 원문에 조항 하나가 끼면 그 뒤가 전부
+    밀려서, 어제 판단한 `kakao:3`과 오늘의 `kakao:3`이 다른 조항이 된다. 사람 판단을
+    자산으로 쌓으려면 ID가 내용에 붙어 있어야 한다.
+    """
+    return hashlib.sha1(re.sub(r"\s+", "", text).encode("utf-8")).hexdigest()[:12]
+
+
+def _load_judgments() -> dict[str, dict]:
+    """`uid → 판단`. 파일이 없으면 빈 dict."""
+    out: dict[str, dict] = {}
+    if JUDGMENTS.exists():
+        for line in JUDGMENTS.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                r = json.loads(line)
+                out[r["uid"]] = r
+    return out
+
+
+def harvest() -> int:
+    """CSV에 채워진 판단을 **`judgments.jsonl`로 걷어 올린다.**
+
+    이걸 돌려두면 워크시트를 다시 만들어도 판단이 안 날아간다. CSV는 입력 도구이고
+    영속 저장소가 아니다 — 오늘 워크시트를 재생성할 수 있었던 것은 판단이 0건이었기
+    때문이지 안전해서가 아니었다.
+    """
+    if not SHEET.exists():
+        return 0
+    have = _load_judgments()
+    n = 0
+    with open(SHEET, encoding="utf-8-sig") as fh:
+        for r in csv.DictReader(fh):
+            v = (r.get("violates_6_to_14") or "").strip()
+            if v not in ("0", "1"):
+                continue
+            uid = r.get("uid") or _uid(r.get("clause_text", ""))
+            rec = {"uid": uid, "violates_6_to_14": int(v),
+                   "articles_judged": (r.get("articles_judged") or "").strip(),
+                   "judged_by": (r.get("judged_by") or "").strip(),
+                   "note": (r.get("note") or "").strip()}
+            if have.get(uid) != rec:
+                have[uid] = rec
+                n += 1
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    with open(JUDGMENTS, "w", encoding="utf-8") as fh:
+        for uid in sorted(have):
+            fh.write(json.dumps(have[uid], ensure_ascii=False) + "\n")
+    return n
+
+
+def _negative_holdout(n: int, seed: int) -> list[dict]:
+    """표준계약서 음성 holdout에서 `n`건. **GPT 라벨로 거르지 않는다.**
+
+    평가 코드는 지금까지 `not r["articles"]`(GPT가 빈 배열이라 한 것)만 음성 풀로 썼다.
+    그건 채점에는 맞지만 **사람 판단 대상을 고를 때 쓰면 안 된다** — GPT가 고른 집합에서
+    오경보를 세면 "GPT가 놓친 것"이 표본에서 통째로 빠진다. 156건 전부에서 뽑고,
+    무엇이 음성인지는 **사람이 정한다.**
+    """
+    from backend.training.train_article import (
+        exclude_gold_documents,
+        load_article_records,
+        load_ftc_gold,
+        split_negative_holdout,
+    )
+    recs = exclude_gold_documents(
+        load_article_records(PROJECT_ROOT / "data/fb_check/clean.jsonl"), load_ftc_gold("clean"))
+    _, neg = split_negative_holdout(recs, 12, seed)
+    rng = random.Random(seed)
+    picked = rng.sample(sorted(neg, key=lambda r: _uid(r["text"])), min(n, len(neg)))
+    return [{"text": r["text"], "source": "standard_contract", "cluster": r["group"]}
+            for r in picked]
+
+
+def _freeze(rows: list[dict]) -> dict:
+    """평가셋을 얼려 저장한다. 이미 있으면 **읽기만 하고 바꾸지 않는다.**
+
+    원천 약관을 더 모으면 조항 목록이 달라지는데, 그때 평가셋이 조용히 바뀌면
+    "같은 셋으로 다음 모델을 평가한다"가 깨진다. 바꾸려면 버전을 올릴 것.
+
+    ## 왜 실제 약관과 표준계약서를 **한 셋에** 넣나
+
+    둘 다 같은 이진 판단("제6~14조 중 뭐라도 걸리나")이고, 나눠 얼리면 판단 세션이 둘로
+    갈려 자산도 둘이 된다. 그리고 **섞어야 순서 단서가 사라진다** — 앞 99개가 실제 약관이면
+    판단자가 뒤쪽 50개를 다른 눈으로 본다.
+    """
+    if EVALSET.exists():
+        return json.loads(EVALSET.read_text(encoding="utf-8"))
+    trunc, ntok = _truncated_flags([r["text"] for r in rows])
+    items = [{"uid": _uid(r["text"]), "source": r["source"],
+              "cluster": r.get("cluster") or r["source"], "text": r["text"],
+              "n_tokens": t, "over_256_tokens": int(c)}
+             for r, c, t in zip(rows, trunc, ntok)]
+    random.Random(_SHUFFLE_SEED).shuffle(items)          # 순서 단서 제거
+    data = {
+        "version": EVALSET_VERSION,
+        "created": "2026-09-01",
+        "why": "gold(FTC 발췌문, 토큰 중앙 84)는 배포 분포(조문 전체, 토큰 중앙 184)를 "
+               "대표하지 않는다. 이 셋은 **배포 분포 그 자체**이고 준거가 사람이라 "
+               "순환도 없다 — 분포가 맞는 유일한 평가셋이다",
+        "composition": "실제 약관(공공기관·포털) + 표준계약서 음성 holdout. 후자는 GPT 라벨로 "
+                       "거르지 않고 156건에서 무작위 추출 — GPT가 고른 집합에서 오경보를 "
+                       "세면 'GPT가 놓친 것'이 표본에서 빠진다",
+        "blinding": "**판단 뷰(worksheet.csv)에 source를 넣지 않는다.** 출처를 보면 "
+                    "'표준계약서는 공정하다'는 사전 지식이 판단에 들어가고, 그게 곧 "
+                    "provenance가 라벨을 만드는 것이다 — 라벨링 파이프라인에서 금지한 바로 그것의 "
+                    "사람 판단 판본. `over_256_tokens`는 입력 길이라 블라인드를 안 깨지만 "
+                    "source는 깬다. 두 열을 같은 기준으로 두지 말 것",
+        "shuffle_seed": _SHUFFLE_SEED,
+        "negative_sample_seed": _NEG_SEED,
+        "tokenizer": "models/article_v2",
+        "dedup_ratio_threshold": 0.80,
+        "clauses": items,
+    }
+    save_json(data, EVALSET)
+    logger.info(f"  평가셋 얼림: {EVALSET} — 다음부터 이 파일이 대상을 정한다")
+    return data
 
 
 def build() -> None:
@@ -154,21 +289,50 @@ def build() -> None:
     if not rows:
         raise SystemExit(f"{SRC_DIR} 에 약관 파일(.html/.txt)이 없다")
 
-    trunc = _truncated_flags([r["text"] for r in rows])
+    neg = _negative_holdout(_N_NEGATIVE, _NEG_SEED)
+    logger.info(f"  표준계약서 음성 holdout {len(neg)}건 추가 (156건에서 무작위, GPT 라벨로 안 거름)")
+    rows = rows + neg
+    frozen = _freeze(rows)
+
+    # **얼린 셋이 대상을 정한다.** 원천을 더 모아도 이 버전의 평가셋은 안 바뀐다 —
+    # 안 그러면 "같은 셋으로 다음 모델을 평가한다"가 성립하지 않는다.
+    now = {_uid(r["text"]) for r in rows}
+    old_ = {c["uid"] for c in frozen["clauses"]}
+    if now != old_:
+        logger.warning(f"  ⚠ 원천이 달라졌다 (추가 {len(now - old_)} · 사라짐 {len(old_ - now)}) — "
+                       f"**평가셋 {frozen['version']}은 그대로 쓴다.** 반영하려면 "
+                       f"EVALSET_VERSION을 올릴 것")
+
+    harvested = harvest()                    # CSV를 덮기 **전에** 기존 판단을 걷어 올린다
+    judged = _load_judgments()
+    if harvested:
+        logger.info(f"  기존 판단 {harvested}건을 {JUDGMENTS.name}로 걷어 올렸다")
+
+    # **source는 판단 뷰에 넣지 않는다.** 출처가 판단을 끌면 라벨링에서 끊어낸 교락이
+    # 사람 판단으로 되돌아온다. 저장 레코드(evalset)에는 남아 있고 uid로 이어 붙인다.
+    cols = ["uid", "violates_6_to_14", "articles_judged", "judged_by", "note",
+            "over_256_tokens", "n_tokens", "clause_text"]
     with open(SHEET, "w", encoding="utf-8-sig", newline="") as fh:
         w = csv.writer(fh)
-        w.writerow(["id", "source", "violates_6_to_14", "note", "over_256_tokens", "clause_text"])
-        for r, t in zip(rows, trunc):
-            w.writerow([r["id"], r["source"], "", "", int(t), r["text"]])
-    logger.info(f"  워크시트 {len(rows)}개 조항 → {SHEET}")
-    logger.info("  `violates_6_to_14` 열에 1(위반 의심) / 0(아님) 만 채우세요.")
+        w.writerow(cols)
+        for c in frozen["clauses"]:
+            j = judged.get(c["uid"], {})
+            w.writerow([c["uid"],
+                        j.get("violates_6_to_14", ""), j.get("articles_judged", ""),
+                        j.get("judged_by", ""), j.get("note", ""),
+                        c["over_256_tokens"], c["n_tokens"], c["text"]])
+    n, nt = len(frozen["clauses"]), sum(c["over_256_tokens"] for c in frozen["clauses"])
+    logger.info(f"  워크시트 {n}개 조항 → {SHEET}   (평가셋 {frozen['version']}, 판단 {len(judged)}건 복원)")
+    logger.info("  `violates_6_to_14`에 1(위반 의심)/0(아님), **`articles_judged`에 어느 조로 봤는지**를 "
+                "적으세요 — 조를 같이 남겨야 나중에 모델의 조 예측과 대조할 수 있습니다")
     logger.info("  **모델 예측은 일부러 넣지 않았습니다** — 보고 판단하면 r이 오염됩니다.")
-    logger.info(f"  `over_256_tokens` = 모델 입력에서 잘리는 조항({sum(trunc)}/{len(rows)}건). "
-                f"**이 열은 예측이 아니라 입력 길이라 블라인드를 깨지 않는다** — "
-                f"이 구간을 빠짐없이 판단해야 윈도 OR 채택 여부가 같이 결정된다")
-    save_json({"n_clauses": len(rows), "n_truncated": int(sum(trunc)),
-               "by_source": {r["source"]: 0 for r in rows} | {},
-               "note": "판단 전 상태"}, REPORT)
+    logger.info(f"  `over_256_tokens` = article_v1이 잘랐던 조항({nt}/{n}건). **예측이 아니라 입력 "
+                f"길이라 블라인드를 안 깬다** — 이 구간을 빠짐없이 판단해야 v1/v2 질문이 같이 풀린다")
+    logger.info(f"  ★ 판단을 채운 뒤 `--harvest`를 돌리면 {JUDGMENTS.name}에 쌓입니다 — "
+                f"CSV를 다시 만들어도 안 날아갑니다")
+    save_json({"evalset_version": frozen["version"], "n_clauses": n, "n_truncated": nt,
+               "n_judged": len(judged),
+               "note": "얼린 평가셋. 판단은 judgments.jsonl에 쌓이고 CSV는 입력 도구일 뿐"}, REPORT)
 
 
 def join(model_dir: str, gpu: int) -> None:
@@ -181,23 +345,41 @@ def join(model_dir: str, gpu: int) -> None:
     from backend.model.electra import ArticleMultiLabelElectra
     from backend.training.train_article import ArticleDataset
 
+    harvest()                                  # 집계 전에 항상 걷어 올린다
     rows = list(csv.DictReader(open(SHEET, encoding="utf-8-sig")))
     judged = [r for r in rows if (r.get("violates_6_to_14") or "").strip() in ("0", "1")]
     if not judged:
         raise SystemExit("판단된 행이 없다 — violates_6_to_14 열을 채우고 다시 실행할 것")
 
-    y = np.array([int(r["violates_6_to_14"]) for r in judged])
-    r_hat = float(y.mean())
-    logger.info("========== 유병률 r ==========")
-    logger.info(f"  판단 완료 {len(judged)}/{len(rows)}개 조항")
-    by = {}
+    # 판단 뷰에는 source가 없다(블라인드). 얼린 평가셋에서 uid로 되붙인다.
+    meta = {c["uid"]: c for c in json.loads(EVALSET.read_text(encoding="utf-8"))["clauses"]}
     for r in judged:
-        by.setdefault(r["source"], []).append(int(r["violates_6_to_14"]))
-    lo, hi = cluster_ci(by)
-    logger.info(f"  **r = {r_hat * 100:.1f}%**  95% CI [{lo * 100:.1f}%, {hi * 100:.1f}%]  "
-                f"(문서 {len(by)}개 클러스터 부트스트랩 — 조항 단위 Wilson은 거짓으로 좁다)")
-    for s, v in sorted(by.items()):
-        logger.info(f"    {s:<14}{sum(v):>3}/{len(v):<4} = {sum(v) / len(v) * 100:>5.1f}%")
+        r["source"] = meta[r["uid"]]["source"]
+        r["cluster"] = meta[r["uid"]]["cluster"]
+
+    y = np.array([int(r["violates_6_to_14"]) for r in judged])
+    real = [i for i, r in enumerate(judged) if r["source"] != "standard_contract"]
+    std = [i for i, r in enumerate(judged) if r["source"] == "standard_contract"]
+    logger.info("========== 유병률 r ==========")
+    logger.info(f"  판단 완료 {len(judged)}/{len(rows)}개 조항 "
+                f"(실제 약관 {len(real)} · 표준계약서 {len(std)})")
+
+    # **r은 실제 약관에서만 낸다.** 표준계약서를 섞으면 배포 유병률이 아니라
+    # "두 코퍼스를 이 비율로 섞었을 때의 값"이 된다 — 오늘 gold를 지층으로 가른 것과 같은 이유.
+    for label, idx in (("실제 약관 (배포 분포 — 이것이 r)", real), ("표준계약서 (음성 준거)", std)):
+        if not idx:
+            continue
+        by: dict[str, list[int]] = {}
+        for i in idx:
+            by.setdefault(judged[i]["cluster"], []).append(int(y[i]))
+        lo, hi = cluster_ci(by)
+        rate = float(y[idx].mean())
+        logger.info(f"  {label}")
+        logger.info(f"    {rate * 100:5.1f}%  95% CI [{lo * 100:.1f}%, {hi * 100:.1f}%]  "
+                    f"(문서 {len(by)}개 클러스터 부트스트랩 — 조항 단위 Wilson은 거짓으로 좁다)")
+        for sname, v in sorted(by.items()):
+            logger.info(f"      {sname:<26}{sum(v):>3}/{len(v):<4} = {sum(v) / len(v) * 100:>5.1f}%")
+    r_hat = float(y[real].mean()) if real else float(y.mean())
     logger.warning("  ★ [사전 등록] 이 표본의 r은 **하한**이다. 공공기관은 영리 동기가 없어 "
                    "불공정 조항을 넣을 이유가 거의 없고 대형 플랫폼은 법무 검토를 거친다 — "
                    "가능한 표본 중 r이 가장 낮게 나올 조합이다.")
@@ -209,8 +391,11 @@ def join(model_dir: str, gpu: int) -> None:
     device = torch.device(f"cuda:{gpu}" if torch.cuda.is_available() else "cpu")
     m = ArticleMultiLabelElectra.load(Path(model_dir)).to(device).eval()
     tok = AutoTokenizer.from_pretrained(model_dir)
+    # **max_len을 상수로 박지 않는다** — 체크포인트에서 읽는다(`Claude.md`의 원칙).
+    _mc = json.loads((Path(model_dir) / "metrics.json").read_text(encoding="utf-8"))
+    _ml = int((_mc.get("train_config") or {}).get("max_len", 256))
     ds = ArticleDataset([{"text": r["clause_text"], "articles": [], "group": "g"} for r in judged],
-                        tok, 256, m.article_names)
+                        tok, _ml, m.article_names)
     P = []
     with torch.no_grad():
         for b in DataLoader(ds, batch_size=32):
@@ -220,22 +405,49 @@ def join(model_dir: str, gpu: int) -> None:
     P = np.vstack(P)
     thr = np.load(Path(model_dir) / "thresholds.npy")
 
-    logger.info("  ----- 사람 판단 대비 모델 (일치율·부수 지표) -----")
-    logger.info(f"    {'τ':>6}{'모델 위반율':>12}{'일치율':>9}{'재현':>8}{'정밀':>8}")
+    # ── 이 표의 왼쪽 두 칸이 오늘까지 없던 값이다 ──────────────────────────────
+    # `disagree_with_gpt`는 음성 풀의 정답이 GPT 라벨 그 자체라 순환이었다. 여기서는
+    # **사람이 정답이라 순환이 없다** — 이것이 이 프로젝트 최초의 독립 오경보율이다.
+    logger.info("  ----- 사람 판단 대비 모델 -----")
+    logger.info(f"    {'τ':>6}{'★오경보':>9}{'★재현':>8}{'정밀':>8}{'일치율':>8}{'모델 지목률':>12}")
     agree = {}
-    for t in (0.15, 0.25, 0.35, 0.45, 0.65, float(np.mean(thr))):
+    thr_mean = float(np.mean(thr))
+    trunc_idx = [i for i, r in enumerate(judged) if int(r.get("over_256_tokens") or 0)]
+    for t in (0.15, 0.25, 0.35, 0.45, 0.65, thr_mean):
         pred = np.array([1 if any(v >= t for v in P[i]) else 0 for i in range(len(judged))])
         tp = int(((pred == 1) & (y == 1)).sum()); fp = int(((pred == 1) & (y == 0)).sum())
-        fn = int(((pred == 0) & (y == 1)).sum())
+        fn = int(((pred == 0) & (y == 1)).sum()); tn = int(((pred == 0) & (y == 0)).sum())
         rec = tp / (tp + fn) if tp + fn else 0.0
         pre = tp / (tp + fp) if tp + fp else 0.0
-        agree[f"{t:.2f}"] = {"model_rate": float(pred.mean()), "agreement": float((pred == y).mean()),
-                             "recall": rec, "precision": pre}
-        logger.info(f"    {t:>6.2f}{pred.mean() * 100:>11.1f}%{(pred == y).mean() * 100:>8.1f}%"
-                    f"{rec * 100:>7.1f}%{pre * 100:>7.1f}%")
-    save_json({"r": r_hat, "ci95": [lo, hi], "n_judged": len(judged), "n_total": len(rows),
-               "by_source": {s: {"n": len(v), "r": sum(v) / len(v)} for s, v in by.items()},
+        fa = fp / (fp + tn) if fp + tn else 0.0          # **독립 오경보율**
+        agree[f"{t:.2f}"] = {"false_alarm": fa, "recall": rec, "precision": pre,
+                             "agreement": float((pred == y).mean()), "model_rate": float(pred.mean())}
+        logger.info(f"    {t:>6.2f}{fa * 100:>8.1f}%{rec * 100:>7.1f}%{pre * 100:>7.1f}%"
+                    f"{(pred == y).mean() * 100:>7.1f}%{pred.mean() * 100:>11.1f}%")
+    logger.info("    ★ **오경보는 이제 사람 준거로 잰 값이다** — 음성 풀의 정답이 GPT 라벨이던 "
+                "`disagree_with_gpt`의 순환이 여기엔 없다")
+
+    # 절단 구간만 따로 — 결정 ③(v1 vs v2)이 여기서 갈린다. 두 모델로 각각 돌려 비교할 것.
+    if trunc_idx:
+        pred = np.array([1 if any(v >= thr_mean for v in P[i]) else 0 for i in range(len(judged))])
+        yt, pt = y[trunc_idx], pred[trunc_idx]
+        fp = int(((pt == 1) & (yt == 0)).sum()); tn = int(((pt == 0) & (yt == 0)).sum())
+        tp = int(((pt == 1) & (yt == 1)).sum()); fn = int(((pt == 0) & (yt == 1)).sum())
+        agree["truncated_subgroup"] = {
+            "n": len(trunc_idx), "human_violation_rate": float(yt.mean()),
+            "false_alarm": fp / (fp + tn) if fp + tn else 0.0,
+            "recall": tp / (tp + fn) if tp + fn else 0.0}
+        logger.info(f"  ----- 절단 구간만 (n={len(trunc_idx)}) — 결정 ③이 여기서 갈린다 -----")
+        logger.info(f"    사람 위반율 {yt.mean() * 100:.1f}%  |  "
+                    f"오경보 {agree['truncated_subgroup']['false_alarm'] * 100:.1f}%  "
+                    f"재현 {agree['truncated_subgroup']['recall'] * 100:.1f}%")
+        logger.info("    → `models/article_v1`로도 같은 명령을 돌려 두 값을 비교할 것. "
+                    "v2의 지목률이 낮은 것이 **옳게 침묵한 것인지** 여기서 판정된다")
+
+    save_json({"r_real_tos": r_hat, "n_judged": len(judged), "n_total": len(rows),
+               "n_real": len(real), "n_standard_contract": len(std),
                "model_agreement": agree, "model_dir": model_dir,
+               "false_alarm_note": "사람 준거. `disagree_with_gpt`(순환)를 대체하는 값이다",
                "ci_method": "문서 단위 클러스터 부트스트랩 (조항 단위 Wilson은 상관을 무시해 거짓으로 좁다)",
                "preregistered": "이 표본의 r은 하한이다. r<0.05여도 운영점 τ 결정에 쓰지 않는다 — "
                                "상업 약관 표본이 들어온 뒤로 미룬다",
@@ -274,10 +486,19 @@ def cluster_ci(by_doc: dict[str, list[int]], seed: int = 42, n_boot: int = 5000)
 def main() -> None:
     ap = argparse.ArgumentParser(description="r 측정 워크시트")
     ap.add_argument("--join", action="store_true", help="판단이 끝난 워크시트를 집계한다")
-    ap.add_argument("--model-dir", default="models/_article_rNone")
+    ap.add_argument("--harvest", action="store_true",
+                    help="CSV에 채운 판단을 judgments.jsonl로 걷어 올린다. **판단하고 나면 이걸 먼저 돌릴 것** — "
+                         "CSV는 입력 도구이고 영속 저장소가 아니다")
+    ap.add_argument("--model-dir", default="models/article_v2")
     ap.add_argument("--gpu", type=int, default=1)
     a = ap.parse_args()
-    join(a.model_dir, a.gpu) if a.join else build()
+    if a.harvest:
+        n = harvest()
+        logger.info(f"  판단 {n}건 갱신 → {JUDGMENTS}  (누적 {len(_load_judgments())}건)")
+    elif a.join:
+        join(a.model_dir, a.gpu)
+    else:
+        build()
 
 
 if __name__ == "__main__":

@@ -29,7 +29,6 @@ verify는 무차별로 상향하지 않는다 — 위반 확정 조항에서만 
 """
 
 import json
-import os
 import time
 
 from dotenv import load_dotenv
@@ -38,16 +37,18 @@ from openai import OpenAI
 from backend.fb_check.api_errors import raise_if_fatal
 from backend.labeling.articles import (
     ARTICLE_IDS,
+    build_prompt_block_variant,
     derive_domain,
-    prompt_block_variant,
 )
-from backend.utils import load_logger
+from backend.utils import lazy_env, load_logger, require_env
 
 load_dotenv()
 
 logger = load_logger("consistency_verification.log")
 
-VERIFY_MODEL = os.environ["VERIFY_MODEL"]
+# forward_labeling과 같은 이유로 lazy다. **지금은 서빙 import 체인 밖이지만** 그건
+# 우연이고, 체인은 오늘도 바뀌었다(게이트를 GPT에서 모델로 옮기면서). 부류로 막는다.
+VERIFY_MODEL = lazy_env("VERIFY_MODEL")
 
 # forward와 독립적으로 올린다 — 두 단계 프롬프트를 따로 고칠 수 있어야 한다.
 PROMPT_VERSION = "ver-v5-ordered-summaryblock"
@@ -195,9 +196,9 @@ _DEFAULT_BLOCK = "summary"
 def build_system(mode: str = "span", block: str = _DEFAULT_BLOCK) -> str:
     """조문 블록만 갈아끼운 시스템 프롬프트. forward와 같은 규칙(few-shot 불변)."""
     if mode == "span":
-        return _HEAD__SYSTEM_SPAN + prompt_block_variant(block) + _TAIL__SYSTEM_SPAN
+        return _HEAD__SYSTEM_SPAN + build_prompt_block_variant(block) + _TAIL__SYSTEM_SPAN
     if mode == "clause":
-        return _HEAD__SYSTEM_CLAUSE + prompt_block_variant(block) + _TAIL__SYSTEM_CLAUSE
+        return _HEAD__SYSTEM_CLAUSE + build_prompt_block_variant(block) + _TAIL__SYSTEM_CLAUSE
     raise ValueError(f"알 수 없는 verify mode: {mode}")
 
 
@@ -214,6 +215,8 @@ def run_verify(
     block: str = _DEFAULT_BLOCK,
 ) -> dict | None:
     """`mode="span"`이면 근거 문구만, `"clause"`면 조항 전문을 주고 재판정한다."""
+    # 모듈 최상단 대신 여기서 검사한다(위 VERIFY_MODEL 주석 참고).
+    model = require_env(model, "VERIFY_MODEL", "Consistency Verification(라벨링)")
     if mode == "span":
         sys_span = build_system("span", block) if block != _DEFAULT_BLOCK else _SYSTEM_SPAN
         messages = [{"role": "system", "content": sys_span}, *_FEW_SHOT_EXAMPLES,

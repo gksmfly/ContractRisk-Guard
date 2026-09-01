@@ -21,7 +21,7 @@ PostgreSQL에 임베딩과 함께 적재한다.
 
 환경변수 (.env):
     DATABASE_URL  postgresql://user:pass@host:5432/dbname
-    EMBED_DEVICE  cuda:1 (기본값) / cuda:0 / cpu
+    EMBED_DEVICE  미설정이면 GPU 유무로 자동(cuda:1 / cpu). cuda:0 등 명시값은 존중
 """
 
 import argparse
@@ -41,7 +41,11 @@ logger = load_logger("db_load.log")
 
 EMBED_MODEL  = "nlpai-lab/KoE5"
 EMBED_DIM    = 1024
-EMBED_DEVICE = os.environ.get("EMBED_DEVICE", "cuda:1")
+# 기본값을 상수로 두지 않는다 — GPU 없는 환경(컨테이너)에서 "cuda:1"이 그대로 나가면
+# SentenceTransformer 생성에서 터진다. `judgment_agent`(cuda.is_available 가드)와
+# `query_router`는 이미 이렇게 돼 있었는데 여기만 빠져 있었다.
+# 해석은 import 시점이 아니라 `get_embedder()`에서 한다(CUDA 조회를 import에 끌어오지 않기 위해).
+EMBED_DEVICE_ENV = os.environ.get("EMBED_DEVICE")
 BATCH_SIZE   = 64    # KoE5 로컬 GPU 인코딩 배치 크기
 UPSERT_BATCH = 200   # DB insert 배치 크기
 
@@ -146,6 +150,18 @@ def _get_conn() -> Any:
     return conn
 
 
+def resolve_embed_device() -> str:
+    """임베딩 디바이스를 결정한다. `EMBED_DEVICE`가 있으면 그대로, 없으면 GPU 유무로 고른다.
+
+    명시값은 존중한다 — 사용자가 `cuda:0`을 원하면 그대로 쓴다. 기본값만 환경을 본다.
+    """
+    if EMBED_DEVICE_ENV:
+        return EMBED_DEVICE_ENV
+    import torch
+
+    return "cuda:1" if torch.cuda.is_available() else "cpu"
+
+
 def get_embedder() -> Any:
     """KoE5 SentenceTransformer를 로드한다.
 
@@ -157,10 +173,10 @@ def get_embedder() -> Any:
     except ImportError:
         logger.error("sentence-transformers 미설치: pip install sentence-transformers")
         sys.exit(1)
-    return SentenceTransformer(EMBED_MODEL, device=EMBED_DEVICE)
+    return SentenceTransformer(EMBED_MODEL, device=resolve_embed_device())
 
 
-def init_schema(conn) -> None:
+def init_schema(conn: Any) -> None:
     """빈 DB에 바로 붙여 쓰는 부트스트랩용 — 새 스키마 변경은 이제 alembic
     revision으로 관리한다(backend/db/migrations/, alembic.ini 참고). 이 함수는
     CREATE ... IF NOT EXISTS라 alembic이 이미 관리 중인 DB에 실행해도 안전하다.
@@ -171,7 +187,7 @@ def init_schema(conn) -> None:
     logger.info("  스키마 초기화 완료")
 
 
-def embed_texts(model, texts: list[str], on_batch=None, prefix: str = "passage: ") -> list[list[float]]:
+def embed_texts(model: Any, texts: list[str], on_batch: Any=None, prefix: str = "passage: ") -> list[list[float]]:
     """텍스트를 배치 단위로 임베딩한다 (KoE5, E5 컨벤션에 따른 프리픽스 부여).
 
     저장용 문서는 prefix="passage: "(기본값), 검색 쿼리는 prefix="query: "를 넘긴다.
@@ -193,7 +209,7 @@ def embed_texts(model, texts: list[str], on_batch=None, prefix: str = "passage: 
     return all_embeddings
 
 
-def _existing_ids(conn, table: str) -> set[str]:
+def _fetch_existing_ids(conn: Any, table: str) -> set[str]:
     """테이블에 이미 존재하는 chunk_id 집합을 반환한다."""
     with conn.cursor() as cur:
         cur.execute(f"SELECT chunk_id FROM {table}")
@@ -211,7 +227,7 @@ def _strip_nul(v: Any) -> Any:
     return v
 
 
-def _upsert_chunks(conn, table: str, cols: list[str], rows: list[tuple]) -> None:
+def _upsert_chunks(conn: Any, table: str, cols: list[str], rows: list[tuple]) -> None:
     from psycopg2.extras import Json, execute_values
     rows = [
         tuple(
@@ -233,7 +249,7 @@ def _upsert_chunks(conn, table: str, cols: list[str], rows: list[tuple]) -> None
 
 
 def _load_incremental(
-    conn, embedder, table: str, cols: list[str], records: list[dict], row_fn, label: str,
+    conn: Any, embedder: Any, table: str, cols: list[str], records: list[dict], row_fn: Any, label: str,
 ) -> int:
     """레코드를 배치 단위로 임베딩 + upsert한다.
 
@@ -252,7 +268,7 @@ def _load_incremental(
     return len(records)
 
 
-def load_chunks(conn, embedder, refresh: tuple[str, ...] = ()) -> dict[str, int]:
+def load_chunks(conn: Any, embedder: Any, refresh: tuple[str, ...] = ()) -> dict[str, int]:
     """data/processed/chunks/*.jsonl → chunks 테이블.
 
     기본은 증분 적재 — 이미 있는 `chunk_id`는 건너뛴다. 그래서 **텍스트가 바뀌어도
@@ -267,7 +283,7 @@ def load_chunks(conn, embedder, refresh: tuple[str, ...] = ()) -> dict[str, int]
     total_inserted = 0
     cols = ["chunk_id", "source", "doc_id", "rec_index", "chunk_index", "text", "metadata", "embedding"]
 
-    existing = _existing_ids(conn, "chunks")
+    existing = _fetch_existing_ids(conn, "chunks")
     if existing:
         logger.info(f"  [chunks] 이미 적재된 chunk_id {len(existing)}개 — 건너뜀")
     if refresh:
@@ -300,7 +316,7 @@ def load_chunks(conn, embedder, refresh: tuple[str, ...] = ()) -> dict[str, int]
     return {"inserted": total_inserted}
 
 
-def load_seed(conn, embedder) -> dict[str, int]:
+def load_seed(conn: Any, embedder: Any) -> dict[str, int]:
     """data/labels/seed_labeled.jsonl → seed_clauses 테이블."""
     path = SEED_DIR / "seed_labeled.jsonl"
     if not path.exists():
@@ -308,7 +324,7 @@ def load_seed(conn, embedder) -> dict[str, int]:
         return {"inserted": 0}
 
     all_records = load_jsonl(path)
-    existing = _existing_ids(conn, "seed_clauses")
+    existing = _fetch_existing_ids(conn, "seed_clauses")
     records = [r for r in all_records if r["chunk_id"] not in existing]
     skipped = len(all_records) - len(records)
     if skipped:
@@ -329,7 +345,7 @@ def load_seed(conn, embedder) -> dict[str, int]:
     return {"inserted": n}
 
 
-def load_clean(conn, embedder) -> dict[str, int]:
+def load_clean(conn: Any, embedder: Any) -> dict[str, int]:
     """data/fb_check/clean.jsonl → clean_clauses 테이블."""
     path = FB_CHECK_DIR / "clean.jsonl"
     if not path.exists():
@@ -337,7 +353,7 @@ def load_clean(conn, embedder) -> dict[str, int]:
         return {"inserted": 0}
 
     all_records = load_jsonl(path)
-    existing = _existing_ids(conn, "clean_clauses")
+    existing = _fetch_existing_ids(conn, "clean_clauses")
     records = [r for r in all_records if r["chunk_id"] not in existing]
     skipped = len(all_records) - len(records)
     if skipped:
@@ -360,7 +376,7 @@ def load_clean(conn, embedder) -> dict[str, int]:
     return {"inserted": n}
 
 
-def load_noise(conn, embedder) -> dict[str, int]:
+def load_noise(conn: Any, embedder: Any) -> dict[str, int]:
     """data/fb_check/noise.jsonl → noise_clauses 테이블."""
     path = FB_CHECK_DIR / "noise.jsonl"
     if not path.exists():
@@ -368,7 +384,7 @@ def load_noise(conn, embedder) -> dict[str, int]:
         return {"inserted": 0}
 
     all_records = load_jsonl(path)
-    existing = _existing_ids(conn, "noise_clauses")
+    existing = _fetch_existing_ids(conn, "noise_clauses")
     records = [r for r in all_records if r["chunk_id"] not in existing]
     skipped = len(all_records) - len(records)
     if skipped:
