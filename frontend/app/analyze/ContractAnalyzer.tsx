@@ -504,7 +504,7 @@ function ClauseProgressList({ progress }: { progress: StreamProgress | null }) {
                 조항 {n}
               </p>
               <p className="text-[11px] text-slate-500 truncate">
-                {status === "done" ? "6-agent 파이프라인 완료" : status === "active" ? "분석·검색·판정·검증 진행 중" : "대기 중"}
+                {status === "done" ? "검토 완료" : status === "active" ? "분석·판정·근거 수집 중" : "대기 중"}
               </p>
             </div>
             {status === "done" && (

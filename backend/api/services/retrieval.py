@@ -3,10 +3,15 @@
 근거 법령·판례 검색 — chunks 테이블(법령 조문 + 판례) 대상 Hybrid(Dense+Sparse) Retrieval,
 clean_clauses 테이블 대상 유사 라벨 조항 검색(Red-team Agent용)
 
-analyze.py가 하드코딩된 LEGAL_BASIS 대신 실제 조항 텍스트로 관련 법조문·판례를
-검색하도록 지원한다. backend.agents의 retrieval_strategy_agent/red_team_agent가
-이 모듈을 호출하는 얇은 LangGraph 노드다 — 실제 검색 로직(DB 접근, 임베딩,
-랭킹 융합)은 SRP상 여기(DB 서비스 레이어)에 남겨둔다.
+backend.agents의 retrieval_strategy_agent/red_team_agent가 이 모듈을 호출하는 얇은
+LangGraph 노드다 — 실제 검색 로직(DB 접근, 임베딩, 랭킹 융합)은 SRP상 여기(DB 서비스
+레이어)에 남겨둔다.
+
+**⚠️ 화면의 "적용 법령"은 더 이상 이 모듈이 만들지 않는다 (2026-08-31).**
+법령은 `evidence_selection_agent`가 **예측한 조에서 직접 매핑**한다 — 검색으로 붙이면
+top-K에 무관한 법(민법 제658조, 상법 제168조의5 등)이 섞여 들어왔다. 이 모듈의 법령
+검색 결과는 `evidence_verification`의 재검색 루프가 근거 충분성을 판단하는 데만 쓰이고,
+판례는 "참고 사례"로만 노출된다(hit@5 14%).
 
 법령(source='law')과 판례(source='precedent')를 각각 top_k씩 따로 검색한다 —
 판례가 법령보다 10배 가까이 많아(30,154 vs 3,323 청크), 하나로 합쳐서

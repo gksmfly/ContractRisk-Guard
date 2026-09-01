@@ -1,7 +1,19 @@
 # backend/agents/evidence_selection_agent.py
-"""Evidence Selection Agent — Retrieval Strategy가 넘긴 후보 풀을 재랭킹해 최종 근거(top-2)를 고른다.
+"""Evidence Selection Agent — 화면에 붙일 근거를 고른다.
 
-법령·판례 모두 **RRF 융합 순위를 그대로** 쓴다. 재랭킹을 얹는 시도는 두 번 다 실패했다:
+## 지금 하는 일 (2026-08-31 이후)
+
+    법령   **예측한 조에서 직접 매핑.** 검색을 쓰지 않는다 — `articles.py`가 원문 법령
+           JSON에서 생성하므로 조가 정해지는 순간 조문 원문도 정해진다
+    판례   RRF 융합 순위 top-5를 **"참고 사례"로** 노출. hit@5 14%(무작위 5.3%)라
+           "적용 법령"과 같은 위계에 두지 않는다
+
+법령을 검색으로 붙이던 시절에는 서비스 이용약관 해지 조항에 민법 제658조·제674조의3,
+상법 제168조의5가 "적용 법령"으로 떴다. 자세한 근거는 `evidence_selection_node` docstring.
+
+## 판례에 재랭킹을 얹는 시도는 두 번 다 실패했다
+
+**RRF 융합 순위를 그대로** 쓴다:
 
 1. Cross-Encoder(BAAI/bge-reranker-v2-m3) — 사전 실험(clean_clauses 478건)에서 RRF-only
    보다 낮았다(10.7% vs 20.1%).

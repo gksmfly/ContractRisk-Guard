@@ -1,6 +1,8 @@
 # backend/api/
 
-FastAPI 서빙 레이어 — 계약서 텍스트/PDF를 받아 6-agent 파이프라인(`backend.agents`)을 실행하고 조항별 위험도 분석 결과를 반환합니다.
+FastAPI 서빙 레이어 — 계약서 텍스트/PDF를 받아 고정 6단계 파이프라인(`backend.agents`)을 실행하고 **조항별 "확인 필요" 판단 + 관련 약관규제법 조**를 반환합니다.
+
+> **위험도 등급을 반환하지 않습니다** (2026-08-31). 조 multi-label 모델에 risk 헤드가 없고, 옛 `confidence_band` 실측치는 `models/v4` 전용이라 옮길 수 없습니다.
 
 ---
 
@@ -12,20 +14,24 @@ FastAPI 서빙 레이어 — 계약서 텍스트/PDF를 받아 6-agent 파이프
 ### `schemas.py`
 요청/응답 Pydantic 스키마.
 - `AnalyzeRequest`: `text`(계약서 원문) 하나뿐.
-- `ClauseResult`: 조항 하나의 분석 결과 — `domain`, `risk_level`, `confidence`(verified 여부에 따라 1.0/0.7), `evidence_spans`, `legal_basis`, `reasoning`, `redteam_note`, `evidence_verified`.
-- `AnalyzeResponse`: `total_clauses` + High/Medium/Low 카운트 + `clauses` 목록.
+- `ClauseResult`: 조항 하나의 분석 결과 — `articles`(모델이 지목한 조, **참고값**), `needs_review`(이진), `evidence_spans`, `legal_basis`(예측 조에서 매핑한 조문), `precedent_refs`(유사 판례, **참고**), `reasoning`, `verified`, `redteam_note`, `evidence_verified`. `domain`은 옛 저장분 호환용 빈 문자열.
+- `OutOfScopeClause`: 모델이 조를 지목하지 않은 조항 — **어떤 등급도 붙이지 않습니다.** "확인되지 않았다"이지 "안전하다"가 아닙니다(조 단위 재현 78%이므로 약 5건 중 1건은 여기 잘못 들어와 있습니다).
+- `AnalyzeResponse`: `total_clauses` + `review_count` + `clauses` + `input_clauses`/`truncated_clauses`/`out_of_scope` + `model_version`. `high_count`/`medium_count`/`low_count`는 옛 저장분 호환용으로 남아 있고 **새 응답에서는 항상 0**입니다.
 
 ### `routers/analyze.py`
-- `GET /health`: 헬스체크.
+- `GET /health`: DB까지 확인하는 readiness 체크(`SELECT 1` 실패 시 503).
 - `POST /api/analyze`: 원문 텍스트 직접 분석. 20자 미만이면 400.
-- `POST /api/analyze-pdf`: PDF 업로드(`pypdf`로 텍스트 추출) 후 동일 분석 경로 재사용.
+- `POST /api/analyze/stream`: 같은 분석을 SSE로 스트리밍(조항이 끝날 때마다 진행률).
+- `POST /api/analyze-pdf` / `POST /api/analyze-pdf/stream`: PDF 업로드(`pypdf` 추출, 10MB 상한) 후 동일 경로 재사용.
+
+전부 `require_api_key` + `enforce_rate_limit` 의존성이 걸립니다. 스트리밍 경로는 **검증·세마포어 획득을 첫 바이트 전에** 끝냅니다 — `StreamingResponse`가 시작되면 상태 코드를 바꿀 수 없습니다.
 
 ### `services/analyze.py`
-핵심 로직 `run_analyze()`:
-1. `split_clauses()` — 정규식(`제N조`, 번호 목록, 원 문자 ①②③, 연속 줄바꿈)으로 조항 분리, 최대 20개
-2. 조항마다 `backend.agents.graph.get_graph()`로 6-agent 그래프 실행(`_process_clause`)
-3. domain이 "해당없음"인 조항은 결과에서 제외
-4. `_extract_spans()`로 evidence_span의 원문 내 위치(start/end) 계산
+핵심 로직 `run_analyze()` / `run_analyze_stream()`:
+1. `split_clauses()` — 정규식(`제N조`, 번호 목록, 원 문자 ①②③, 연속 줄바꿈)으로 조항 분리, 최대 `MAX_CLAUSES`(기본 60). 넘긴 개수는 `truncated_clauses`로 **응답에 반드시 남깁니다** — 예전 상한 20이 실제 계약서(30조항대)를 조용히 잘라냈습니다.
+2. 조항을 **병렬로** 그래프에 던집니다(`asyncio.gather`). 동시 호출은 모듈 전역 세마포어 두 개가 묶습니다 — 요청별로 만들면 `요청 4 × 조항 30 = 120`으로 곱해져 OpenAI rate limit에 그대로 부딪힙니다.
+3. 모델이 조를 하나도 지목하지 않은 조항은 **버리지 않고** `OutOfScopeClause`로 목록에 남깁니다 — 예전에는 `None`을 반환하고 호출부가 버려서 조항이 응답에서 통째로 사라졌습니다(입력 20 → 결과 10건).
+4. `_extract_spans()`로 evidence_span의 원문 내 위치(start/end) 계산 — 완전일치 → 공백 정규화 → 퍼지(0.85). FB-Check와 **같은 기준**을 씁니다(검증이 통과시킨 근거를 서빙이 버리면 하이라이트가 조용히 사라집니다).
 
 ### `services/retrieval.py`
 법령·판례 Hybrid(Dense+Sparse) 검색 — `backend.agents`의 Retrieval Strategy/Evidence Selection/Red-team이 공통으로 재사용하는 DB 서비스 레이어. 상세는 코드 상단 docstring 참고(RRF 융합, KoE5 임베딩, pg_trgm Sparse, 법원 심급 가중치 등 설계 근거가 정리돼 있음).

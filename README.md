@@ -28,7 +28,8 @@ Act (약관규제법) — unilateral termination (§9), liability limitation (§
 - **Data Flywheel** — *suspended, not disproven.* The 2nd-generation model was removed from the
   labeling path after it was measured to **worsen** source confound (75.5% → 96.9%): it had learned
   the corpus shortcut and rejected exactly the samples that broke it. Re-measured 2026-08-31 under
-  the article-level taxonomy, where that shortcut is gone (+0.9%p): adding the model as a third
+  the article-level taxonomy, where that shortcut is small (+2.4%p on all 1,786 CLEAN records;
+  the +0.9%p first reported was the 1,700-record snapshot): adding the model as a third
   voter **no longer degrades confound** (+2.7%p → +2.9%p) and moves label quality +2.5%p at −6% yield
   — but that gain is **not significant** (95% CI [−6.9, +12.1], n=114 scoreable). Backward Grounding
   is currently a pure string check (`E ⊂ C`), which is what the paper defined it as.
@@ -104,7 +105,7 @@ external reference. They are not comparable to the table above and should not be
 | Layer | Technology |
 |-------|-----------|
 | Backend | FastAPI, Python, uvicorn |
-| Core Inference | KoELECTRA fine-tuned on CLEAN data — article multi-label head (§6–§14, sigmoid + BCE). The deployed path still runs the superseded dual-head (domain + risk) model; see Limitations |
+| Core Inference | KoELECTRA fine-tuned on CLEAN data — article multi-label head (§6–§14, sigmoid + BCE), served from `models/article_v1`. The superseded dual-head (domain + risk) model is retained only for the labeling path |
 | LLM (support) | OpenAI GPT-4o (explanation generation, search query construction only) |
 | Retrieval | Dense + Sparse Hybrid Retrieval, metadata filtering |
 | Frontend | Next.js 14, Tailwind CSS, shadcn/ui, Zustand |
@@ -190,10 +191,23 @@ decision rules and the analyses that failed, are in
   usable scale** (~12 cases corpus-wide, 0 of which meet the single-cited-article condition).
 - **§11 and §10 are not learned** (recall 4–11% at n=47 / n=28), and this is neither a data-volume
   nor a threshold effect.
-- **The serving path still runs the superseded 2-domain model** (`models/v4`). Migration is blocked
-  on the calibration issue above, and the user-facing "out of scope" wording is deliberately kept
-  narrow until then — claiming §6–§14 coverage while a 2-domain classifier does the gating would be
-  false reassurance.
+- **Serving migrated to the article multi-label model** (`models/article_v1`, 2026-08-31), and the
+  gate moved from GPT's 2-domain value to the model's own article output. Two consequences follow
+  from the calibration gap above rather than being fixed by the migration:
+  - **No risk tier is shown.** The article head has no risk output (gold was undefinable), and the
+    confidence bands were measured on `models/v4` only, so neither could be carried over. The UI
+    reports a binary "needs review" plus the predicted articles **as a reference, not a verdict** —
+    clause-level recall is 78.0% at 2.6% false-alarm, but article-level is indistinguishable from a
+    constant (38.2% vs 40.3%, CI [−7.7, +3.4]).
+  - **Thresholds are still the dev-split values**, not deployment-calibrated. Re-optimising needs the
+    deployment prevalence *r*, which is unmeasured; a 99-clause blind worksheet
+    (`backend/eval/prevalence_worksheet.py`) is built and awaiting human labels.
+- **The Red-team stage is inert.** Its neighbour table (`clean_clauses`) still holds the old
+  risk-level labels, so no article comparison can fire. It stays silent rather than warning on a
+  stale axis; reloading that table with the current `clean.jsonl` revives it.
+- **Labeling is 52.3% complete** (2,335 of 4,466; stopped on API credit exhaustion). Resuming
+  requires `--model gpt-4o` — the `.env` default is `gpt-4o-mini`, which would flag every existing
+  record as stale and double the cost. See `backend/fb_check/README.md`.
 - Coverage gaps remain for clauses involving recent law amendments or sparse precedent domains
 
 ---
