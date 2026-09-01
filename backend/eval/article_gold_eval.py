@@ -87,6 +87,48 @@ def _paired_ci(a: np.ndarray, b: np.ndarray, seed: int = 42) -> tuple[float, flo
     return float(d.mean() * 100), float(boot[125]), float(boot[4875])
 
 
+def clause_level(probs: np.ndarray, thr: np.ndarray, neg_probs: np.ndarray) -> dict:
+    """**조항 단위** 지표 — 제품이 실제로 서는 축.
+
+    지금까지 이 파일의 모든 표는 **조 단위**였다("제9조라고 했는데 진짜 제9조인가").
+    그런데 사용자가 얻는 것은 다른 것이다("표시한 조항이 실제 위반 조항인가"). 조항을
+    열어 읽고 "이거 문제네"를 확인하면 목적은 달성된다 — 우리가 제9조라 했는데 실제로
+    제8조 위반이어도 **그 조항을 짚어준 것 자체는 값을 한다.**
+
+    실측 격차가 크고 τ에 따라 벌어진다(clean gold + 표준계약서 holdout 기준):
+
+        τ=0.15   조항 단위 재현 92.5%  vs  조 단위 정밀 29%(r=.10)   차이 +10%p
+        τ=0.45   조항 단위 재현 80.8%  vs  조 단위 정밀 44%          차이 +29%p
+        τ=0.92   조항 단위 재현 51.4%  vs  조 단위 정밀 54%          차이 +36%p
+
+    teacher가 "개수는 맞추는데 어느 조인지가 안 맞는다"(1.43 vs 1.37)고 나온 것과 같은
+    구조다. **이 값을 병기하지 않으면 다음에 누가 조 단위 44%만 보고 "쓸 수 없다"고
+    판단한다.**
+
+    정밀도는 비위반 풀이 있어야 정의되므로 표준계약서 holdout을 함께 받는다. 다만
+    실제 정밀도는 배포 유병률 r에 따라 달라지므로 **r을 가정한 값으로 병기한다**
+    (`prevalence_worksheet` 참고 — r은 아직 측정 전이다).
+    """
+    out = {}
+    for t in (0.15, 0.25, 0.35, 0.45, 0.65, 0.92):
+        recall = float(np.mean([(probs[i] >= t).any() for i in range(len(probs))]))
+        fa = float(np.mean([(neg_probs[i] >= t).any() for i in range(len(neg_probs))]))
+        row = {"recall": recall, "false_alarm": fa}
+        for r in (0.05, 0.10, 0.15):
+            shown = r * recall + (1 - r) * fa
+            row[f"precision_at_r{r:.2f}"] = (r * recall / shown) if shown else 0.0
+        out[f"{t:.2f}"] = row
+    # 배포 임계값(조별)에서의 값도 함께
+    recall = float(np.mean([(probs[i] >= thr).any() for i in range(len(probs))]))
+    fa = float(np.mean([(neg_probs[i] >= thr).any() for i in range(len(neg_probs))]))
+    row = {"recall": recall, "false_alarm": fa}
+    for r in (0.05, 0.10, 0.15):
+        shown = r * recall + (1 - r) * fa
+        row[f"precision_at_r{r:.2f}"] = (r * recall / shown) if shown else 0.0
+    out["dev_thresholds"] = row
+    return out
+
+
 def _tune(probs: np.ndarray, labels: np.ndarray, thr0: np.ndarray, idx) -> np.ndarray:
     """건별 F1을 최대화하는 조별 임계값을 탐욕적으로 찾는다. **진단 전용.**"""
     thr = thr0.copy()
@@ -238,6 +280,56 @@ def main() -> None:
     v_dev = "이김" if lo_dev > 0 else ("미판정" if hi_dev > 0 else "못 이김")
     logger.info(f"  → 상수 최고({best_base['articles']}, F1 {best_base['f1'] * 100:.1f}%) 대비 "
                 f"{delta:+.1f}%p [{lo_dev:+.1f},{hi_dev:+.1f}] — {v_dev}")
+
+    # ----- 조항 단위 지표 (제품이 서는 축) -----
+    from backend.training.train_article import (exclude_gold_documents, load_article_records,
+                                                split_negative_holdout)
+    _recs = exclude_gold_documents(load_article_records(PROJECT_ROOT / "data/fb_check/clean.jsonl"), gold)
+    _, _neg = split_negative_holdout(_recs, 12, 42)
+    _neg = [r for r in _neg if not r["articles"]]        # 정답이 빈 것만 = 오경보 판정 대상
+    _nds = ArticleDataset([{"text": r["text"], "articles": [], "group": "g"} for r in _neg],
+                          tokenizer, args.max_len, names)
+    _NP = []
+    with torch.no_grad():
+        for b in torch.utils.data.DataLoader(_nds, batch_size=args.batch_size):
+            _NP.append(torch.sigmoid(model(b["input_ids"].to(device), b["attention_mask"].to(device),
+                                           b["token_type_ids"].to(device))).cpu().numpy())
+    neg_probs = np.concatenate(_NP)
+    cl = clause_level(probs, thr, neg_probs)
+    m["clause_level"] = {
+        "metrics": cl,
+        "population": f"gold clean {len(gold)}(위반) + 표준계약서 holdout {len(_neg)}(비위반) "
+                      f"— 조 단위 표와 평가셋이 다름",
+        "r_independent": ["recall", "false_alarm"],
+        "r_dependent": ["precision_at_r*"],
+        "caveat_source_confound": "FTC/표준계약서 혼합에서 측정 — 출처와 정답이 완전히 상관한다. "
+                                  "출처 판별 천장 96.9%보다 낮아 순수 지름길은 아니나 부분 기여 미배제",
+    }
+    logger.info("  ----- 조항 단위 (위반 조항을 짚었나 — 조가 틀려도 사용자에겐 유용) -----")
+    logger.info(f"    ★ 모집단: gold clean {len(gold)}건(위반) + 표준계약서 holdout {len(_neg)}건(비위반) "
+                f"— **위 조 단위 표({len(gold)}건)와 평가셋이 다르다**")
+    # 재현·오경보는 r과 무관한 **모델 속성**, 정밀도는 **분포의 함수**다. 갈라서 낸다 —
+    # 붙여 놓으면 "73%"만 떼어져 r 없이 혼자 돌아다닌다.
+    logger.info(f"    {'τ':>6}{'재현':>8}{'오경보':>9}   │ 정밀도(r 의존)  r=.05   r=.10   r=.15")
+    for t, v in cl.items():
+        if t == "dev_thresholds":
+            continue
+        logger.info(f"    {t:>6}{v['recall'] * 100:>7.1f}%{v['false_alarm'] * 100:>8.1f}%   │"
+                    f"{v['precision_at_r0.05'] * 100:>19.0f}%{v['precision_at_r0.10'] * 100:>7.0f}%"
+                    f"{v['precision_at_r0.15'] * 100:>7.0f}%")
+    d = cl["dev_thresholds"]
+    logger.info(f"    {'배포':>6}{d['recall'] * 100:>7.1f}%{d['false_alarm'] * 100:>8.1f}%   │"
+                f"{d['precision_at_r0.05'] * 100:>19.0f}%{d['precision_at_r0.10'] * 100:>7.0f}%"
+                f"{d['precision_at_r0.15'] * 100:>7.0f}%   ← 지금 배포하면 나오는 값")
+    logger.info("    ── 상수 ──")
+    logger.info("    전부 표시        재현 100%  오경보 100%   정밀 = r 그 자체 (5% / 10% / 15%)")
+    logger.info("    아무것도 안 표시   재현   0%  오경보   0%   정밀 정의 불가")
+    logger.info("    ★ 재현·오경보는 **r과 무관한 모델 속성**이라 r이 미확정이어도 보고할 수 있다. "
+                "정밀도는 분포의 함수이므로 **r 없이 인용하지 말 것**")
+    logger.info("    ⚠ 조항 단위는 FTC/표준계약서 **혼합**에서 측정했고, 이 혼합에서는 출처와 정답이 "
+                "완전히 상관한다. 값이 출처 판별 천장(TF-IDF 96.9%)보다 낮아 순수 지름길은 "
+                "아니나 **부분 기여는 배제하지 못했다**")
+    logger.info("    ★ 조 단위 수치만 보고 판단하지 말 것 — 제품이 주장하는 것은 조항 지목이다")
 
     # ----- 임계값 체제 세 벌 -----
     reg = threshold_regimes(probs, labels, thr, [g["doc_id"] for g in gold])

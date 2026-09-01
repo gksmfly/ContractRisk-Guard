@@ -11,7 +11,10 @@ const notoSansKr = Noto_Sans_KR({ subsets: ["latin"], weight: ["400", "500", "70
 const siteUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
 const title = "Verilex — AI 계약 리스크 분석";
 const description =
-  "계약 해지·책임제한 조항의 법적 리스크를 AI가 자동 탐지합니다. 약관규제법·민법 기반 판례 분석으로 고품질 리스크 레포트를 제공합니다.";
+  // "자동 탐지"·"고품질 리스크 레포트"를 뺐다 — 둘 다 완전성을 함의하는데 조항 단위
+  // 재현이 78%다(5건 중 1건은 놓친다). 측정된 성능과 광고 문구가 어긋나면 성능 문제가
+  // 아니라 신뢰 문제가 된다. 약관규제법을 다루는 도구라면 특히.
+  "약관규제법 제6~14조 기준으로 확인이 필요한 계약 조항을 먼저 짚어드립니다. 법률 자문이 아닙니다.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

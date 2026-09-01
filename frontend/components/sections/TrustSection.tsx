@@ -18,7 +18,7 @@ const STATS = [
     iconBg: "bg-violet-50",
     value: "1,995건",
     label: "참조 판례",
-    desc: "해지·책임제한 도메인으로 필터링된 실제 법원 판례",
+    desc: "약관규제법 제6~14조 관련으로 필터링된 실제 법원 판례",
   },
   {
     icon: BookOpen,

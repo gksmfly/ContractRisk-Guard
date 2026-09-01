@@ -44,15 +44,17 @@ _SYSTEM = """당신은 한국 계약법 전문가입니다. 방금 어떤 조항
 def _fallback_note(neighbor: dict) -> str:
     """LLM 호출이 실패했을 때 쓰는 안전망 — 이전 버전의 템플릿 문구."""
     return (
-        f"유사도 {neighbor['similarity']:.2f}로 매우 비슷한 조항이 '{neighbor['risk_level']}'로 "
+        f"유사도 {neighbor['similarity']:.2f}로 매우 비슷한 조항이 "
+        f"'{', '.join(neighbor.get('articles') or []) or neighbor.get('risk_level', '?')}'로 "
         f"판정된 사례가 있습니다: \"{neighbor['text'][:80]}\""
     )
 
 
-def _generate_rebuttal(client: OpenAI, clause: str, risk_level: str, neighbor: dict, retries: int = 3) -> str | None:
+def _generate_rebuttal(client: OpenAI, clause: str, verdict: object, neighbor: dict, retries: int = 3) -> str | None:
     user_msg = (
-        f"[현재 조항] (판정: {risk_level})\n{clause}\n\n"
-        f"[상충 사례] (유사도 {neighbor['similarity']:.2f}, 판정: {neighbor['risk_level']})\n{neighbor['text']}"
+        f"[현재 조항] (판정: {verdict})\n{clause}\n\n"
+        f"[상충 사례] (유사도 {neighbor['similarity']:.2f}, "
+        f"판정: {neighbor.get('articles') or neighbor.get('risk_level', '?')})\n{neighbor['text']}"
     )
     for attempt in range(retries):
         try:
@@ -71,14 +73,31 @@ def _generate_rebuttal(client: OpenAI, clause: str, risk_level: str, neighbor: d
 
 
 def red_team_node(state: ClauseState, config: RunnableConfig) -> dict:
+    """비슷한 조항이 **다르게** 판정된 적이 있으면 반박 메모를 붙인다.
+
+    ## 조 taxonomy 전환 중에는 비활성이다 (2026-08-31)
+
+    judgment_agent가 `risk_level`을 더 이상 내지 않는데, 이웃 데이터(`clean_clauses`
+    테이블)는 아직 **옛 라벨(risk_level)** 로 적재돼 있다. 그대로 두면
+    `neighbor["risk_level"] != None`이 **항상 참**이라 유사도만 넘으면 무조건 반박이
+    발동한다 — 근거 없는 경고를 매번 붙이는 셈이다.
+
+    그래서 이웃에 조 라벨(`articles`)이 있을 때만 비교하고, 없으면 **침묵한다.**
+    틀린 근거로 말하는 것보다 아무 말도 안 하는 편이 낫다.
+
+    되살리려면 `clean_clauses`를 새 `clean.jsonl`(조 multi-label)로 재적재해야 한다.
+    """
     query = state.get("evidence_span") or state["clause"]
-    risk_level = state.get("risk_level")
+    mine = set(state.get("model_articles") or [])
 
     neighbors = search_similar_labeled_clauses(query, top_k=_TOP_K)
     for neighbor in neighbors:
-        if neighbor["similarity"] >= _SIMILARITY_THRESHOLD and neighbor["risk_level"] != risk_level:
+        theirs = neighbor.get("articles")
+        if theirs is None:
+            continue          # 옛 라벨만 있는 이웃 — 비교 불가. 발동시키지 않는다
+        if neighbor["similarity"] >= _SIMILARITY_THRESHOLD and set(theirs) != mine:
             client = config["configurable"]["client"]
-            rebuttal = _generate_rebuttal(client, state["clause"], risk_level, neighbor)
+            rebuttal = _generate_rebuttal(client, state["clause"], sorted(mine), neighbor)
             return {"redteam_note": rebuttal or _fallback_note(neighbor)}
 
     return {"redteam_note": ""}

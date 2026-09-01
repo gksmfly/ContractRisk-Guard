@@ -25,10 +25,12 @@ class TestNormalContracts:
             "즉시 해지할 수 있으며, 이로 인해 발생하는 손해에 대하여 회사는 어떠한 책임도 지지 아니한다."
         )
         result = await run_analyze(text)
+        # 위험도 3단계를 더 이상 내지 않는다 — 이진 판단 + 참고용 조 목록이다
+        # (backend/api/schemas.py::ClauseResult 참고).
         assert result.total_clauses == 1
         clause = result.clauses[0]
-        assert clause.domain == "해지_조항"
-        assert clause.risk_level == "High"
+        assert clause.needs_review is True
+        assert clause.articles, "무통보 해지 + 전면 면책 조항인데 아무 조도 지목하지 않았다"
         assert len(clause.legal_basis) > 0
 
     async def test_mixed_risk_multi_clause_contract(self):
@@ -39,8 +41,12 @@ class TestNormalContracts:
             "회사는 30일 이내에 처리한다."
         )
         result = await run_analyze(text)
-        assert result.total_clauses == 2
-        assert result.high_count + result.medium_count + result.low_count == 2
+        # 두 번째 조항(해지 신청 후 30일 내 처리)은 불공정 소지가 없어 out_of_scope로
+        # 빠질 수 있다. **입력 조항이 어디로도 사라지지 않는 것**이 이 테스트의 요지다 —
+        # 예전에는 판단 안 된 조항이 응답에서 통째로 없어졌다.
+        assert result.input_clauses == 2
+        assert len(result.clauses) + len(result.out_of_scope) == 2
+        assert result.review_count == len(result.clauses)
 
 
 class TestEdgeCases:

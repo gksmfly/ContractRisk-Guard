@@ -50,9 +50,23 @@ Act (약관규제법) — unilateral termination (§9), liability limitation (§
 Scored against an external reference the pipeline never sees: the articles the Korean FTC actually
 cited (`근거_법령`) in enforcement decisions. All intervals are 95% paired bootstrap CIs.
 
+**Population.** Row 1 is scored only on records where the labeler named at least one article; records
+with an empty prediction are excluded from *both* groups. FTC gold is never empty, so an empty
+prediction scores 0 by construction, and the two groups differ sharply in how often they are empty
+(CLEAN 21.4%, NOISE 2.2%). Without this condition the comparison measures that composition difference
+rather than label quality, and the sign reverses: **−0.3%p [−4.0, +3.3], not significant.** Both
+readings are legitimate but answer different questions — *"would adding these records lower the
+training-set average?"* (no) versus *"is what these records assert as trustworthy as what CLEAN
+asserts?"* (no). A label filter should be judged on the second.
+
+Rows 3–5 use a different population: the 255-case clean evaluation stratum (single clause **and**
+single cited article), with **no** filter on predictions — an empty prediction there simply scores 0,
+as it should. Row 2 uses all CLEAN records, empty predictions included, because an empty label is a
+legitimate outcome for the standard-contract half of that corpus.
+
 | Question | Measurement |
 |---|---|
-| Does FB-Check select better labels? | **+8.8%p** [+5.1, +12.7] — CLEAN 46.3% vs NOISE 37.6% article-F1 (n=630 / 395) |
+| Does FB-Check select better labels? | **+8.8%p** [+5.1, +12.7] — CLEAN 46.3% vs NOISE 37.6% article-F1 (n=630 / 395, non-empty predictions) |
 | Does the model read the clause, or the corpus it came from? | Source-conditional constant beats an unconditional one by only **+0.9%p** — the source shortcut is gone |
 | Does the model beat "always guess the three most common articles"? | **Yes on the scoreable stratum**: teacher (GPT-4o) +9.0%p [+2.9, +15.4], student (110M KoELECTRA) +6.4%p [+1.6, +11.4] |
 | Does a larger model help? | **No.** GPT-4o and the 110M student are statistically tied (−2.4%p [−6.4, +1.7]) |
@@ -160,7 +174,7 @@ decision rules and the analyses that failed, are in
 |---|---|---|
 | Data Flywheel | **Retracted** | A pipeline's output cannot validate that pipeline |
 | 6-agent multi-agent system | **Restated** as a fixed 6-stage pipeline | LLM routing lost 0–100 to a constant; 18% → 81% retrieval after removal |
-| FB-Check filters hallucinated labels | **Validated externally** | +8.8%p [+5.1, +12.7] against FTC-cited articles — first external check of this claim |
+| FB-Check filters hallucinated labels | **Validated externally** | +8.8%p [+5.1, +12.7] against FTC-cited articles, on non-empty predictions — first external check of this claim |
 | 2-domain taxonomy | **Replaced** by §6–§14 | The old scheme discarded 56.7% of input |
 | Evaluation set | **Corrected** | 22% was unscoreable by construction (72/72 diagnosed) |
 

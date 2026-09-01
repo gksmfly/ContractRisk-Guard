@@ -28,42 +28,28 @@ import { MAX_UPLOAD_SIZE_BYTES } from "@/lib/config";
 type RiskLevel = "High" | "Medium" | "Low";
 type Clause = FullAnalyzeResult["clauses"][0];
 
-const RISK_CFG: Record<
-  RiskLevel,
-  {
-    label: string;
-    color: string;
-    bg: string;
-    ring: string;
-    dotCls: string;
-    icon: typeof AlertTriangle;
-  }
-> = {
-  High: {
-    label: "고위험",
-    color: "text-seal",
-    bg: "bg-seal-soft",
-    ring: "border-seal",
-    dotCls: "bg-seal",
-    icon: AlertTriangle,
-  },
-  Medium: {
-    label: "중위험",
-    color: "text-ochre",
-    bg: "bg-ochre-soft",
-    ring: "border-ochre",
-    dotCls: "bg-ochre",
-    icon: AlertTriangle,
-  },
-  Low: {
-    label: "저위험",
-    color: "text-forest",
-    bg: "bg-forest-soft",
-    ring: "border-forest",
-    dotCls: "bg-forest",
-    icon: CheckCircle2,
-  },
+// 위험도 3단계를 더 이상 표시하지 않는다 (2026-08-31).
+// 백엔드의 조 multi-label 모델에는 risk 헤드가 없고(gold 미정의로 일부러 제외),
+// 신뢰도 구간의 실측 정확도는 models/v4 전용이라 옮길 수 없다. 검증되지 않은 등급을
+// 띄우는 것은 "범위 밖" 문구가 막으려는 것과 같은 종류의 거짓 확신이다.
+//
+// 대신 이진 표시 + 참고용 조 목록으로 간다. 그 주장이 서는 지표:
+//   조항 단위 재현 78.0% · 오경보 2.6%   ← "이 조항을 확인하라"
+//   조 단위 정밀도는 44%대               ← 그래서 조 이름은 단정하지 않는다
+const REVIEW_CFG = {
+  label: "확인 필요",
+  color: "text-ochre",
+  bg: "bg-ochre-soft",
+  ring: "border-ochre",
+  dotCls: "bg-ochre",
+  icon: AlertTriangle,
 };
+
+/** 조 목록을 "제7조 · 제9조 관련" 형태로. 비어 있으면 빈 문자열. */
+export function articleHint(articles?: string[]): string {
+  if (!articles?.length) return "";
+  return `${articles.join(" · ")} 관련으로 보입니다`;
+}
 
 // ── Highlight helper ───────────────────────────────────
 export function HighlightText({
@@ -118,7 +104,7 @@ function ClauseListItem({
   active: boolean;
   onClick: () => void;
 }) {
-  const cfg = RISK_CFG[clause.risk_level];
+  const cfg = REVIEW_CFG;
 
   return (
     <button
@@ -156,7 +142,7 @@ function RiskMinimap({
   const strip = (
     <div role="group" aria-label="조항별 위험도 미니맵" className="flex items-center gap-1.5 flex-wrap">
       {clauses.map((c) => {
-        const cfg = RISK_CFG[c.risk_level];
+        const cfg = REVIEW_CFG;
         const active = c.id === selectedId;
         return (
           <button
@@ -220,7 +206,7 @@ function LegalQuote({
 
 // ── Per-clause text export (정적/데모 범위 — 실제 다운로드는 됨) ──
 function exportClauseAsText(clause: Clause) {
-  const cfg = RISK_CFG[clause.risk_level];
+  const cfg = REVIEW_CFG;
   const lines = [
     `Verilex — 조항 §${clause.id} 분석 결과`,
     `도메인: ${clause.domain} · 위험도: ${cfg.label}`,
@@ -264,7 +250,7 @@ function ClauseDetail({
   allClauses?: Clause[];
   onSelectClause?: (id: number) => void;
 }) {
-  const cfg = RISK_CFG[clause.risk_level];
+  const cfg = REVIEW_CFG;
   const [flash, setFlash] = useState(false);
   const originalRef = useRef<HTMLDivElement>(null);
 
@@ -386,10 +372,12 @@ function ClauseDetail({
 
 // ── Summary bar ───────────────────────────────────────
 export function SummaryBar({ result }: { result: FullAnalyzeResult }) {
-  const hasClauses = result.total_clauses > 0;
-  const highPct = hasClauses ? Math.round((result.high_count / result.total_clauses) * 100) : 0;
-  const medPct = hasClauses ? Math.round((result.medium_count / result.total_clauses) * 100) : 0;
-  const lowPct = hasClauses ? 100 - highPct - medPct : 0;
+  // 위험도 3단계 비율을 더 이상 내지 않는다. 분모는 **입력 조항 수**이고,
+  // 분자는 확인이 필요하다고 판단된 수다 — 나머지는 "확인되지 않음"이지 "안전"이 아니다.
+  const reviewed = result.review_count ?? result.clauses.length;
+  const inputTotal = result.input_clauses || result.total_clauses;
+  const hasClauses = inputTotal > 0;
+  const reviewPct = hasClauses ? Math.round((reviewed / inputTotal) * 100) : 0;
 
   if (!hasClauses) {
     return (
@@ -421,18 +409,15 @@ export function SummaryBar({ result }: { result: FullAnalyzeResult }) {
           ))}
         </div>
       </div>
-      {/* Risk bar */}
+      {/* 확인 필요 비율 — 나머지는 "확인되지 않음"이지 "안전"이 아니다 */}
       <div className="space-y-1.5">
-        <p className="text-xs text-slate-500 font-mono uppercase tracking-wide">위험도 분포</p>
+        <p className="text-xs text-slate-500 font-mono uppercase tracking-wide">확인 필요 조항</p>
         <div className="flex h-1.5 overflow-hidden gap-px bg-rule">
-          {highPct > 0 && <div className="bg-seal transition-all" style={{ width: `${highPct}%` }} />}
-          {medPct > 0 && <div className="bg-ochre transition-all" style={{ width: `${medPct}%` }} />}
-          {lowPct > 0 && <div className="bg-forest transition-all" style={{ width: `${lowPct}%` }} />}
+          {reviewPct > 0 && <div className="bg-ochre transition-all" style={{ width: `${reviewPct}%` }} />}
         </div>
         <div className="flex justify-between text-[10px] text-slate-400 font-mono">
-          <span>고위험 {highPct}%</span>
-          <span>중위험 {medPct}%</span>
-          <span>저위험 {lowPct}%</span>
+          <span>확인 필요 {reviewed}건 / 입력 {inputTotal}건 ({reviewPct}%)</span>
+          <span>나머지는 &quot;확인되지 않음&quot;입니다</span>
         </div>
       </div>
     </div>
@@ -559,7 +544,8 @@ export function ContractAnalyzer({ initialResult, initialTitle }: ContractAnalyz
   const [fileName, setFileName] = useState<string | null>(initialTitle ?? null);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [filter, setFilter] = useState<"all" | RiskLevel>("all");
+  // 위험도 필터는 사라졌다(등급이 없다). 남길 이유가 생기면 조 단위 필터로 되살릴 것.
+  const [filter] = useState<"all">("all");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detailLevel, setDetailLevel] = useState<"simple" | "detailed">("simple");
   const [inputTab, setInputTab] = useState<"text" | "pdf">("text");
@@ -693,9 +679,7 @@ export function ContractAnalyzer({ initialResult, initialTitle }: ContractAnalyz
 
   const displayResult = mutation.data ?? (dismissedInitial ? undefined : initialResult);
 
-  const filteredClauses = displayResult?.clauses.filter(
-    (c) => filter === "all" || c.risk_level === filter
-  ) ?? [];
+  const filteredClauses = displayResult?.clauses ?? [];
   const selectedClause =
     filteredClauses.find((c) => c.id === selectedId) ?? filteredClauses[0];
 
@@ -882,7 +866,7 @@ export function ContractAnalyzer({ initialResult, initialTitle }: ContractAnalyz
                 공유
               </button>
               <button
-                onClick={() => { mutation.reset(); setText(""); setFileName(null); setFilter("all"); setSelectedId(null); setSaveState("idle"); setDismissedInitial(true); }}
+                onClick={() => { mutation.reset(); setText(""); setFileName(null); setSelectedId(null); setSaveState("idle"); setDismissedInitial(true); }}
                 className="text-xs text-slate-500 hover:text-slate-700 border border-slate-300 hover:border-slate-400 rounded-lg px-3 py-1.5 transition-colors"
               >
                 새 계약서 분석
@@ -924,35 +908,12 @@ export function ContractAnalyzer({ initialResult, initialTitle }: ContractAnalyz
             </div>
           </div>
 
-          {/* Filter tabs (자세히 보기에서만 노출 — 간단히 보기는 요약 판정만 보여주므로 생략) */}
-          {detailLevel === "detailed" && (
-            <div className="flex gap-2 print:hidden" role="tablist" aria-label="위험도 필터">
-              {([
-                ["all", "전체", displayResult.total_clauses],
-                ["High", "고위험", displayResult.high_count],
-                ["Medium", "중위험", displayResult.medium_count],
-                ["Low", "저위험", displayResult.low_count],
-              ] as [string, string, number][]).map(([val, label, count]) => (
-                <button
-                  key={val}
-                  role="tab"
-                  aria-selected={filter === val}
-                  onClick={() => setFilter(val as typeof filter)}
-                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                    filter === val
-                      ? "bg-navy text-white"
-                      : "bg-white text-slate-600 border border-rule hover:bg-navy-soft"
-                  }`}
-                >
-                  {label} <span className="ml-1 opacity-70">{count}</span>
-                </button>
-              ))}
-            </div>
-          )}
+          {/* 위험도 필터 제거 (2026-08-31) — 등급을 내지 않으므로 필터할 축이 없다.
+              조 단위 필터가 필요해지면 clause.articles로 되살릴 것. */}
 
           {/* 결과 본문: screen 전용 */}
           {filteredClauses.length === 0 ? (
-            <p className="text-center text-slate-400 py-8 text-sm print:hidden">해당 위험도의 조항이 없습니다.</p>
+            <p className="text-center text-slate-400 py-8 text-sm print:hidden">확인이 필요한 조항이 없습니다.</p>
           ) : detailLevel === "simple" ? (
             /* 간단히 보기: 사이드바 없이 요약 판정 카드만 순서대로 */
             <div data-testid="clause-workspace" className="space-y-4 print:hidden">

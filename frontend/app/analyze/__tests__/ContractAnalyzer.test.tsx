@@ -69,6 +69,7 @@ describe("SummaryBar", () => {
   it("total_clauses가 0이어도 NaN을 렌더링하지 않는다", () => {
     const result: FullAnalyzeResult = {
       total_clauses: 0,
+      review_count: 0,
       high_count: 0,
       medium_count: 0,
       low_count: 0,
@@ -85,6 +86,7 @@ describe("SummaryBar", () => {
   it("정상 케이스에서 위험도 비율을 정확히 계산한다", () => {
     const result: FullAnalyzeResult = {
       total_clauses: 4,
+      review_count: 4,
       high_count: 1,
       medium_count: 1,
       low_count: 2,
@@ -117,6 +119,7 @@ describe("HighlightText", () => {
 describe("ContractAnalyzer 전체 흐름", () => {
   const mockResult: FullAnalyzeResult = {
     total_clauses: 2,
+    review_count: 2,
     high_count: 1,
     medium_count: 0,
     low_count: 1,
@@ -125,7 +128,9 @@ describe("ContractAnalyzer 전체 흐름", () => {
         id: 1,
         original: "회사는 사전 통지 없이 계약을 해지할 수 있다.",
         domain: "해지_조항",
-        risk_level: "High",
+        articles: ["제9조"],
+      needs_review: true,
+      risk_level: "High",
         confidence_band: "높음",
         confidence_band_accuracy: 0.575,
         evidence_spans: [],
@@ -139,7 +144,9 @@ describe("ContractAnalyzer 전체 흐름", () => {
         id: 2,
         original: "당사자는 30일 전 서면 통지로 계약을 해지할 수 있다.",
         domain: "해지_조항",
-        risk_level: "Low",
+        articles: ["제9조"],
+      needs_review: true,
+      risk_level: "Low",
         confidence_band: "중간",
         confidence_band_accuracy: 0.461,
         evidence_spans: [],
@@ -155,8 +162,12 @@ describe("ContractAnalyzer 전체 흐름", () => {
   beforeEach(() => {
     global.fetch = jest.fn().mockResolvedValue(
       mockStreamResponse([
-        { type: "progress", index: 1, total: 2, risk_level: "High", domain: "해지_조항" },
-        { type: "progress", index: 2, total: 2, risk_level: "Low", domain: "해지_조항" },
+        { type: "progress", index: 1, total: 2, articles: ["제9조"],
+      needs_review: true,
+      risk_level: "High", domain: "해지_조항" },
+        { type: "progress", index: 2, total: 2, articles: ["제9조"],
+      needs_review: true,
+      risk_level: "Low", domain: "해지_조항" },
         { type: "done", result: mockResult },
       ])
     ) as unknown as typeof fetch;
@@ -236,6 +247,7 @@ describe("ContractAnalyzer 전체 흐름", () => {
   it("법령 인용의 '원문에서 보기'를 누르면 원문으로 스크롤하고 강조 표시한다", async () => {
     const localMock: FullAnalyzeResult = {
       total_clauses: 1,
+      review_count: 1,
       high_count: 1,
       medium_count: 0,
       low_count: 0,
@@ -244,7 +256,9 @@ describe("ContractAnalyzer 전체 흐름", () => {
           id: 1,
           original: "회사는 사전 통지 없이 계약을 해지할 수 있다.",
           domain: "해지_조항",
-          risk_level: "High",
+          articles: ["제9조"],
+      needs_review: true,
+      risk_level: "High",
           confidence_band: "높음",
           confidence_band_accuracy: 0.575,
           evidence_spans: [{ text: "사전 통지 없이", start: 4, end: 12 }],
@@ -258,7 +272,9 @@ describe("ContractAnalyzer 전체 흐름", () => {
     };
     global.fetch = jest.fn().mockResolvedValue(
       mockStreamResponse([
-        { type: "progress", index: 1, total: 1, risk_level: "High", domain: "해지_조항" },
+        { type: "progress", index: 1, total: 1, articles: ["제9조"],
+      needs_review: true,
+      risk_level: "High", domain: "해지_조항" },
         { type: "done", result: localMock },
       ])
     ) as unknown as typeof fetch;
@@ -296,10 +312,14 @@ describe("ContractAnalyzer 전체 흐름", () => {
     // 첫 진행 이벤트가 오기 전에는 조항 수를 모르는 불확정 상태를 보여준다 — 가짜로 지어내지 않는다.
     expect(screen.getByText("조항을 분리하고 있습니다...")).toBeInTheDocument();
 
-    push({ type: "progress", index: 1, total: 2, risk_level: "High", domain: "해지_조항" });
+    push({ type: "progress", index: 1, total: 2, articles: ["제9조"],
+      needs_review: true,
+      risk_level: "High", domain: "해지_조항" });
     await waitFor(() => expect(screen.getByText("조항 1")).toBeInTheDocument());
 
-    push({ type: "progress", index: 2, total: 2, risk_level: "Low", domain: "해지_조항" });
+    push({ type: "progress", index: 2, total: 2, articles: ["제9조"],
+      needs_review: true,
+      risk_level: "Low", domain: "해지_조항" });
     push({ type: "done", result: mockResult });
     close();
     await waitFor(() => expect(screen.getByText("분석 결과")).toBeInTheDocument());
@@ -346,8 +366,12 @@ describe("ContractAnalyzer 전체 흐름", () => {
       }
       return Promise.resolve(
         mockStreamResponse([
-          { type: "progress", index: 1, total: 2, risk_level: "High", domain: "해지_조항" },
-          { type: "progress", index: 2, total: 2, risk_level: "Low", domain: "해지_조항" },
+          { type: "progress", index: 1, total: 2, articles: ["제9조"],
+      needs_review: true,
+      risk_level: "High", domain: "해지_조항" },
+          { type: "progress", index: 2, total: 2, articles: ["제9조"],
+      needs_review: true,
+      risk_level: "Low", domain: "해지_조항" },
           { type: "done", result: mockResult },
         ])
       );
@@ -374,8 +398,12 @@ describe("ContractAnalyzer 전체 흐름", () => {
   it("PDF 업로드 후 분석하면 결과가 표시되고 스트리밍 엔드포인트를 호출한다", async () => {
     global.fetch = jest.fn().mockResolvedValue(
       mockStreamResponse([
-        { type: "progress", index: 1, total: 2, risk_level: "High", domain: "해지_조항" },
-        { type: "progress", index: 2, total: 2, risk_level: "Low", domain: "해지_조항" },
+        { type: "progress", index: 1, total: 2, articles: ["제9조"],
+      needs_review: true,
+      risk_level: "High", domain: "해지_조항" },
+        { type: "progress", index: 2, total: 2, articles: ["제9조"],
+      needs_review: true,
+      risk_level: "Low", domain: "해지_조항" },
         { type: "done", result: mockResult },
       ])
     ) as unknown as typeof fetch;

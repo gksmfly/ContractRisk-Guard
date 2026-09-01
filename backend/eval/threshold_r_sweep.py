@@ -108,6 +108,63 @@ def _f1_rows(P: np.ndarray, names: list[str], golds: list[frozenset], tau: float
     return out
 
 
+def _rates(P: np.ndarray, names: list[str], golds: list[frozenset], tau: float) -> tuple[float, float]:
+    """(놓침률, 오경보율). **F1이 아니라 개수로 센다** — 비용비를 곱하려면 이래야 한다.
+
+        놓침    정답 조가 있는데 예측이 그 조를 안 담았다
+        오경보  정답이 비어 있는데 무언가를 지목했다
+    """
+    miss = fa = n_pos = n_neg = 0
+    for i, g in enumerate(golds):
+        pred = {n for n, v in zip(names, P[i]) if v >= tau}
+        if g:
+            n_pos += 1
+            if not (pred & g):
+                miss += 1
+        else:
+            n_neg += 1
+            if pred:
+                fa += 1
+    return (miss / n_pos if n_pos else 0.0), (fa / n_neg if n_neg else 0.0)
+
+
+def cost_curve(Mv: np.ndarray, Fn: np.ndarray, k: float) -> list[dict]:
+    """비용비 k = c_miss / c_fa 에서 손익분기 r을 찾는다.
+
+    ## 왜 비용비가 축이어야 하나
+
+    F1·결합점수는 **놓침 1건과 오경보 1건을 같은 무게로 본다.** 법무 검토 도구에서
+    그건 사실이 아닐 가능성이 크다:
+
+        오경보 1건   사용자가 멀쩡한 조항을 한 번 더 읽는다        → 30초
+        놓침 1건     불공정 조항이 계약에 남는다                  → 분쟁
+
+    비용을 명시하면 손익분기가 r 하나의 함수가 아니라 **(r, k)의 함수**가 되고,
+    제품 판단(k)과 측정(곡선)이 분리된다:
+
+        비용(τ) = r·k·놓침률(τ) + (1−r)·오경보율(τ)
+        상수 '항상 침묵' = r·k·1 + (1−r)·0 = r·k     ← 놓침률 100%, 오경보 0
+
+    모델이 침묵을 이기는 조건:  (1−r)·오경보율 < r·k·(1 − 놓침률)
+
+    ## out_of_scope의 판단과 방향이 반대다 — 충돌이 아니다
+
+    `out_of_scope`에서는 "거짓 안심 > 누락"으로 정해 위험도를 아예 안 붙였다. 여기서는
+    "놓침 > 오경보"가 자연스럽다. **다른 층에 대한 판단이다** — 전자는 조항이 화면에서
+    조용히 빠지는 경우(사용자가 확인할 기회 자체가 없다), 후자는 근거와 함께 표시되는
+    경우(읽고 판단할 수 있다).
+    """
+    out = []
+    for r in (0.02, 0.05, 0.10, 0.15, 0.20, 0.30):
+        cost = r * k * Mv + (1 - r) * Fn
+        i = int(np.argmin(cost))
+        silent = r * k
+        out.append({"r": r, "k": k, "tau": float(_GRID[i]), "miss": float(Mv[i]),
+                    "fa": float(Fn[i]), "cost": float(cost[i]), "silent_cost": silent,
+                    "beats_silence": bool(cost[i] < silent)})
+    return out
+
+
 def _tune(pv: np.ndarray, pn: np.ndarray, r: float, objective: str) -> float:
     """combined(τ, r)를 최대화하는 전역 τ. pv/pn은 τ별 건별 점수 행렬(그리드 × 건)."""
     viol, non = pv.mean(1), pn.mean(1)
@@ -201,7 +258,22 @@ def main() -> None:
                     f"비위반 {x['nonviolation_silence'] * 100:5.1f}% → {y['nonviolation_silence'] * 100:5.1f}%"
                     f"  ({y['nonviolation_silence'] * 100 - x['nonviolation_silence'] * 100:+.1f}%p)")
 
-    save_json({"model_dir": a.model_dir, "n_violation": len(Gv), "n_nonviolation": len(Gn),
+    # ----- 비용비 축 -----
+    Mv = np.array([_rates(Pv, names, Gv, t)[0] for t in _GRID])
+    Fn = np.array([_rates(Pn, names, Gn, t)[1] for t in _GRID])
+    logger.info("  ===== 비용비 축 (k = c_miss / c_fa) =====")
+    logger.info("    '항상 침묵'의 비용 = r·k (놓침률 100%, 오경보 0)")
+    cost_report = {}
+    for k in (1, 2, 5, 10, 20):
+        rows = cost_curve(Mv, Fn, k)
+        cost_report[str(k)] = rows
+        win = [x["r"] for x in rows if x["beats_silence"]]
+        be = f"r ≥ {min(win):.2f}" if win else "이 r 범위에서 없음"
+        logger.info(f"    k={k:<3} 손익분기 {be:<16} " +
+                    " ".join(f"r={x['r']:.2f}:{'승' if x['beats_silence'] else '패'}" for x in rows))
+    logger.info("    → 문장: **놓침을 오경보보다 k배 나쁘게 볼 때, r이 그 값 이상이면 배포 가치가 있다**")
+
+    save_json({"cost_ratio_curves": cost_report, "model_dir": a.model_dir, "n_violation": len(Gv), "n_nonviolation": len(Gn),
                "violation_floor": _VIOLATION_FLOOR, "curves": report,
                "assumption": "두 풀이 각각 위반/비위반 조항을 대표하고 유병률만 다르다. "
                              "틀리면 곡선 전체가 이동한다 — 그 경우 실제 계약서 소량 라벨링이 다음 수",

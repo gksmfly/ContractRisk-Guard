@@ -154,9 +154,13 @@ def _extract_spans(clause_text: str, evidence_span: str) -> list[EvidenceSpan]:
     return []
 
 
+# 전달할 한계가 **둘**이다 — 범위(제6~14조만 본다)와 재현율(그 안에서도 놓친다).
+# 첫 초안은 후자만 담았고 전자는 조 이름으로 암시만 됐다. 조 taxonomy로 바뀌면서
+# 경고가 약해지는 게 아니라 **강해져야** 한다 — 예전에는 "범위 밖이라 모른다"였는데
+# 이제는 "범위 안인데 못 찾았을 수 있다"이기 때문이다(조항 단위 재현 78.0%).
 _OUT_OF_SCOPE_REASON = (
-    "약관규제법 해지·책임제한 조항에 해당하지 않아 분석하지 않았습니다. "
-    "안전하다는 뜻이 아니라 현재 분석 범위 밖이라는 뜻입니다."
+    "약관규제법 제6~14조 기준으로는 위반이 확인되지 않았습니다. "
+    "다른 법령은 검토하지 않으며, 이 범위 안에서도 일부만 찾아냅니다."
 )
 
 
@@ -171,27 +175,25 @@ def _process_clause(client: Any, clause: str, index: int) -> ClauseResult | OutO
     graph = get_graph()
     result = graph.invoke({"clause": clause}, config={"configurable": {"client": client}})
 
-    domain = result.get("domain", "해당없음")
-    if domain == "해당없음":
+    # **게이트가 바뀌었다 (2026-08-31).** 예전에는 GPT가 낸 2-도메인 값이 "해당없음"이면
+    # 버렸다. 지금은 **분류 모델이 조를 하나라도 지목했는가**로 가른다 — 판단 주체가
+    # GPT에서 모델로 옮겨간 것이고, taxonomy도 9개 조로 늘었다.
+    model_articles = result.get("model_articles") or []
+    if not model_articles:
         return OutOfScopeClause(id=index + 1, original=clause, reason=_OUT_OF_SCOPE_REASON)
 
     evidence_span = result.get("evidence_span", "")
-    verified = result.get("verified", False)
 
     return ClauseResult(
         id                = index + 1,
         original          = clause,
-        domain            = domain,
-        risk_level        = result.get("risk_level", "Low"),
-        # 이전엔 `1.0 if verified else 0.7` 하드코딩이었다 — verified는 GPT와의 domain
-        # 일치 여부이지 신뢰도가 아니었고, 정작 모델이 낸 확률은 버려지고 있었다.
-        # 지금은 judgment_node가 계산한 구간을 그대로 쓴다(judgment_agent.py 참고).
-        confidence_band          = result.get("confidence_band", "낮음"),
-        confidence_band_accuracy = result.get("confidence_band_accuracy", 0.382),
+        articles          = model_articles,
+        needs_review      = True,
+        domain            = result.get("domain", ""),      # 과거 결과 호환용 파생값
         evidence_spans    = _extract_spans(clause, evidence_span),
         legal_basis       = result.get("legal_basis", []),
         reasoning         = result.get("reasoning", ""),
-        verified          = verified,
+        verified          = bool(result.get("verified", False)),
         redteam_note      = result.get("redteam_note", ""),
         evidence_verified = result.get("evidence_verified", True),
     )
@@ -225,15 +227,9 @@ async def run_analyze(text: str) -> AnalyzeResponse:
     results, skipped = _tally(list(outcomes))
     results.sort(key=lambda r: r.id)      # gather는 순서를 보존하지만 명시해 둔다
     skipped.sort(key=lambda r: r.id)
-    high   = sum(1 for r in results if r.risk_level == "High")
-    medium = sum(1 for r in results if r.risk_level == "Medium")
-    low    = sum(1 for r in results if r.risk_level == "Low")
-
     return AnalyzeResponse(
         total_clauses     = len(results),
-        high_count        = high,
-        medium_count      = medium,
-        low_count         = low,
+        review_count      = len(results),
         clauses           = results,
         input_clauses     = len(clauses) + truncated,
         truncated_clauses = truncated,
@@ -291,7 +287,7 @@ async def run_analyze_stream(text: str):
                     yield {
                         "type": "progress", "index": done_n, "total": total,
                         "clause_no": i + 1,
-                        "risk_level": outcome.risk_level, "domain": outcome.domain,
+                        "articles": outcome.articles, "needs_review": True,
                     }
                 else:
                     yield {"type": "progress", "index": done_n, "total": total,
@@ -300,15 +296,9 @@ async def run_analyze_stream(text: str):
             results, skipped = _tally(outcomes)
             results.sort(key=lambda r: r.id)      # 완료 순서가 아니라 조항 순서로 돌려준다
             skipped.sort(key=lambda r: r.id)
-            high   = sum(1 for r in results if r.risk_level == "High")
-            medium = sum(1 for r in results if r.risk_level == "Medium")
-            low    = sum(1 for r in results if r.risk_level == "Low")
-
             final = AnalyzeResponse(
                 total_clauses     = len(results),
-                high_count        = high,
-                medium_count      = medium,
-                low_count         = low,
+                review_count      = len(results),
                 clauses           = results,
                 input_clauses     = total + truncated,
                 truncated_clauses = truncated,

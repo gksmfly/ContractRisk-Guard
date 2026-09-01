@@ -19,17 +19,24 @@ class LegalBasis(BaseModel):
 
 
 class ClauseResult(BaseModel):
+    """확인이 필요하다고 판단된 조항.
+
+    **위험도 3단계와 신뢰도 구간을 내지 않는다 (2026-08-31).** 조 multi-label 모델에는
+    risk 헤드가 없고(gold 미정의로 일부러 제외), `confidence_band`의 실측 정확도는
+    `models/v4` 전용 값이라 옮길 수 없다. 검증되지 않은 등급을 화면에 띄우는 것은
+    `OutOfScopeClause`가 막으려는 것과 같은 종류의 거짓 확신이다.
+
+    대신 이진 판단(`needs_review`)과 참고용 조 목록(`articles`)을 낸다. 근거:
+
+        조항 단위 재현 78.0% · 오경보 2.6%   ← "이 조항을 확인하라"는 주장이 서는 지표
+        조 단위 정밀도는 44%대               ← 그래서 조 이름은 **단정하지 않고 참고로만**
+    """
     id: int
     original: str
-    domain: str
-    risk_level: str
-    # 신뢰도는 구간으로만 내보낸다 — KoELECTRA softmax는 보정이 안 돼 있어(ECE 0.289)
-    # 원시 확률을 %로 노출하면 실제보다 30%p 이상 과신하게 된다.
-    # confidence_band_accuracy는 그 구간의 실측 정확도(v4, n=453)로, 화면에서
-    # "높음"이 절대적 확신처럼 읽히지 않도록 함께 표시한다.
-    # 근거: backend/eval/confidence_calibration.py, judgment_agent.py docstring
-    confidence_band: str
-    confidence_band_accuracy: float
+    # 모델이 지목한 약관규제법 조. **참고값이다** — 조 단위 정밀도가 재현보다 훨씬 낮다.
+    articles: list[str] = []
+    needs_review: bool = True
+    domain: str = ""          # 옛 2-도메인 파생값. 저장된 과거 결과와의 호환용으로만 남긴다
     evidence_spans: list[EvidenceSpan]
     legal_basis: list[LegalBasis]
     reasoning: str
@@ -39,12 +46,12 @@ class ClauseResult(BaseModel):
 
 
 class OutOfScopeClause(BaseModel):
-    """분석 범위 밖이라 판단하지 않은 조항.
+    """모델이 조를 지목하지 않은 조항.
 
-    **위험도를 붙이지 않는다.** 지금 도메인 체계(해지·책임제한 2종)에 안 걸린다는 뜻이지
-    "안전하다"는 뜻이 아니다 — 개인정보·관할·정의 조항이 전부 여기 들어온다. `risk_level`을
-    Low로 채우면 화면에서 "검토했고 문제없음"으로 읽혀, 사용자가 그 조항을 다시 안 본다.
-    누락보다 거짓 안심이 나쁘다(판례 근거를 그대로 노출하지 않기로 한 것과 같은 계열).
+    **어떤 등급도 붙이지 않는다.** "확인되지 않았다"이지 "안전하다"가 아니다.
+    조 단위 재현이 78%이므로 **약 5건 중 1건은 여기 잘못 들어와 있다** — 등급을 붙이면
+    화면에서 "검토했고 문제없음"으로 읽혀 사용자가 그 조항을 다시 안 본다.
+    누락보다 거짓 안심이 나쁘다.
     """
     id: int
     original: str
@@ -53,9 +60,13 @@ class OutOfScopeClause(BaseModel):
 
 class AnalyzeResponse(BaseModel):
     total_clauses: int
-    high_count: int
-    medium_count: int
-    low_count: int
+    # 확인이 필요하다고 판단된 조항 수. 위험도 3단계를 내지 않으므로 세 칸이 아니라 하나다.
+    review_count: int = 0
+    # 옛 3단계 카운트. 저장된 과거 결과(analyses.result JSONB)와의 호환용으로만 남기며
+    # 새 응답에서는 항상 0이다 — 화면에서 읽지 말 것.
+    high_count: int = 0
+    medium_count: int = 0
+    low_count: int = 0
     clauses: list[ClauseResult]
 
     # 입력에서 분리된 조항 수. `total_clauses`(=분석된 수)와 다를 수 있다 —

@@ -17,7 +17,8 @@ interface HistoryRow {
   title: string;
   created_at: string;
   total_clauses: number;
-  high_count: number;
+  review_count: number;
+  high_count: number;   // 옛 저장분 호환용
   medium_count: number;
   low_count: number;
 }
@@ -41,9 +42,10 @@ export default async function DashboardPage() {
       `SELECT
          id, title, created_at,
          (result->>'total_clauses')::int AS total_clauses,
-         (result->>'high_count')::int AS high_count,
-         (result->>'medium_count')::int AS medium_count,
-         (result->>'low_count')::int AS low_count
+         -- 2026-08-31부터 위험도 3단계를 내지 않는다. 새 결과는 review_count를 쓰고,
+         -- 옛 저장분(high_count)은 그대로 남아 있으므로 COALESCE로 둘 다 받는다.
+         COALESCE((result->>'review_count')::int, (result->>'high_count')::int, 0) AS review_count,
+         (result->>'high_count')::int AS high_count
        FROM analyses
        WHERE user_id = $1
        ORDER BY created_at DESC`,
@@ -103,22 +105,24 @@ export default async function DashboardPage() {
                 className="flex items-center justify-between gap-4 px-5 py-4 hover:bg-slate-50 transition-colors"
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  {item.high_count > 0 ? (
-                    <span className="w-2 h-2 rounded-full bg-seal shrink-0" aria-hidden />
+                  {item.review_count > 0 ? (
+                    <span className="w-2 h-2 rounded-full bg-ochre shrink-0" aria-hidden />
                   ) : (
-                    <span className="w-2 h-2 rounded-full bg-forest shrink-0" aria-hidden />
+                    <span className="w-2 h-2 rounded-full bg-slate-300 shrink-0" aria-hidden />
                   )}
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-slate-900 truncate flex items-center gap-1.5">
                       <FileText className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden />
                       {item.title}
-                      {item.high_count > 0 ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-seal">
-                          <AlertTriangle className="h-3 w-3" aria-hidden /> 고위험 {item.high_count}건
+                      {item.review_count > 0 ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-ochre">
+                          <AlertTriangle className="h-3 w-3" aria-hidden /> 확인 필요 {item.review_count}건
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-forest">
-                          <CheckCircle2 className="h-3 w-3" aria-hidden /> 위험 조항 없음
+                        // "위험 조항 없음"이 아니라 "확인되지 않음"이다 — 조항 단위 재현이
+                        // 78%이므로 5건 중 1건은 못 찾는다. 안전 판정으로 읽히면 안 된다.
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500">
+                          <CheckCircle2 className="h-3 w-3" aria-hidden /> 확인 필요 조항 없음
                         </span>
                       )}
                     </p>
