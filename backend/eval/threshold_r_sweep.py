@@ -66,9 +66,13 @@ from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 
 from backend.model.electra import ArticleMultiLabelElectra
-from backend.training.train_article import (ArticleDataset, exclude_gold_documents,
-                                            load_article_records, load_ftc_gold,
-                                            split_negative_holdout)
+from backend.training.train_article import (
+    ArticleDataset,
+    exclude_gold_documents,
+    load_article_records,
+    load_ftc_gold,
+    split_negative_holdout,
+)
 from backend.utils import PROJECT_ROOT, load_logger, save_json
 
 logger = load_logger("threshold_r_sweep.log")

@@ -40,9 +40,13 @@ from typing import Any
 import torch
 from openai import OpenAI
 
-from backend.fb_check.forward_labeling import _SYSTEM as FWD_SYSTEM, _FEW_SHOT_EXAMPLES as FWD_FEWSHOT, run_forward
-from backend.fb_check.consistency_verification import _SYSTEM as VERIFY_SYSTEM, _FEW_SHOT_EXAMPLES as VERIFY_FEWSHOT, run_verify
-from backend.utils import load_jsonl, load_logger, save_json, PROJECT_ROOT
+from backend.fb_check.consistency_verification import _FEW_SHOT_EXAMPLES as VERIFY_FEWSHOT
+from backend.fb_check.consistency_verification import _SYSTEM as VERIFY_SYSTEM
+from backend.fb_check.consistency_verification import run_verify
+from backend.fb_check.forward_labeling import _FEW_SHOT_EXAMPLES as FWD_FEWSHOT
+from backend.fb_check.forward_labeling import _SYSTEM as FWD_SYSTEM
+from backend.fb_check.forward_labeling import run_forward
+from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("llm_benchmark.log")
 

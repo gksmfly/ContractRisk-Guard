@@ -33,10 +33,8 @@
 
 import argparse
 import json
-from collections import Counter
-from pathlib import Path
-
 import random
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -44,7 +42,10 @@ from transformers import AutoTokenizer
 
 from backend.model.electra import ArticleMultiLabelElectra
 from backend.training.train_article import (
-    _MAJORITY_ARTICLE, ArticleDataset, constant_baseline_f1, load_ftc_gold,
+    _MAJORITY_ARTICLE,
+    ArticleDataset,
+    constant_baseline_f1,
+    load_ftc_gold,
     per_article_metrics,
 )
 from backend.utils import PROJECT_ROOT, load_logger, save_json
@@ -113,7 +114,10 @@ def clause_level(probs: np.ndarray, thr: np.ndarray, neg_probs: np.ndarray) -> d
     for t in (0.15, 0.25, 0.35, 0.45, 0.65, 0.92):
         recall = float(np.mean([(probs[i] >= t).any() for i in range(len(probs))]))
         fa = float(np.mean([(neg_probs[i] >= t).any() for i in range(len(neg_probs))]))
-        row = {"recall": recall, "false_alarm": fa}
+        # `false_alarm`이 아니라 **GPT 라벨과의 불일치율**이다 — 음성 풀의 정답이
+        # `agreed_articles`(forward ∩ verify), 즉 GPT 라벨 그 자체다. 모델이 GPT보다
+        # 잘 찾아서 짚은 것도 여기 들어간다. 독립 준거로 잰 오경보율이 아니다.
+        row = {"recall": recall, "disagree_with_gpt": fa}
         for r in (0.05, 0.10, 0.15):
             shown = r * recall + (1 - r) * fa
             row[f"precision_at_r{r:.2f}"] = (r * recall / shown) if shown else 0.0
@@ -121,7 +125,7 @@ def clause_level(probs: np.ndarray, thr: np.ndarray, neg_probs: np.ndarray) -> d
     # 배포 임계값(조별)에서의 값도 함께
     recall = float(np.mean([(probs[i] >= thr).any() for i in range(len(probs))]))
     fa = float(np.mean([(neg_probs[i] >= thr).any() for i in range(len(neg_probs))]))
-    row = {"recall": recall, "false_alarm": fa}
+    row = {"recall": recall, "disagree_with_gpt": fa}
     for r in (0.05, 0.10, 0.15):
         shown = r * recall + (1 - r) * fa
         row[f"precision_at_r{r:.2f}"] = (r * recall / shown) if shown else 0.0
@@ -282,8 +286,7 @@ def main() -> None:
                 f"{delta:+.1f}%p [{lo_dev:+.1f},{hi_dev:+.1f}] — {v_dev}")
 
     # ----- 조항 단위 지표 (제품이 서는 축) -----
-    from backend.training.train_article import (exclude_gold_documents, load_article_records,
-                                                split_negative_holdout)
+    from backend.training.train_article import exclude_gold_documents, load_article_records, split_negative_holdout
     _recs = exclude_gold_documents(load_article_records(PROJECT_ROOT / "data/fb_check/clean.jsonl"), gold)
     _, _neg = split_negative_holdout(_recs, 12, 42)
     _neg = [r for r in _neg if not r["articles"]]        # 정답이 빈 것만 = 오경보 판정 대상
@@ -310,20 +313,25 @@ def main() -> None:
                 f"— **위 조 단위 표({len(gold)}건)와 평가셋이 다르다**")
     # 재현·오경보는 r과 무관한 **모델 속성**, 정밀도는 **분포의 함수**다. 갈라서 낸다 —
     # 붙여 놓으면 "73%"만 떼어져 r 없이 혼자 돌아다닌다.
-    logger.info(f"    {'τ':>6}{'재현':>8}{'오경보':>9}   │ 정밀도(r 의존)  r=.05   r=.10   r=.15")
+    logger.info(f"    {'τ':>6}{'재현':>8}{'GPT불일치':>11}   │ 정밀도(r 의존)  r=.05   r=.10   r=.15")
     for t, v in cl.items():
         if t == "dev_thresholds":
             continue
-        logger.info(f"    {t:>6}{v['recall'] * 100:>7.1f}%{v['false_alarm'] * 100:>8.1f}%   │"
+        logger.info(f"    {t:>6}{v['recall'] * 100:>7.1f}%{v['disagree_with_gpt'] * 100:>10.1f}%   │"
                     f"{v['precision_at_r0.05'] * 100:>19.0f}%{v['precision_at_r0.10'] * 100:>7.0f}%"
                     f"{v['precision_at_r0.15'] * 100:>7.0f}%")
     d = cl["dev_thresholds"]
-    logger.info(f"    {'배포':>6}{d['recall'] * 100:>7.1f}%{d['false_alarm'] * 100:>8.1f}%   │"
+    logger.info(f"    {'배포':>6}{d['recall'] * 100:>7.1f}%{d['disagree_with_gpt'] * 100:>10.1f}%   │"
                 f"{d['precision_at_r0.05'] * 100:>19.0f}%{d['precision_at_r0.10'] * 100:>7.0f}%"
                 f"{d['precision_at_r0.15'] * 100:>7.0f}%   ← 지금 배포하면 나오는 값")
+    logger.info("    ⚠ **'GPT불일치'는 오경보율이 아니다.** 음성 풀의 정답이 GPT 라벨"
+                "(forward ∩ verify) 그 자체이므로, 모델이 GPT보다 잘 찾아서 짚은 것도 여기 들어간다. "
+                "독립 준거로 잰 오경보율은 **아직 없다** — 표준계약서 조항을 사람이 판단해야 한다")
+    logger.info("    ⚠ 따라서 오른쪽 **정밀도 열도 절대값으로 인용하면 안 된다** — 분모에 이 값이 "
+                "들어간다. 설정 간 상대 비교에는 쓸 수 있다(모두 같은 자로 쟀다)")
     logger.info("    ── 상수 ──")
-    logger.info("    전부 표시        재현 100%  오경보 100%   정밀 = r 그 자체 (5% / 10% / 15%)")
-    logger.info("    아무것도 안 표시   재현   0%  오경보   0%   정밀 정의 불가")
+    logger.info("    전부 표시        재현 100%  GPT불일치 100%   정밀 = r 그 자체")
+    logger.info("    아무것도 안 표시   재현   0%  GPT불일치   0%   정밀 정의 불가")
     logger.info("    ★ 재현·오경보는 **r과 무관한 모델 속성**이라 r이 미확정이어도 보고할 수 있다. "
                 "정밀도는 분포의 함수이므로 **r 없이 인용하지 말 것**")
     logger.info("    ⚠ 조항 단위는 FTC/표준계약서 **혼합**에서 측정했고, 이 혼합에서는 출처와 정답이 "

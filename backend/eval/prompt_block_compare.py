@@ -27,7 +27,6 @@
 """
 
 import json
-from pathlib import Path
 
 from backend.utils import PROJECT_ROOT, load_logger, save_json
 

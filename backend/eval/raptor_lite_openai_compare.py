@@ -34,7 +34,7 @@ from openai import OpenAI
 from backend.api.services.retrieval import _get_cached_embedder
 from backend.db.connection import get_conn
 from backend.eval.domain_filter_compare import _law_names, rrf_baseline_hit
-from backend.eval.lightrag_compare import LAWS_PATH, _N_QUERIES, build_ground_truth
+from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, build_ground_truth
 from backend.eval.raptor_lite_compare import _FEWSHOT, _SYSTEM_TMPL, routed_hit
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 

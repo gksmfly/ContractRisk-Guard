@@ -31,8 +31,12 @@ Act (약관규제법) — unilateral termination (§9), liability limitation (§
   the article-level taxonomy, where that shortcut is small (+2.4%p on all 1,786 CLEAN records;
   the +0.9%p first reported was the 1,700-record snapshot): adding the model as a third
   voter **no longer degrades confound** (+2.7%p → +2.9%p) and moves label quality +2.5%p at −6% yield
-  — but that gain is **not significant** (95% CI [−6.9, +12.1], n=114 scoreable). Backward Grounding
-  is currently a pure string check (`E ⊂ C`), which is what the paper defined it as.
+  — but that gain is **not yet conclusive**. Scored the right way (the 17 records the model vote
+  removes vs the 114 it keeps, rather than two overlapping means), the removed records are
+  **19.6%p worse** (bootstrap 95% CI [−0.5, +38.0] — inconclusive; Mann-Whitney p = 0.031 —
+  significant; both are reported because the metric is bounded and bimodal). Settling it needs
+  ~34 disagreeing records and there are 17; finishing the halted labelling run would supply them.
+  Backward Grounding is currently a pure string check (`E ⊂ C`), which is what the paper defined it as.
 - **KoELECTRA as the inference engine**: The fine-tuned classifier makes all risk judgments; GPT-4o is strictly limited to explanation generation and search query construction — reducing LLM calls, latency, and cost while keeping judgments consistent
 - **A fixed 6-stage pipeline** (not agentic): Analysis → Retrieval Strategy → Evidence Selection →
   Judgment (fine-tuned KoELECTRA) → Red-team → Evidence Verification. **No LLM controls the flow.**
@@ -197,11 +201,21 @@ decision rules and the analyses that failed, are in
   - **No risk tier is shown.** The article head has no risk output (gold was undefinable), and the
     confidence bands were measured on `models/v4` only, so neither could be carried over. The UI
     reports a binary "needs review" plus the predicted articles **as a reference, not a verdict** —
-    clause-level recall is 78.0% at 2.6% false-alarm, but article-level is indistinguishable from a
-    constant (38.2% vs 40.3%, CI [−7.7, +3.4]).
+    clause-level recall is **78.0%** against the FTC-cited articles, while article-level is
+    indistinguishable from a constant (38.2% vs 40.3%, CI [−7.7, +3.4]).
+    The companion "2.6% false-alarm" figure was **withdrawn on 2026-09-01**: the negative pool's
+    ground truth *is* the GPT label (`forward ∩ verify`), so a clause the model flags and GPT did not
+    is counted as a false alarm even when the model is right. It measures **disagreement with GPT**,
+    not false alarms. No independently-judged negative set exists yet — see Limitations.
   - **Thresholds are still the dev-split values**, not deployment-calibrated. Re-optimising needs the
     deployment prevalence *r*, which is unmeasured; a 99-clause blind worksheet
     (`backend/eval/prevalence_worksheet.py`) is built and awaiting human labels.
+  - **The false-alarm rate has never been measured against an independent reference.** Every
+    "correctly stays silent" number in this project is scored against pipeline-produced labels.
+    Comparisons *between* configurations remain valid — they all use the same ruler, and that is how
+    the `--negative-ratio` arms were ranked — but no absolute claim about false alarms can be made.
+    Judging ~50 of the 151 held-out standard-contract clauses by hand would produce the first
+    independent estimate.
 - **The Red-team stage is inert.** Its neighbour table (`clean_clauses`) still holds the old
   risk-level labels, so no article comparison can fire. It stays silent rather than warning on a
   stale axis; reloading that table with the current `clean.jsonl` revives it.

@@ -18,7 +18,7 @@ from lightrag.kg.shared_storage import initialize_pipeline_status
 from lightrag.llm.openai import gpt_4o_mini_complete, openai_embed
 from lightrag.utils import EmbeddingFunc
 
-from backend.eval.lightrag_compare import WORKING_DIR, LAWS_PATH
+from backend.eval.lightrag_compare import LAWS_PATH, WORKING_DIR
 from backend.utils import load_jsonl, load_logger
 
 logger = load_logger("lightrag_resume_indexing.log")

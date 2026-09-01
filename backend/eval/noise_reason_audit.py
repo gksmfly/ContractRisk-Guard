@@ -36,8 +36,8 @@ risk_level을 학습하지 않는다** — P1에서 risk 헤드를 일부러 뺐
 """
 
 import argparse
-import random
 import json
+import random
 from collections import defaultdict
 from pathlib import Path
 

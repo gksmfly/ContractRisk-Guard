@@ -16,7 +16,9 @@ DB·CrossEncoder 불필요.
 """
 
 from backend.agents.evidence_selection_agent import (
-    _FINAL_K, evidence_selection_node, _fallback_for,
+    _FINAL_K,
+    _fallback_for,
+    evidence_selection_node,
 )
 
 # DB의 metadata->>'court' 실측값에서 가져온 표기들(총 58종 중 대표).

@@ -24,7 +24,7 @@ from pathlib import Path
 import torch
 from transformers import ElectraTokenizerFast
 
-from backend.model.electra import DualHeadElectra, INV_DOMAIN_MAP, INV_RISK_MAP
+from backend.model.electra import INV_DOMAIN_MAP, INV_RISK_MAP, DualHeadElectra
 
 _PAGE_MARKER = re.compile(r'\s*-\s*\d+\s*-\s*')
 _FUZZY_MATCH_THRESHOLD = 0.85  # 완전 일치 실패 시, 최장 공통 부분열이 근거 문구의 이 비율 이상이면 인정

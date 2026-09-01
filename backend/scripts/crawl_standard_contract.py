@@ -32,6 +32,7 @@ olefile + zlib으로 텍스트를 추출하여 JSON으로 저장합니다.
     }
 """
 
+import argparse
 import json
 import os
 import re
@@ -39,12 +40,11 @@ import struct
 import sys
 import time
 import zlib
-import argparse
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from backend.scripts.utils import save_json, setup_logger, PROJECT_ROOT
+from backend.scripts.utils import PROJECT_ROOT, save_json, setup_logger
 
 logger = setup_logger("crawl_standard_contract.log")
 

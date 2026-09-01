@@ -31,18 +31,18 @@ Playwright로 PDF를 다운로드하고 pdfplumber로 텍스트를 추출합니�
     }
 """
 
+import argparse
 import json
 import os
 import re
 import sys
 import time
-import argparse
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from backend.scripts.utils import save_json, setup_logger, PROJECT_ROOT
+from backend.scripts.utils import PROJECT_ROOT, save_json, setup_logger
 
 logger = setup_logger("parse_ftc_case_pdf.log")
 

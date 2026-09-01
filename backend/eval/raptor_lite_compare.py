@@ -18,11 +18,11 @@ domain_filter_compare.py(옵션2)는 16개 파티션을 전부 검색해서 점�
 
 from backend.api.services.retrieval import _get_cached_embedder, _reciprocal_rank_fusion
 from backend.db.connection import get_conn
+from backend.db.loader import embed_texts
 from backend.eval.domain_filter_compare import _dense_with_score, _law_names, _sparse_with_score, rrf_baseline_hit
-from backend.eval.lightrag_compare import LAWS_PATH, _N_QUERIES, build_ground_truth
+from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, build_ground_truth
 from backend.eval.local_llm import generate_json
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
-from backend.db.loader import embed_texts
 
 logger = load_logger("raptor_lite_compare.log")
 OUT_PATH = PROJECT_ROOT / "data/eval/raptor_lite_vs_rrf_report.json"

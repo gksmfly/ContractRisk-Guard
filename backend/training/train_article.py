@@ -45,12 +45,13 @@ import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
-from sklearn.model_selection import train_test_split
 from transformers import AutoTokenizer
 
 from backend.labeling.articles import ARTICLE_IDS, normalize
 from backend.model.electra import (
-    ArticleMultiLabelElectra, article_labels, article_pos_weight,
+    ArticleMultiLabelElectra,
+    article_labels,
+    article_pos_weight,
 )
 from backend.training.train import BASE_MODEL, _document_group, split_by_document
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json

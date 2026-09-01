@@ -2,7 +2,7 @@
 import io
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, File
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from fastapi.responses import StreamingResponse
 
 from backend.api.auth import require_api_key

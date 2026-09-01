@@ -40,8 +40,8 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoTokenizer  # 백본 교체 비교를 위해 계열 비의존으로 로드한다
 
-from backend.model.electra import DualHeadElectra, DOMAIN_MAP, DOMAIN_NAMES, RISK_SCHEMES, risk_scheme
-from backend.utils import load_jsonl, load_logger, save_json, PROJECT_ROOT
+from backend.model.electra import DOMAIN_MAP, DOMAIN_NAMES, RISK_SCHEMES, DualHeadElectra, risk_scheme
+from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("train_koelectra.log")
 

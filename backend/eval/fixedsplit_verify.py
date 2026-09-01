@@ -33,7 +33,7 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer
 
-from backend.model.electra import DualHeadElectra, INV_RISK_MAP, RISK_MAP
+from backend.model.electra import RISK_MAP, DualHeadElectra
 from backend.training.train import load_records, split_by_document
 from backend.utils import PROJECT_ROOT, load_logger, save_json
 

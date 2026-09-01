@@ -38,7 +38,6 @@
 
 import argparse
 from math import comb
-from pathlib import Path
 
 import numpy as np
 from sklearn.metrics import accuracy_score, f1_score

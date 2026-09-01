@@ -267,7 +267,7 @@ def main() -> None:
 
     div = label_divergence(rows)
     if div.get("n_clean"):
-        logger.info(f"  ----- forward vs agreed 라벨 분기 (Low 예외 경로 점검) -----")
+        logger.info("  ----- forward vs agreed 라벨 분기 (Low 예외 경로 점검) -----")
         logger.info(f"    CLEAN {div['n_clean']}건 중 두 라벨이 다름 {div['diverged']}건 "
                     f"({div['diverged_rate'] * 100:.1f}%)")
         logger.info(f"    그중 Low 예외(조 합의 건너뜀) {div['low_exception']}건 | "
@@ -336,8 +336,14 @@ def main() -> None:
     else:
         logger.info("  ✅ GO — `python -m backend.fb_check`로 이어서 전량 실행 "
                     "(resume이 이 300건 뒤부터 이어받는다)")
-        if m.get("union_hit_any") is not None:
-            logger.info(f"     ※ 다조항 union hit@any {m['union_hit_any'] * 100:.1f}%는 최초 측정이라 "
+        # `seg["다조항"]`이다. 예전에는 정의된 적 없는 `m`을 참조해 **NameError로 죽었다** —
+        # 그것도 `else`(GO) 분기 안이라, 게이트를 통과했을 때만 터졌다. "✅ GO"는 이미
+        # 찍힌 뒤라 운영자는 "GO + 트레이스백"을 보게 된다. 08-23 실행이 NO-GO였던 덕에
+        # 여태 안 걸렸을 뿐이고, 하필 전량 실행 직전에 돌리라고 문서에 적어둔 자리다.
+        # 빈 구간이면 score_segment가 {"n": 0}만 주므로 .get()은 None으로 안전하게 빠진다.
+        multi = seg["다조항"]
+        if multi.get("union_hit_any") is not None:
+            logger.info(f"     ※ 다조항 union hit@any {multi['union_hit_any'] * 100:.1f}%는 최초 측정이라 "
                         f"문턱이 없다. 단일 구간과의 격차를 기록만 한다")
 
     save_json({"n": n, "segments": seg, "label_divergence": div,

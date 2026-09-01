@@ -45,9 +45,9 @@ McNemar p=0.035. 작은 가중치(0.0003·0.001)도 시도했으나 폐지 대�
 """
 
 from backend.agents.state import ClauseState
-from backend.labeling.articles import ARTICLES, LAW_NAME
 from backend.api.schemas import LegalBasis
 from backend.api.services.retrieval import candidate_to_legal_basis
+from backend.labeling.articles import ARTICLES, LAW_NAME
 
 # 최종 노출 개수. 2였다가 5로 올렸다 — 약관규제법 고정 검색에서 정답 조문의 첫 등장
 # 순위 중앙값이 7위라, top-2로 자르면 검색이 찾아온 정답을 대부분 버린다.

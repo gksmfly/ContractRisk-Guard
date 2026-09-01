@@ -35,7 +35,7 @@ import torch.nn.functional as F
 from sklearn.metrics import accuracy_score, f1_score
 from transformers import AutoTokenizer
 
-from backend.model.electra import DualHeadElectra, INV_RISK_MAP, RISK_MAP
+from backend.model.electra import RISK_MAP, DualHeadElectra
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("ensemble_compare.log")

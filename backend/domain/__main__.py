@@ -3,12 +3,12 @@ import argparse
 import json
 from typing import Any
 
-from backend.utils import save_json
 from backend.domain.common import logger
-from backend.domain.config import LAW_DIR, PREC_DIR, EXPC_DIR, DOMAIN_DIR
-from backend.domain.filter_law import filter_laws
+from backend.domain.config import DOMAIN_DIR, EXPC_DIR, LAW_DIR, PREC_DIR
 from backend.domain.filter_interpretation import filter_interpretations
+from backend.domain.filter_law import filter_laws
 from backend.domain.filter_precedent import filter_precedents
+from backend.utils import save_json
 
 
 def main() -> None:

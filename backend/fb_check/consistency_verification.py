@@ -35,10 +35,12 @@ import time
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from backend.labeling.articles import (
-    ARTICLE_IDS, derive_domain, prompt_block, prompt_block_variant,
-)
 from backend.fb_check.api_errors import raise_if_fatal
+from backend.labeling.articles import (
+    ARTICLE_IDS,
+    derive_domain,
+    prompt_block_variant,
+)
 from backend.utils import load_logger
 
 load_dotenv()

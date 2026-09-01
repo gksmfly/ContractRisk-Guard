@@ -12,7 +12,6 @@ lightrag_compare.py의 본작업이 잔액 부족(인덱싱 도중 $0.82로 하�
 """
 
 import asyncio
-import json
 
 from lightrag import LightRAG
 from lightrag.kg.shared_storage import initialize_pipeline_status
@@ -20,8 +19,13 @@ from lightrag.llm.openai import gpt_4o_mini_complete, openai_embed
 from lightrag.utils import EmbeddingFunc
 
 from backend.eval.lightrag_compare import (
-    WORKING_DIR, LAWS_PATH, _N_QUERIES, _QUERY_LOG_EVERY,
-    build_ground_truth, hybrid_rrf_hit, lightrag_hit,
+    _N_QUERIES,
+    _QUERY_LOG_EVERY,
+    LAWS_PATH,
+    WORKING_DIR,
+    build_ground_truth,
+    hybrid_rrf_hit,
+    lightrag_hit,
 )
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 

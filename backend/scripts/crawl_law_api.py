@@ -41,7 +41,7 @@ from typing import Callable
 import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from backend.scripts.utils import save_json, setup_logger, PROJECT_ROOT
+from backend.scripts.utils import PROJECT_ROOT, save_json, setup_logger
 
 LIST_URL = os.environ.get("LAW_LIST_URL", "https://www.law.go.kr/DRF/lawSearch.do")
 DETAIL_URL = os.environ.get("LAW_DETAIL_URL", "https://www.law.go.kr/DRF/lawService.do")

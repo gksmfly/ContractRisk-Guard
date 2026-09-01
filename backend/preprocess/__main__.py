@@ -18,9 +18,9 @@ import os
 from pathlib import Path
 from typing import Any
 
-from backend.utils import load_logger, save_json, PROJECT_ROOT
 from backend.preprocess.cleaner import split_chunks
 from backend.preprocess.extractor import EXTRACTORS
+from backend.utils import PROJECT_ROOT, load_logger, save_json
 
 logger = load_logger("preprocess.log")
 

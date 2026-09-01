@@ -14,16 +14,16 @@ Seed 데이터 라벨링 스크립트
     python -m backend.labeling.seed
 """
 
+import argparse
 import json
 import os
-import argparse
 import random
 import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from backend.utils import load_logger, save_json, save_jsonl, PROJECT_ROOT
+from backend.utils import PROJECT_ROOT, load_logger, save_json, save_jsonl
 
 logger = load_logger("seed_label.log")
 

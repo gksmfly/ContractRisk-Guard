@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from backend.domain.common import logger, copy_domain_docs
+from backend.domain.common import copy_domain_docs, logger
 from backend.domain.config import ALLOWED_LAW_NAMES
 
 

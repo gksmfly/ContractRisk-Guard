@@ -43,7 +43,6 @@
 import argparse
 import csv
 import html
-import json
 import re
 from pathlib import Path
 
@@ -153,6 +152,7 @@ def join(model_dir: str, gpu: int) -> None:
     import torch
     from torch.utils.data import DataLoader
     from transformers import AutoTokenizer
+
     from backend.model.electra import ArticleMultiLabelElectra
     from backend.training.train_article import ArticleDataset
 
@@ -163,7 +163,7 @@ def join(model_dir: str, gpu: int) -> None:
 
     y = np.array([int(r["violates_6_to_14"]) for r in judged])
     r_hat = float(y.mean())
-    logger.info(f"========== 유병률 r ==========")
+    logger.info("========== 유병률 r ==========")
     logger.info(f"  판단 완료 {len(judged)}/{len(rows)}개 조항")
     by = {}
     for r in judged:

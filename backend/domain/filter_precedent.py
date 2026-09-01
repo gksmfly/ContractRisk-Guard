@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from backend.domain.common import logger, copy_domain_docs
+from backend.domain.common import copy_domain_docs, logger
 from backend.domain.config import PREC_KEYWORDS
 
 EXCLUDE_KINDS: frozenset[str] = frozenset({"형사", "가사", "세무", "특허", "선거,특별"})

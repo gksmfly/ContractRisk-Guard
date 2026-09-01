@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from backend.domain.common import logger, copy_domain_docs
+from backend.domain.common import copy_domain_docs, logger
 
 TARGET_LAWS: tuple[str, ...] = (
     "약관의 규제에 관한 법률",

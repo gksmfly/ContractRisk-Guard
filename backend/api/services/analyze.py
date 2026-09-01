@@ -9,7 +9,8 @@ from fastapi import HTTPException
 
 from backend.agents.graph import get_graph
 from backend.agents.judgment_agent import model_version
-from backend.api.schemas import OutOfScopeClause, AnalyzeResponse, ClauseResult, EvidenceSpan
+from backend.api.schemas import AnalyzeResponse, ClauseResult, EvidenceSpan, OutOfScopeClause
+
 # 근거 문구 매칭 기준을 FB-Check와 공유한다 — 검증 파이프라인이 통과시킨 근거를
 # 서빙이 버리면 화면에서 하이라이트가 조용히 사라진다(_extract_spans docstring 참고).
 from backend.fb_check.backward_grounding import _FUZZY_MATCH_THRESHOLD, _PAGE_MARKER

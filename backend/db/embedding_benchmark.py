@@ -199,7 +199,8 @@ def _eval_koe5(relevant: list[str], random_docs: list[str]) -> dict:
 
 def _eval_openai(relevant: list[str], random_docs: list[str]) -> dict:
     from openai import OpenAI
-    from backend.db.loader import embed_texts, EMBED_MODEL, EMBED_DIM
+
+    from backend.db.loader import EMBED_DIM, EMBED_MODEL, embed_texts
 
     name = f"openai/{EMBED_MODEL} (dim={EMBED_DIM}, 운영 중)"
     logger.info(f"\n{'='*60}")

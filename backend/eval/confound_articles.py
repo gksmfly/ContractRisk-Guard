@@ -39,7 +39,7 @@ from collections import Counter, defaultdict
 from itertools import combinations
 from pathlib import Path
 
-from backend.eval.confound_analysis import source_separability   # 라벨 무관 — 그대로 재사용
+from backend.eval.confound_analysis import source_separability  # 라벨 무관 — 그대로 재사용
 from backend.labeling.articles import ARTICLE_IDS
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
@@ -142,7 +142,7 @@ def main() -> None:
     uncond_f1, uncond_set = best_constant(rows)
     logger.info(f"  ③ 무조건 상수 (최적 탐색)      건별 F1 {uncond_f1 * 100:5.1f}%   "
                 f"항상 {sorted(uncond_set) or ['(위반 없음)']}")
-    logger.info(f"       ★ 학습된 모델이 최소한 넘어야 할 선이 이것이다")
+    logger.info("       ★ 학습된 모델이 최소한 넘어야 할 선이 이것이다")
 
     # ② 출처 조건부 상수
     cond_f1, table = source_conditional_constant(rows)

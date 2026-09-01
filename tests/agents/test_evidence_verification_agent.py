@@ -6,7 +6,7 @@ backend/agents/evidence_verification_agent.py의 재검색 트리거 로직 단�
 실행: pytest tests/test_evidence_verification_agent.py
 """
 
-from backend.agents.evidence_verification_agent import evidence_verification_node, MAX_RETRIES
+from backend.agents.evidence_verification_agent import MAX_RETRIES, evidence_verification_node
 
 
 class TestEvidenceVerificationNode:

@@ -42,13 +42,12 @@ import torch
 from openai import OpenAI
 from transformers import ElectraTokenizerFast
 
-from backend.fb_check.forward_labeling import run_forward
 from backend.fb_check.api_errors import FatalAPIError
-from backend.fb_check.backward_grounding import (MATCHER_VERSION, load_model,
-                                                 snippet_exists, predict)
+from backend.fb_check.backward_grounding import MATCHER_VERSION, load_model, predict, snippet_exists
 from backend.fb_check.consistency_verification import run_verify
+from backend.fb_check.forward_labeling import run_forward
 from backend.model.electra import DualHeadElectra
-from backend.utils import load_jsonl, load_logger, save_json, save_jsonl, PROJECT_ROOT
+from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json, save_jsonl
 
 logger = load_logger("fb_check.log")
 
@@ -651,8 +650,10 @@ def main() -> None:
     results_path = OUT_DIR / "fb_check_results.jsonl"
 
     # 체크포인트: 이미 처리된 건 건너뜀
-    from backend.fb_check.forward_labeling import FORWARD_MODEL, PROMPT_VERSION as FWD_PROMPT
-    from backend.fb_check.consistency_verification import VERIFY_MODEL, PROMPT_VERSION as VER_PROMPT
+    from backend.fb_check.consistency_verification import PROMPT_VERSION as VER_PROMPT
+    from backend.fb_check.consistency_verification import VERIFY_MODEL
+    from backend.fb_check.forward_labeling import FORWARD_MODEL
+    from backend.fb_check.forward_labeling import PROMPT_VERSION as FWD_PROMPT
     expect = {
         "forward_model":  args.model or FORWARD_MODEL,
         "forward_prompt": FWD_PROMPT,
@@ -676,7 +677,7 @@ def main() -> None:
             raise SystemExit("--only-redo는 --redo-reason과 함께 써야 한다")
         targets = _redo_ids(results_path, redo)
         pending = [r for r in pending if r["chunk_id"] in targets]
-        logger.info(f"  ★ --only-redo: 재처리 대상만 처리한다 (미처리분은 건드리지 않는다)")
+        logger.info("  ★ --only-redo: 재처리 대상만 처리한다 (미처리분은 건드리지 않는다)")
     log_scope(pending, records, len(done_ids), redo, args.only_redo)
     if args.dry_scope:
         logger.info("  --dry-scope: 범위만 확인하고 종료한다 (API 호출 없음)")

@@ -35,7 +35,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from backend.db.connection import DATABASE_URL
-from backend.utils import load_logger, load_jsonl, PROJECT_ROOT
+from backend.utils import PROJECT_ROOT, load_jsonl, load_logger
 
 logger = load_logger("db_load.log")
 
@@ -212,7 +212,7 @@ def _strip_nul(v: Any) -> Any:
 
 
 def _upsert_chunks(conn, table: str, cols: list[str], rows: list[tuple]) -> None:
-    from psycopg2.extras import execute_values, Json
+    from psycopg2.extras import Json, execute_values
     rows = [
         tuple(
             Json(_strip_nul(v)) if isinstance(v, (dict, list)) else _strip_nul(v)

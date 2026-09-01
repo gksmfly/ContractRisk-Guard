@@ -25,7 +25,7 @@ from backend.api.services.retrieval import _get_cached_embedder, _reciprocal_ran
 from backend.db.connection import get_conn
 from backend.db.loader import embed_texts
 from backend.eval.domain_filter_compare import _dense_with_score, _sparse_with_score
-from backend.eval.lightrag_compare import LAWS_PATH, _N_QUERIES, build_ground_truth
+from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, build_ground_truth
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("stage2_recall_diagnosis.log")

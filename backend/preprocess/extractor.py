@@ -2,7 +2,7 @@
 import re
 from typing import Any
 
-from backend.preprocess.cleaner import clean_text, clean_precedent_content
+from backend.preprocess.cleaner import clean_precedent_content, clean_text
 
 _LAW_HEADER = re.compile(r"^제\d+장\s")
 

@@ -36,10 +36,16 @@ from transformers import AutoTokenizer
 
 from backend.eval.confound_articles import _f1, best_constant
 from backend.model.electra import ArticleMultiLabelElectra
-from backend.training.train_article import (ArticleDataset, BASE_MODEL, LABELED_PATH,
-                                            apply_negative_ratio, exclude_gold_documents,
-                                            load_article_records, load_ftc_gold,
-                                            split_by_document, split_negative_holdout)
+from backend.training.train_article import (
+    LABELED_PATH,
+    ArticleDataset,
+    apply_negative_ratio,
+    exclude_gold_documents,
+    load_article_records,
+    load_ftc_gold,
+    split_by_document,
+    split_negative_holdout,
+)
 from backend.utils import PROJECT_ROOT, load_logger, save_json
 
 logger = load_logger("record_f1_eval.log")

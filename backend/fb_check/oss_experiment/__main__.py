@@ -28,12 +28,15 @@ from typing import Any
 import torch
 from transformers import ElectraTokenizerFast
 
-from backend.fb_check.backward_grounding import load_model, snippet_exists, predict
+from backend.fb_check.backward_grounding import load_model, predict, snippet_exists
 from backend.fb_check.oss_experiment.local_labeling import (
-    MODELS, load_local_model, run_forward_local, run_verify_local,
+    MODELS,
+    load_local_model,
+    run_forward_local,
+    run_verify_local,
 )
 from backend.model.electra import DualHeadElectra
-from backend.utils import load_jsonl, load_logger, save_json, save_jsonl, PROJECT_ROOT
+from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json, save_jsonl
 
 logger = load_logger("fb_check_oss.log")
 

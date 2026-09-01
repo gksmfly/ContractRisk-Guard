@@ -1,7 +1,6 @@
 # backend/domain/common.py
 import shutil
 from pathlib import Path
-from typing import Any
 
 from backend.utils import load_logger
 

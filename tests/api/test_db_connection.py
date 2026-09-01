@@ -49,7 +49,7 @@ class TestGetConn:
         monkeypatch.setattr(connection, "_pool", pool)
 
         with pytest.raises(ValueError):
-            with connection.get_conn() as c:
+            with connection.get_conn():        # 예외 경로 검증이라 커넥션 객체는 안 쓴다
                 raise ValueError("boom")
 
         assert conn.rolled_back is True

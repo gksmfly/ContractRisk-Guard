@@ -21,8 +21,10 @@ from typing import Any
 
 import torch
 
-from backend.fb_check.forward_labeling import _SYSTEM as FWD_SYSTEM, _FEW_SHOT_EXAMPLES as FWD_FEWSHOT
-from backend.fb_check.consistency_verification import _SYSTEM as VERIFY_SYSTEM, _FEW_SHOT_EXAMPLES as VERIFY_FEWSHOT
+from backend.fb_check.consistency_verification import _FEW_SHOT_EXAMPLES as VERIFY_FEWSHOT
+from backend.fb_check.consistency_verification import _SYSTEM as VERIFY_SYSTEM
+from backend.fb_check.forward_labeling import _FEW_SHOT_EXAMPLES as FWD_FEWSHOT
+from backend.fb_check.forward_labeling import _SYSTEM as FWD_SYSTEM
 
 MODELS = {
     "qwen2.5-14b": "Qwen/Qwen2.5-14B-Instruct",

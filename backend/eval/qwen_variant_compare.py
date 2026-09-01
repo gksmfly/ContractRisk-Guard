@@ -12,10 +12,13 @@ raptor_lite_compare.py와 완전히 동일하게 재사용한다.
 from backend.api.services.retrieval import _get_cached_embedder
 from backend.db.connection import get_conn
 from backend.eval.domain_filter_compare import _law_names, rrf_baseline_hit
-from backend.eval.legalmalr_lite_compare import _FEWSHOT as _REFORM_FEWSHOT, _SYSTEM as _REFORM_SYSTEM
-from backend.eval.lightrag_compare import LAWS_PATH, _N_QUERIES, build_ground_truth
+from backend.eval.legalmalr_lite_compare import _FEWSHOT as _REFORM_FEWSHOT
+from backend.eval.legalmalr_lite_compare import _SYSTEM as _REFORM_SYSTEM
+from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, build_ground_truth
 from backend.eval.local_llm import generate_json
-from backend.eval.raptor_lite_compare import _FEWSHOT as _ROUTE_FEWSHOT, _SYSTEM_TMPL as _ROUTE_SYSTEM_TMPL, routed_hit
+from backend.eval.raptor_lite_compare import _FEWSHOT as _ROUTE_FEWSHOT
+from backend.eval.raptor_lite_compare import _SYSTEM_TMPL as _ROUTE_SYSTEM_TMPL
+from backend.eval.raptor_lite_compare import routed_hit
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("qwen_variant_compare.log")

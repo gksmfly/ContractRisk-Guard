@@ -24,7 +24,7 @@ import numpy as np
 import torch
 from transformers import AutoModel, AutoTokenizer
 
-from backend.eval.lightrag_compare import LAWS_PATH, _N_QUERIES, build_ground_truth
+from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, build_ground_truth
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("lbox_embedding_compare.log")
@@ -82,7 +82,10 @@ def main() -> None:
     logger.info("  법령 3,323청크 LBOX 임베딩 계산 중...")
     corpus_vecs = _encode_all(model, tokenizer, [r["text"] for r in law_recs])
 
-    koe5_hits = lbox_hits = 0
+    # KoE5는 이 스크립트에서 다시 돌리지 않는다 — 아래 출력의 "KoE5 참조값 12%"는
+    # 이전 측정에서 가져온 상수다. 그래서 카운터도 LBOX 쪽 하나뿐이다
+    # (`koe5_hits`가 0으로 초기화만 되고 한 번도 증가하지 않은 채 남아 있었다).
+    lbox_hits = 0
     per_query = []
     for i, q in enumerate(queries):
         enc = tokenizer([q["clause"]], padding=True, truncation=True, max_length=_MAX_LEN, return_tensors="pt").to(_DEVICE)

@@ -21,7 +21,7 @@ rerank_compare.py(옵션1)와 직접 비교 가능.
 from sentence_transformers import CrossEncoder
 
 from backend.api.services.retrieval import fetch_candidates
-from backend.eval.lightrag_compare import LAWS_PATH, _N_QUERIES, build_ground_truth
+from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, build_ground_truth
 from backend.eval.rerank_compare import _CANDIDATE_POOL, _RERANKER_MODEL, _TOP_K, rrf_only_hit
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 

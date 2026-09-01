@@ -30,11 +30,11 @@ from lightrag.kg.shared_storage import initialize_pipeline_status
 from lightrag.llm.openai import gpt_4o_mini_complete, openai_embed
 from lightrag.utils import EmbeddingFunc
 
-from backend.eval.domain_filter_compare import _law_names
-from backend.eval.lightrag_compare import LAWS_PATH, WORKING_DIR, _N_QUERIES, build_ground_truth
-from backend.eval.raptor_lite_compare import _FEWSHOT, _SYSTEM_TMPL
-from backend.eval.local_llm import generate_json
 from backend.db.connection import get_conn
+from backend.eval.domain_filter_compare import _law_names
+from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, WORKING_DIR, build_ground_truth
+from backend.eval.local_llm import generate_json
+from backend.eval.raptor_lite_compare import _FEWSHOT, _SYSTEM_TMPL
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("lightrag_scoped_compare.log")

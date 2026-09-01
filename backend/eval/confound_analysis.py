@@ -45,7 +45,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import cross_val_score
 
 from backend.eval.ensemble_compare import GT_PATH, SPAN_CACHE_PATH, predict_probs
-from backend.model.electra import INV_RISK_MAP, RISK_MAP
+from backend.model.electra import RISK_MAP
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("confound_analysis.log")

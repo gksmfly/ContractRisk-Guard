@@ -105,10 +105,13 @@ def main() -> None:
     cf, cset = best_constant([("x", g) for g in G])
     const = [_f1(cset, g) for g in G]
     teach = [_f1(p, g) for g, p in rows]
-    stud = [args.student_f1] * len(G)          # 집계값만 알므로 페어드는 근사가 아니라 평균 비교
+    # 학생은 **페어드 비교를 하지 않는다.** 집계값(`--student-f1`) 하나만 알고 건별 점수가
+    # 없어서, 같은 값을 len(G)만큼 복제해 봐야 분산 0인 가짜 벡터가 된다 — CI가 실제보다
+    # 좁게 나온다. 아래 ①(teacher vs 상수)만 페어드로 재고, 학생과의 격차는 평균 차이로만
+    # 보고한다. 건별 점수를 확보하면 그때 페어드로 바꿀 것.
 
     logger.info(f"  채점 {len(rows)}건 | 상수 {sorted(cset)} = {cf * 100:.1f}%")
-    logger.info(f"  ----- 결과 -----")
+    logger.info("  ----- 결과 -----")
     logger.info(f"    teacher (gpt-4o)   {np.mean(teach) * 100:5.1f}%   임계값 없음")
     logger.info(f"    학생 (교차적합)      {args.student_f1 * 100:5.1f}%   임계값 8개를 맞춤 ← 학생에 유리")
     logger.info(f"    상수                {cf * 100:5.1f}%")

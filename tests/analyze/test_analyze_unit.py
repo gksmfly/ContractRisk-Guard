@@ -8,7 +8,7 @@ API 키/GPU 없이도 항상 돌아간다.
 실행: pytest tests/test_analyze_unit.py
 """
 
-from backend.api.services.analyze import _MAX_CLAUSES, split_clauses, _extract_spans
+from backend.api.services.analyze import _MAX_CLAUSES, _extract_spans, split_clauses
 
 
 class TestSplitClauses:

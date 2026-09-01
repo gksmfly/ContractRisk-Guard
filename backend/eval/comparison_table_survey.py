@@ -52,7 +52,6 @@ import json
 import random
 import re
 from collections import Counter
-from pathlib import Path
 
 from backend.labeling.articles import normalize
 from backend.scripts.parse_ftc_case_pdf import extract_text_from_pdf
@@ -169,7 +168,7 @@ def main() -> None:
 
     ok = [r for r in rows if r["ok"]]
     logger.info(f"  훑은 사건 {scanned}건 → 대조표 후보 {len(ok)}건 ({len(ok) / scanned * 100:.1f}%)")
-    logger.info(f"  ----- ③ 실패 사유 -----")
+    logger.info("  ----- ③ 실패 사유 -----")
     for k, v in Counter(r["reason"] for r in rows if not r["ok"]).most_common():
         logger.info(f"    {k:<28}{v:>4}건")
     if not ok:
@@ -179,10 +178,10 @@ def main() -> None:
     single = [r for r in ok if r["n_articles"] == 1]
     tot_pairs = sum(r["n_pairs"] for r in ok)
     eff_pairs = sum(r["n_pairs"] for r in single)
-    logger.info(f"  ----- ① 쌍 수율 -----")
+    logger.info("  ----- ① 쌍 수율 -----")
     logger.info(f"    전체 후보 {len(ok)}건 → {tot_pairs}쌍 (사건당 {tot_pairs / len(ok):.2f})")
     logger.info(f"    추출 경로 {dict(Counter(r['source'] for r in ok))}")
-    logger.info(f"  ----- ② 근거_법령 개수 -----")
+    logger.info("  ----- ② 근거_법령 개수 -----")
     logger.info(f"    1개 {len(single)}건 ({len(single) / len(ok) * 100:.1f}%) | "
                 f"2개+ {len(ok) - len(single)}건")
     logger.info(f"    **유효 쌍**(근거 1개만) {eff_pairs}쌍 (사건당 {eff_pairs / max(1, len(single)):.2f})")
@@ -190,7 +189,7 @@ def main() -> None:
     rate = len(ok) / scanned
     est_cases = rate * 1163
     est_pairs = est_cases * (len(single) / len(ok)) * (eff_pairs / max(1, len(single)))
-    logger.info(f"  ----- 전량(1,163건) 환산 -----")
+    logger.info("  ----- 전량(1,163건) 환산 -----")
     logger.info(f"    대조표 후보 약 {est_cases:.0f}건 → **유효 쌍 약 {est_pairs:.0f}개**")
     verdict = ("조별 임계값 8개를 교차적합으로 보정" if est_pairs >= 200 else
                "전역 임계값 1개로 축소" if est_pairs < 100 else

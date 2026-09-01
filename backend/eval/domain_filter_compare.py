@@ -26,7 +26,7 @@ lightrag_compare_final.py와 같은 쿼리 세트로 직접 비교 가능.
 from backend.api.services.retrieval import _get_cached_embedder, _reciprocal_rank_fusion, _search_dense, _search_sparse
 from backend.db.connection import get_conn
 from backend.db.loader import embed_texts
-from backend.eval.lightrag_compare import LAWS_PATH, _N_QUERIES, build_ground_truth
+from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, build_ground_truth
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("domain_filter_compare.log")
