@@ -5,6 +5,29 @@ on:
     branches: [main]
 
 jobs:
+  # pytest와 **별도 job**이다. ruff는 의존성이 전혀 없는 단일 바이너리라, 같은 job에
+  # 넣으면 torch(CPU wheel) 설치 몇 분을 기다린 뒤에야 린트 결과가 나온다. 갈라 두면
+  # import 순서 하나 틀린 것을 20초 안에 안다.
+  ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # **버전을 고정한다.** 안 하면 ruff 새 릴리스가 규칙을 추가하는 순간, 코드를 한 줄도
+      # 안 바꿨는데 CI가 빨개진다. 올릴 때는 로컬에서 `ruff check`를 먼저 0건으로 만들고
+      # 이 핀을 같이 올릴 것.
+      - name: Install ruff
+        run: pip install ruff==0.16.5
+
+      # 설정(select = ["F", "I"])은 pyproject.toml에 있다 — 왜 그 둘만인지도 거기 적혀 있다.
+      # Black은 도입하지 않는다(측정 결과 127개 중 110개 파일 재포맷, 주석 정렬·blame 손실).
+      - name: Lint (F=버그류, I=import 순서)
+        run: ruff check backend/ tests/
+
   pytest:
     runs-on: ubuntu-latest
     steps:

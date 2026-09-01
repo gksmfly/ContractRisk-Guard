@@ -20,8 +20,13 @@ High/Medium/Low를 표시했다. 두 가지가 그 설계를 무너뜨렸다:
 
     출력      위반 소지 조 목록(빈 리스트 가능)
     주장      "이 조항을 확인해 보세요 — 제N조 관련으로 보입니다"
-    근거      조항 단위 재현 78.0% · 오경보 2.6%  (배포 임계값, `article_gold_eval`)
+    근거      조항 단위 재현 78.0%  (배포 임계값, clean gold n=255, `article_gold_eval`)
               ← r(계약서 내 위반 비율)과 무관한 모델 속성이라 r 없이도 보고할 수 있다
+
+**오경보율은 아직 없다.** 예전에 여기 "오경보 2.6%"라고 적혀 있었는데, 그 값은 음성 풀의
+정답이 GPT 라벨(forward ∩ verify) 그 자체여서 순환이었다 — 모델이 GPT보다 잘 찾아 짚은
+것도 오경보로 세어진다. 이름을 `disagree_with_gpt`로 바꿨고, 독립 준거로 잰 오경보율은
+표준계약서 조항을 사람이 판단해야 나온다.
 
 조 단위 정밀도는 그보다 낮다(44%대). 그래서 **조 이름은 단정하지 않고 참고로 붙인다** —
 "제9조 위반입니다"는 44% 위에 서지만 "이 조항을 확인해 보세요"는 78% 위에 선다.
@@ -98,10 +103,27 @@ def electra_predict(text: str) -> list[str]:
     대신 제품이 주장하는 것은 **조항 지목**이다. 그 주장이 서는 지표는 측정돼 있다
     (배포 임계값, `article_gold_eval`):
 
-        조항 단위 재현 78.0% · 오경보 2.6%     ← r(계약서 내 위반 비율)과 무관한 모델 속성
+        조항 단위 재현 78.0%                   ← r(계약서 내 위반 비율)과 무관한 모델 속성
         조 단위 정밀도는 그보다 낮으므로(44%대) **조 이름은 참고로만 붙인다**
 
     화면 문구가 "이 조항을 확인해 보세요 — 제N조 관련으로 보입니다"인 이유가 이것이다.
+
+    ## 입력은 **조항 원문**이다 — evidence_span을 넣지 말 것 (2026-09-01)
+
+    2026-08-31까지 `judgment_node`가 `evidence_span or clause`를 넣었다. `models/v4`는
+    span 증강으로 학습했으니 그때는 맞았지만, `article_v1`은 원문 전용으로 학습했고
+    (`train_article` 규칙 6) 채점도 원문으로 했다. **모델과 평가만 바뀌고 운영 입력이
+    남아 있었다** — 78.0%가 운영이 받는 입력을 설명하지 않았다.
+
+    측정(`backend/eval/input_parity_eval.py`, span 보유 136건 페어드, 같은 조항 두 입력):
+
+        조항 재현   원문 81.6%  →  조각 72.1%   -9.6%p [-16.9,-2.9]  유의하게 나빠짐
+        조 F1       원문 41.8%  →  조각 37.0%    -4.8%p [-11.0,+1.2]  미판정
+
+    게다가 **입력이 정답과 상관한다.** span은 GPT가 위반이라 본 부분이라 위반 조항의
+    53%에만 있고 비위반 조항에는 2%뿐이다 — 양성은 조각으로, 음성은 원문으로 들어가서
+    재현은 78.0→72.9%로 내려가고 GPT불일치는 2.6→4.0%로 올라간다. **두 축이 같은 방향으로
+    나빠지는 게 아니라 서로 반대로 어긋난다.**
     """
     model, tokenizer, device = _get_electra()
     enc = tokenizer(text, max_length=256, padding="max_length", truncation=True, return_tensors="pt")
@@ -116,11 +138,11 @@ def electra_predict(text: str) -> list[str]:
 
 
 def judgment_node(state: ClauseState) -> dict:
-    # models/v4는 evidence_span 길이(평균 40자대) 위주로 학습됐으므로, 전체 조항
-    # 대신 evidence_span을 그대로 넣어야 학습·추론 입력 분포가 맞는다
-    # (evidence_span이 없으면 전체 조항으로 폴백).
-    query = state.get("evidence_span") or state["clause"]
-    articles = electra_predict(query)
+    # **조항 원문을 넣는다. evidence_span으로 되돌리지 말 것** (2026-09-01, 실측 근거는
+    # `electra_predict` 참고). 옛 주석은 "models/v4가 span 길이로 학습됐으므로 span을
+    # 넣어야 분포가 맞는다"였는데, v4는 서빙에서 빠졌고 `article_v1`은 원문 전용으로
+    # 학습됐다(`train_article` 규칙 6, augment=False). 모델만 바뀌고 입력만 남아 있었다.
+    articles = electra_predict(state["clause"])
     return {
         "model_articles": articles,
         # 조항을 지목했는가 = 사용자에게 보여줄 것인가. 이진이다.

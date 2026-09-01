@@ -119,6 +119,26 @@ def _dedup(rows: list[dict], thr: float = 0.80) -> tuple[list[dict], int]:
     return kept, dropped
 
 
+def _truncated_flags(texts: list[str], max_len: int = 256) -> list[bool]:
+    """모델 입력(`max_len` 토큰)에서 **잘리는** 조항 표시.
+
+    실제 약관은 조 하나에 항이 여럿 붙어 학습 텍스트보다 2.4배 길고, 35.4%가 잘린다
+    (`backend/eval/input_distribution_check.py`). 잘리는 구간에서 슬라이딩 윈도 OR이
+    지목률을 42.9 → 60.0%로 올리는데, **그 17%p가 놓쳤던 위반인지 오경보인지 가릴 준거가
+    없다.** 사람 판단이 이 구간을 덮으면 r과 함께 그 결정도 같이 난다.
+
+    **블라인드를 깨지 않는다** — 모델 예측이 아니라 입력 길이다. 토크나이저를 못 읽으면
+    글자 수로 근사한다(실측 2.3자/토큰).
+    """
+    try:
+        from transformers import AutoTokenizer
+        tok = AutoTokenizer.from_pretrained(str(PROJECT_ROOT / "models/article_v1"))
+        return [len(tok(t)["input_ids"]) > max_len for t in texts]
+    except Exception as e:                                   # noqa: BLE001
+        logger.warning(f"  토크나이저 없이 글자 수로 근사한다 ({e})")
+        return [len(t) > int(max_len * 2.3) for t in texts]
+
+
 def build() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     rows = []
@@ -134,15 +154,20 @@ def build() -> None:
     if not rows:
         raise SystemExit(f"{SRC_DIR} 에 약관 파일(.html/.txt)이 없다")
 
+    trunc = _truncated_flags([r["text"] for r in rows])
     with open(SHEET, "w", encoding="utf-8-sig", newline="") as fh:
         w = csv.writer(fh)
-        w.writerow(["id", "source", "violates_6_to_14", "note", "clause_text"])
-        for r in rows:
-            w.writerow([r["id"], r["source"], "", "", r["text"]])
+        w.writerow(["id", "source", "violates_6_to_14", "note", "over_256_tokens", "clause_text"])
+        for r, t in zip(rows, trunc):
+            w.writerow([r["id"], r["source"], "", "", int(t), r["text"]])
     logger.info(f"  워크시트 {len(rows)}개 조항 → {SHEET}")
     logger.info("  `violates_6_to_14` 열에 1(위반 의심) / 0(아님) 만 채우세요.")
     logger.info("  **모델 예측은 일부러 넣지 않았습니다** — 보고 판단하면 r이 오염됩니다.")
-    save_json({"n_clauses": len(rows), "by_source": {r["source"]: 0 for r in rows} | {},
+    logger.info(f"  `over_256_tokens` = 모델 입력에서 잘리는 조항({sum(trunc)}/{len(rows)}건). "
+                f"**이 열은 예측이 아니라 입력 길이라 블라인드를 깨지 않는다** — "
+                f"이 구간을 빠짐없이 판단해야 윈도 OR 채택 여부가 같이 결정된다")
+    save_json({"n_clauses": len(rows), "n_truncated": int(sum(trunc)),
+               "by_source": {r["source"]: 0 for r in rows} | {},
                "note": "판단 전 상태"}, REPORT)
 
 

@@ -202,11 +202,24 @@ decision rules and the analyses that failed, are in
     confidence bands were measured on `models/v4` only, so neither could be carried over. The UI
     reports a binary "needs review" plus the predicted articles **as a reference, not a verdict** —
     clause-level recall is **78.0%** against the FTC-cited articles, while article-level is
-    indistinguishable from a constant (38.2% vs 40.3%, CI [−7.7, +3.4]).
+    indistinguishable from a constant (38.6% vs 36.1%, CI [−3.7, +9.2] on the clean stratum,
+    n=255). The earlier "38.2% vs 40.3%, CI [−7.7, +3.4]" in this file was measured on the old
+    327-record definition, 22% of which is unscoreable, and is superseded.
     The companion "2.6% false-alarm" figure was **withdrawn on 2026-09-01**: the negative pool's
     ground truth *is* the GPT label (`forward ∩ verify`), so a clause the model flags and GPT did not
     is counted as a false alarm even when the model is right. It measures **disagreement with GPT**,
     not false alarms. No independently-judged negative set exists yet — see Limitations.
+  - **The serving input was not the input the model was trained or scored on** (found and fixed
+    2026-09-01). `judgment_node` fed `evidence_span or clause` — a rule inherited from `models/v4`,
+    which was trained with span augmentation — while `article_v1` is trained and scored on the full
+    clause. Paired on the 136 gold clauses that have a span, feeding the ~43-character fragment
+    instead of the ~183-character clause costs **9.6 points of clause-level recall**
+    (81.6% → 72.1%, CI [−16.9, −2.9]). Worse, the input is *correlated with the label*: a span
+    exists for 53% of violating clauses but only 2% of non-violating ones, so recall and
+    disagreement move in opposite directions (78.0% → 72.9% and 2.6% → 4.0%). The reported 78.0%
+    described an input production never used. Serving now passes the full clause; a regression test
+    pins it (`tests/agents/test_judgment_agent.py`), and `backend/eval/input_parity_eval.py` holds
+    the measurement.
   - **Thresholds are still the dev-split values**, not deployment-calibrated. Re-optimising needs the
     deployment prevalence *r*, which is unmeasured; a 99-clause blind worksheet
     (`backend/eval/prevalence_worksheet.py`) is built and awaiting human labels.

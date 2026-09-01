@@ -34,6 +34,12 @@ konlpy>=0.6.0
 # 데이터베이스 스키마 마이그레이션 — backend/db/migrations/, alembic.ini 참고
 alembic>=1.13.0
 
+# 린터 — CI(.github/workflows/backend-tests.yml의 ruff job)와 **같은 버전을 고정**한다.
+# 로컬이 더 최신이면 CI에서만 새 규칙에 걸려서, 고치고 나서야 이유를 알게 된다.
+# 설정은 pyproject.toml의 [tool.ruff] 참고(select = ["F", "I"]).
+# Black은 일부러 넣지 않는다 — pyproject.toml의 [tool.ruff.format] 주석에 근거가 있다.
+ruff==0.16.5
+
 # 로컬 개발용 테스트 도구 (CI는 requirements-ci.txt를 따로 씀)
 pytest>=7.4.0
 pytest-asyncio>=0.23.0
