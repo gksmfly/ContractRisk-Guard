@@ -26,7 +26,8 @@ High/Medium/Low를 표시했다. 두 가지가 그 설계를 무너뜨렸다:
 **오경보율은 아직 없다.** 예전에 여기 "오경보 2.6%"라고 적혀 있었는데, 그 값은 음성 풀의
 정답이 GPT 라벨(forward ∩ verify) 그 자체여서 순환이었다 — 모델이 GPT보다 잘 찾아 짚은
 것도 오경보로 세어진다. 이름을 `disagree_with_gpt`로 바꿨고, 독립 준거로 잰 오경보율은
-표준계약서 조항을 사람이 판단해야 나온다.
+**이 연구 범위에서는 측정하지 않는다** — 독립 준거를 만들려면 사람이 약관 조항을
+이진 판단해야 하는데 그 판단의 신뢰도를 담보할 방법이 없어, 한계로 남긴다.
 
 조 단위 정밀도는 그보다 낮다(44%대). 그래서 **조 이름은 단정하지 않고 참고로 붙인다** —
 "제9조 위반입니다"는 44% 위에 서지만 "이 조항을 확인해 보세요"는 78% 위에 선다.
@@ -51,7 +52,7 @@ from backend.utils import PROJECT_ROOT
 MODEL_DIR = Path(os.environ.get("MODEL_DIR", str(PROJECT_ROOT / "models/article_v2")))
 
 
-def model_version() -> str:
+def get_model_version() -> str:
     """판단에 쓰인 체크포인트 이름. 저장된 분석 결과에 함께 남긴다.
 
     기본값은 `models/article_v2`(조 multi-label, max_len 512)다. 옛 `models/v4`(domain
@@ -66,6 +67,9 @@ def model_version() -> str:
     v4 시절 결과에는 `risk_level`·`confidence_band`가 있고 `articles`가 없다 —
     `analyses.result`가 JSONB라 마이그레이션 없이 함께 저장되므로
     `WHERE result->>'model_version' = 'v4'`로 옛 판정을 골라낼 수 있다.
+
+    **함수 이름은 `get_model_version`이지만 응답 필드는 `model_version`이다.** 예전에
+    일괄 rename이 필드까지 끌고 가서 대시보드 쿼리가 NULL만 받은 적이 있다 — 붙이지 말 것.
     """
     return MODEL_DIR.name
 # 프로젝트 규칙상 GPU는 cuda:1 고정(`Claude.md`). 이전에는 `torch.device("cuda")`라
@@ -102,7 +106,7 @@ def _get_electra() -> tuple[ArticleMultiLabelElectra, ElectraTokenizerFast, Any]
     return _electra_model, _electra_tokenizer, _electra_device
 
 
-def electra_predict(text: str) -> list[str]:
+def predict_articles(text: str) -> list[str]:
     """조항이 위반할 가능성이 있는 **약관규제법 조 목록**을 반환한다. 빈 리스트면 미지목.
 
     ## 위험도 3단계를 더 이상 내지 않는다 (2026-08-31)
@@ -168,10 +172,10 @@ def electra_predict(text: str) -> list[str]:
 
 def judgment_node(state: ClauseState) -> dict:
     # **조항 원문을 넣는다. evidence_span으로 되돌리지 말 것** (2026-09-01, 실측 근거는
-    # `electra_predict` 참고). 옛 주석은 "models/v4가 span 길이로 학습됐으므로 span을
+    # `predict_articles` 참고). 옛 주석은 "models/v4가 span 길이로 학습됐으므로 span을
     # 넣어야 분포가 맞는다"였는데, v4는 서빙에서 빠졌고 `article_v1`은 원문 전용으로
     # 학습됐다(`train_article` 규칙 6, augment=False). 모델만 바뀌고 입력만 남아 있었다.
-    articles = electra_predict(state["clause"])
+    articles = predict_articles(state["clause"])
     return {
         "model_articles": articles,
         # 조항을 지목했는가 = 사용자에게 보여줄 것인가. 이진이다.

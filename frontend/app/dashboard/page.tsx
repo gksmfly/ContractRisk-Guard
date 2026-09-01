@@ -48,7 +48,9 @@ export default async function DashboardPage() {
          -- 2026-08-31부터 위험도 3단계를 내지 않는다. 새 결과는 review_count를 쓰고,
          -- 옛 저장분(high_count)은 그대로 남아 있으므로 COALESCE로 둘 다 받는다.
          (result->>'review_count')::int AS review_count,
-         result->>'model_version' AS model_version
+         -- get_model_version 은 필드명이 잘못 나가던 기간(2026-09-01 이전)의 저장분이다.
+         -- 그 창에 저장된 행도 세대를 알 수 있게 둘 다 받는다.
+         COALESCE(result->>'model_version', result->>'get_model_version') AS model_version
        FROM analyses
        WHERE user_id = $1
        ORDER BY created_at DESC`,

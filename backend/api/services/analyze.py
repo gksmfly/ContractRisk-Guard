@@ -3,12 +3,13 @@ import asyncio
 import difflib
 import os
 import re
+from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import HTTPException
 
 from backend.agents.graph import get_graph
-from backend.agents.judgment_agent import model_version
+from backend.agents.judgment_agent import get_model_version
 from backend.api.schemas import AnalyzeResponse, ClauseResult, EvidenceSpan, OutOfScopeClause
 
 # 근거 문구 매칭 기준을 FB-Check와 공유한다 — 검증 파이프라인이 통과시킨 근거를
@@ -42,7 +43,7 @@ _MAX_CONCURRENT_CLAUSES = int(os.environ.get("MAX_CONCURRENT_CLAUSES", "6"))
 _clause_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_CLAUSES)
 
 
-async def _process_clause_async(client: Any, clause: str, index: int):
+async def _process_clause_async(client: Any, clause: str, index: int) -> ClauseResult | OutOfScopeClause:
     """조항 하나를 스레드로 넘겨 처리하되, 전역 세마포어로 동시 호출 수를 묶는다."""
     async with _clause_semaphore:
         return await asyncio.to_thread(_process_clause, client, clause, index)
@@ -100,7 +101,7 @@ def _normalize_with_map(text: str) -> tuple[str, list[int]]:
     return "".join(out), idx_map
 
 
-def _span_from_norm(idx_map: list[int], start: int, length: int) -> tuple[int, int]:
+def _map_span_from_norm(idx_map: list[int], start: int, length: int) -> tuple[int, int]:
     """정규화 문자열의 [start, start+length) 구간을 원문 offset으로 되돌린다."""
     return idx_map[start], idx_map[start + length - 1] + 1
 
@@ -113,7 +114,7 @@ def _extract_spans(clause_text: str, evidence_span: str) -> list[EvidenceSpan]:
     `clean.jsonl`(FB-Check가 CLEAN으로 통과시킨 694건)로 재보니 완전 일치 실패가
     **210건(30.3%)**이었다. 즉 세 조항 중 하나는 "왜 위험한지"가 표시되지 않았다.
 
-    FB-Check의 `backward_grounding.snippet_exists()`는 같은 상황을 이미 퍼지 매칭으로
+    FB-Check의 `backward_grounding.check_snippet_exists()`는 같은 상황을 이미 퍼지 매칭으로
     받아들이고 있었다(PDF 표 추출 시 공백·순서가 깨져도 문구 자체는 실존). 검증
     파이프라인이 통과시킨 근거를 서빙이 버리는 불일치였으므로, 같은 기준
     (`_FUZZY_MATCH_THRESHOLD=0.85`)을 쓴다.
@@ -142,7 +143,7 @@ def _extract_spans(clause_text: str, evidence_span: str) -> list[EvidenceSpan]:
     if hits:
         out = []
         for h in hits:
-            s, e = _span_from_norm(idx_map, h, len(norm_span))
+            s, e = _map_span_from_norm(idx_map, h, len(norm_span))
             out.append(EvidenceSpan(text=clause_text[s:e], start=s, end=e))
         return out
 
@@ -150,7 +151,7 @@ def _extract_spans(clause_text: str, evidence_span: str) -> list[EvidenceSpan]:
     matcher = difflib.SequenceMatcher(None, norm_span, norm_text, autojunk=False)
     match = matcher.find_longest_match(0, len(norm_span), 0, len(norm_text))
     if match.size and match.size / len(norm_span) >= _FUZZY_MATCH_THRESHOLD:
-        s, e = _span_from_norm(idx_map, match.b, match.size)
+        s, e = _map_span_from_norm(idx_map, match.b, match.size)
         return [EvidenceSpan(text=clause_text[s:e], start=s, end=e)]
     return []
 
@@ -240,11 +241,11 @@ async def run_analyze(text: str) -> AnalyzeResponse:
         input_clauses     = len(clauses) + truncated,
         truncated_clauses = truncated,
         out_of_scope      = skipped,
-        model_version     = model_version(),
+        model_version         = get_model_version(),
     )
 
 
-async def run_analyze_stream(text: str):
+async def run_analyze_stream(text: str) -> AsyncIterator[dict]:
     """조항이 하나씩 끝날 때마다 진행 상황을 흘려보내는 스트리밍 버전.
 
     프론트가 "6단계 파이프라인을 도는 척" 타이머로 꾸며낸 진행률을 보여주고
@@ -271,7 +272,7 @@ async def run_analyze_stream(text: str):
             detail="현재 처리 중인 분석 요청이 많습니다. 잠시 후 다시 시도해주세요.",
         )
 
-    async def _events():
+    async def _stream_events() -> AsyncIterator[dict]:
         try:
             client = _get_openai()
             total = len(clauses)
@@ -280,10 +281,10 @@ async def run_analyze_stream(text: str):
             # 조항을 병렬로 던지고 **끝나는 순서대로** 진행률을 흘린다.
             # 순차 처리 시절에는 진행률 index가 곧 조항 번호였지만, 병렬에서는
             # 완료 순서가 뒤섞이므로 진행률은 "몇 개 끝났는지"(done/total)로 센다.
-            async def _one(i: int, c: str):
+            async def _process_one(i: int, c: str) -> tuple[int, ClauseResult | OutOfScopeClause]:
                 return i, await _process_clause_async(client, c, i)
 
-            tasks = [asyncio.create_task(_one(i, c)) for i, c in enumerate(clauses)]
+            tasks = [asyncio.create_task(_process_one(i, c)) for i, c in enumerate(clauses)]
             done_n = 0
             for fut in asyncio.as_completed(tasks):
                 i, outcome = await fut
@@ -309,10 +310,10 @@ async def run_analyze_stream(text: str):
                 input_clauses     = total + truncated,
                 truncated_clauses = truncated,
                 out_of_scope      = skipped,
-                model_version     = model_version(),
+                model_version         = get_model_version(),
             )
             yield {"type": "done", "result": final.model_dump()}
         finally:
             _analyze_semaphore.release()
 
-    return _events()
+    return _stream_events()
