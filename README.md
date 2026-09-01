@@ -220,6 +220,20 @@ decision rules and the analyses that failed, are in
     described an input production never used. Serving now passes the full clause; a regression test
     pins it (`tests/agents/test_judgment_agent.py`), and `backend/eval/input_parity_eval.py` holds
     the measurement.
+  - **`max_len=256` was silently truncating a third of real input** (found and fixed 2026-09-01,
+    now `models/article_v2`). It is a training hyperparameter, but in production it acted as data
+    loss: real contract clauses bundle several sub-items and run 2.4x longer than the training text,
+    so **35.4% lost their tail** — against 5.5% of the gold set, which is why the reported 78.0%
+    never showed it. Retraining at 512 was adopted under a **pre-registered no-harm rule** (gold
+    clause-level recall 78.0% -> 78.4%, CI [-3.9, +4.7]); the rationale is *not* that 512 scores
+    better — picking on gold is forbidden — but that the user's input should not be discarded.
+    Serving now reads `max_len` from the checkpoint instead of hardcoding it.
+    **Two caveats stand.** Flagging on the 99 real clauses fell 39.4% -> 28.3% (paired -11.1%p,
+    CI [-20.2, -2.0]) and nothing available can yet grade whether that is v1 over-flagging on a
+    truncated head or v2 diluting a violation in a long clause; the gold truncated subgroup shows
+    **0/18 detections lost** (rule of three: at most 16.7%), which argues against the latter. And
+    that subgroup only covers mild truncation — gold's worst case loses 25.4% of its tokens while
+    **60% of the real truncated clauses lose more than that**, and 8 still exceed 512.
   - **Thresholds are still the dev-split values**, not deployment-calibrated. Re-optimising needs the
     deployment prevalence *r*, which is unmeasured; a 99-clause blind worksheet
     (`backend/eval/prevalence_worksheet.py`) is built and awaiting human labels.

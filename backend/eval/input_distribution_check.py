@@ -139,6 +139,28 @@ def _truncation(texts: list[str], tokenizer, max_len: int) -> dict:
             "truncated_rate": float((n > max_len).mean())}
 
 
+def _severity(texts: list[str], tokenizer, max_len: int = 256) -> dict:
+    """절단 **정도**. 절단률(몇 %가 잘리나)과 다른 질문이다 — 얼마나 잘리나.
+
+    `max_len` 개입의 무해 확인을 gold 절단분(n=18)에서 하고 "놓침 0"을 얻었는데,
+    **그 18건은 전부 살짝 잘린 것들이었다.** gold 절단분의 최악 손실이 87토큰(25.4%)인데
+    실제 약관 절단분의 60%가 그보다 심하다. 같은 개입이지만 되찾아주는 양이 다르므로,
+    0/18이 덮는 것은 "살짝 잘린 것을 되찾아도 놓침이 안 생긴다"까지다.
+
+    **n이 아니라 구간이 한계다.** 이 표를 0/18 옆에 항상 붙일 것.
+    """
+    n = np.array([len(tokenizer(t)["input_ids"]) for t in texts])
+    cut = n[n > max_len]
+    if not len(cut):
+        return {"n_truncated": 0}
+    lost = (cut - max_len) / cut * 100
+    return {"n_truncated": int(len(cut)),
+            "tok_median": float(np.median(cut)), "tok_max": float(cut.max()),
+            "lost_pct_median": float(np.median(lost)), "lost_pct_max": float(lost.max()),
+            "lost_tok_max": int((cut - max_len).max()),
+            "over_512": int((cut > 512).sum())}
+
+
 def _probs(texts: list[str], model, tokenizer, device, names, bs: int, max_len: int) -> np.ndarray:
     recs = [{"text": t, "articles": [], "group": "g"} for t in texts]
     ds = ArticleDataset(recs, tokenizer, max_len, names)
@@ -189,6 +211,27 @@ def main() -> None:
     logger.info("    1글자 토큰 = PDF 추출이 단어를 쪼갠 흔적(`체 납된`→`체`). 붙여넣기엔 조사 정도만 남는다")
     logger.info("    ★ **잘림률이 진짜 격차다** — 보고값 78.0%는 5%만 잘리는 집단에서 나왔는데 "
                 "운영 입력은 3분의 1이 뒷부분을 잃는다")
+
+    # ----- 절단 **정도**. 절단률과 다른 질문이다 -----
+    logger.info("  ----- 절단 정도 (얼마나 잘리나 — 절단률과 다른 질문) -----")
+    logger.info(f"  {'집단':<26}{'절단':>6}{'토큰중앙':>9}{'최대':>7}{'손실중앙':>9}{'손실최대':>9}{'>512':>7}")
+    sev = {}
+    for k, v in pops.items():
+        e = sev[k] = _severity(v, tokenizer)
+        if not e["n_truncated"]:
+            logger.info(f"  {k:<26}{0:>6}   (절단 없음)")
+            continue
+        logger.info(f"  {k:<26}{e['n_truncated']:>6}{e['tok_median']:>9.0f}{e['tok_max']:>7.0f}"
+                    f"{e['lost_pct_median']:>8.1f}%{e['lost_pct_max']:>8.1f}%{e['over_512']:>7}")
+    g, r = sev.get("ftc_gold (PDF 파서)", {}), sev.get("실제 약관 99 (붙여넣기)", {})
+    if g.get("n_truncated") and r.get("n_truncated"):
+        rn = np.array([len(tokenizer(t)["input_ids"]) for t in real])
+        beyond = int(((rn[rn > 256] - 256) > g["lost_tok_max"]).sum())
+        logger.info(f"    ★ gold 절단분의 최악 손실은 {g['lost_tok_max']}토큰({g['lost_pct_max']:.1f}%)이고 "
+                    f"**그보다 심한 gold 레코드는 0건**이다. 실제 약관 절단분은 "
+                    f"{beyond}/{r['n_truncated']}건({beyond / r['n_truncated'] * 100:.0f}%)이 그 밖에 있다")
+        logger.info("    → gold에서 얻은 무해 확인(놓침 0/18)이 덮는 것은 **살짝 잘린 구간까지**다. "
+                    "n이 아니라 **구간**이 한계다")
 
     logger.info("  ----- 분리 가능성 (TF-IDF char 2-4gram, 5-fold CV AUC) -----")
     sep = {
