@@ -25,18 +25,15 @@ Act (약관규제법) — unilateral termination (§9), liability limitation (§
 ## Approach
 
 - **FB-Check to filter hallucinations from auto-labeled data**: Forward Labeling (GPT-4o generates label L and evidence span E from clause C) → Backward Grounding (1st-generation KoELECTRA validates E ⊂ C at index level) → Consistency Verification (re-labels from E alone; L′ == L → CLEAN, otherwise NOISE)
-- **Data Flywheel** — *suspended, not disproven.* The 2nd-generation model was removed from the
-  labeling path after it was measured to **worsen** source confound (75.5% → 96.9%): it had learned
-  the corpus shortcut and rejected exactly the samples that broke it. Re-measured 2026-08-31 under
-  the article-level taxonomy, where that shortcut is small (+2.4%p on all 1,786 CLEAN records;
-  the +0.9%p first reported was the 1,700-record snapshot): adding the model as a third
-  voter **no longer degrades confound** (+2.7%p → +2.9%p) and moves label quality +2.5%p at −6% yield
-  — but that gain is **not yet conclusive**. Scored the right way (the 17 records the model vote
-  removes vs the 114 it keeps, rather than two overlapping means), the removed records are
-  **19.6%p worse** (bootstrap 95% CI [−0.5, +38.0] — inconclusive; Mann-Whitney p = 0.031 —
-  significant; both are reported because the metric is bounded and bimodal). Settling it needs
-  ~34 disagreeing records and there are 17; finishing the halted labelling run would supply them.
-  Backward Grounding is currently a pure string check (`E ⊂ C`), which is what the paper defined it as.
+- **Data Flywheel** — *suspended after three attempts, none of which showed an effect.* The most
+  recent (2026-09-06) put `article_v2` in as a third voter and first reported +36.7%p; that was
+  **withdrawn within the day** once it turned out the exclusion rule swept in every record whose GPT
+  label was empty — those score 0 against a reference that never is, so the rule was manufacturing
+  its own signal. Re-run symmetrically, all three exposure layers are undetermined, and the layer
+  with the most power (685 vs 38) puts the effect size at **d = −0.01**. Worth stating plainly what
+  even a positive result would have bought: this measures whether a third voter vetoes bad labels,
+  which is a necessary condition for the paper's claim — that repeated retraining jointly optimises
+  label quality and generalisation — and not the claim itself.
 - **KoELECTRA as the inference engine**: The fine-tuned classifier makes all risk judgments; GPT-4o is strictly limited to explanation generation and search query construction — reducing LLM calls, latency, and cost while keeping judgments consistent
 - **A fixed 6-stage pipeline** (not agentic): Analysis → Retrieval Strategy → Evidence Selection →
   Judgment (fine-tuned KoELECTRA) → Red-team → Evidence Verification. **No LLM controls the flow.**
@@ -73,11 +70,11 @@ legitimate outcome for the standard-contract half of that corpus.
 
 | Question | Measurement |
 |---|---|
-| Does FB-Check select better labels? | **+8.8%p** [+5.1, +12.7] — CLEAN 46.3% vs NOISE 37.6% article-F1 (n=630 / 395, non-empty predictions) |
+| Does FB-Check select better labels? | **+3.8%p** [+1.1, +6.6] — the `agreed` label that actually enters the training set (CLEAN 42.8%, n=1,150) vs the `forward` label that was discarded (NOISE 39.0%, n=816), article-F1 against FTC-cited articles, non-empty predictions, MW p=1.5e-03. Scoring both sides with the `forward` label (the filter's raw selectivity) gives +7.7%p [+5.1, +10.3]; the headline uses the smaller, claim-matching number. On the ambiguity-free stratum (single clause, single cited article) the gap is +6.9%p [−4.6, +18.5] — **undetermined**; 80% power needs ~601 NOISE records and there are 92. By discard reason: article_mismatch +11.3%p [+4.9, +17.3], label_mismatch +6.9%p [+4.2, +9.6] — but only in one direction: forward *Medium* → verify *High* is +10.9%p worse (n=354), while forward *High* → verify *Medium* (n=189) is indistinguishable from CLEAN (−2.6%p [−6.4, +1.2]). Script: `backend/eval/fbcheck_external_eval.py`; report: `data/eval/fbcheck_external_report.json`. The earlier +8.8%p [+5.1, +12.7] (630/395 snapshot, README-only) is superseded |
 | Does the model read the clause, or the corpus it came from? | Source-conditional constant beats an unconditional one by only **+2.4%p** — the source shortcut is small (was +0.9%p on the 1,700-record snapshot; re-measured on all 1,786) |
-| Does the model beat "always guess the three most common articles"? | **Yes on the scoreable stratum**: teacher (GPT-4o) +9.0%p [+2.9, +15.4], student (110M KoELECTRA) +6.4%p [+1.6, +11.4] |
-| Does a larger model help? | **No.** GPT-4o and the 110M student are statistically tied (−2.4%p [−6.4, +1.7]) |
-| Does more training data help? | **No.** 300 → 900 examples moves gold F1 by −2.1%p (pre-registered threshold: +7%p) |
+| Does the model beat "always guess the three most common articles"? | **Yes on the scoreable stratum, at cross-fitted thresholds**: teacher (GPT-4o) +9.0%p [+2.9, +15.4], student (110M KoELECTRA) +6.4%p [+1.6, +11.4]. **At the deployed thresholds the student is +2.5%p [−3.7, +9.2] — undetermined.** The gap between the two is the calibration deficit |
+| Does a larger model help? | **Not detectable at this resolution.** GPT-4o and the 110M student differ by −2.4%p [−6.4, +1.7] — an interval that contains zero. This is *underpowered*, not *no effect* |
+| Does more training data help? | **Below the pre-registered threshold.** 300 → 900 moves gold F1 by −2.1%p (threshold: +7%p); 1,329 → 2,906 gives +0.9%p [−3.5, +5.4]. Detecting 3%p needs n≈3,400 and gold has 255 — deprioritised, not closed |
 
 **The evaluation set itself was the main confound.** 22% of it (72 of 327 cases) attributed a
 *case-level* list of cited articles to a *single* clause, because the PDF parser had found only one
@@ -187,9 +184,9 @@ decision rules and the analyses that failed, are in
 
 | Claim | Status | Basis |
 |---|---|---|
-| Data Flywheel | **Suspended, not disproven** | Failed via source confound under the 2-domain taxonomy; that mechanism does not recur now, but the benefit is unmeasurable at n=114 |
+| Data Flywheel | **Suspended — three attempts, none showing an effect** | **2026-08-16** — rejected under the 2-domain taxonomy: a model trained on pipeline output acted as a near-constant voter (+6.1%p over a constant) and, used as a veto, *worsened* source–label confounding (75.5% → 96.9%). **2026-09-01** — downgraded to *suspended*: that mechanism no longer recurs (the source shortcut is now +2.4%p), but the benefit was unmeasurable at n=114. **2026-09-06** — re-measured with `article_v2` as the voter. A first pass reported +36.7%p [+23.2, +49.5] and was **withdrawn the same day**: the exclusion rule auto-included empty GPT labels (30 of 55 excluded records), which score 0 against the never-empty FTC reference — *the apparent signal was the rule*. With a symmetric rule and a three-way split all three layers are undetermined; in the best-powered layer (685 vs 38) the effect size is **d = −0.01**, upper bound roughly +9%p. **Note what this measures**: whether a third voter vetoes bad labels — a *necessary condition*. The paper's claim is that repeated retraining jointly optimises label quality and generalisation, which no selection signal alone would establish |
 | 6-agent multi-agent system | **Restated** as a fixed 6-stage pipeline | LLM routing lost 0–100 to a constant; 18% → 81% retrieval after removal |
-| FB-Check filters hallucinated labels | **Validated externally** | +8.8%p [+5.1, +12.7] against FTC-cited articles, on non-empty predictions — first external check of this claim |
+| FB-Check filters hallucinated labels | **Validated externally** | +3.8%p [+1.1, +6.6] against FTC-cited articles on the label that enters training (`agreed`), non-empty predictions (n=1,150 / 816); +7.7%p [+5.1, +10.3] on the raw `forward` label. Undetermined on the ambiguity-free stratum (n=92 NOISE, ~601 needed). First external check of this claim; reproduced independently by two implementations to the decimal, then fixed in `backend/eval/fbcheck_external_eval.py` |
 | 2-domain taxonomy | **Replaced** by §6–§14 | The old scheme discarded 56.7% of input |
 | Evaluation set | **Corrected** | 22% was unscoreable by construction (72/72 diagnosed) |
 
@@ -209,9 +206,9 @@ decision rules and the analyses that failed, are in
   - **No risk tier is shown.** The article head has no risk output (gold was undefinable), and the
     confidence bands were measured on `models/v4` only, so neither could be carried over. The UI
     reports a binary "needs review" plus the predicted articles **as a reference, not a verdict** —
-    clause-level recall is **78.0%** against the FTC-cited articles, while article-level is
-    indistinguishable from a constant (38.6% vs 36.1%, CI [−3.7, +9.2] on the clean stratum,
-    n=255). The earlier "38.2% vs 40.3%, CI [−7.7, +3.4]" in this file was measured on the old
+    clause-level recall is **78.4%** against the FTC-cited articles (`article_v2`, max_len 512),
+    while article-level is indistinguishable from a constant (38.5% vs 36.1%, CI [−3.7, +9.2] on
+    the clean stratum, n=255). The earlier "38.2% vs 40.3%, CI [−7.7, +3.4]" in this file was measured on the old
     327-record definition, 22% of which is unscoreable, and is superseded.
     The companion "2.6% false-alarm" figure was **withdrawn on 2026-09-01**: the negative pool's
     ground truth *is* the GPT label (`forward ∩ verify`), so a clause the model flags and GPT did not
