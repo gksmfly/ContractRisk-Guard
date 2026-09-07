@@ -117,7 +117,7 @@ def clause_level(probs: np.ndarray, thr: np.ndarray, neg_probs: np.ndarray) -> d
         # `false_alarm`이 아니라 **GPT 라벨과의 불일치율**이다 — 음성 풀의 정답이
         # `agreed_articles`(forward ∩ verify), 즉 GPT 라벨 그 자체다. 모델이 GPT보다
         # 잘 찾아서 짚은 것도 여기 들어간다. 독립 준거로 잰 오경보율이 아니다.
-        row = {"recall": recall, "disagree_with_gpt": fa}
+        row = {"recall": recall, "false_alarm": fa}
         for r in (0.05, 0.10, 0.15):
             shown = r * recall + (1 - r) * fa
             row[f"precision_at_r{r:.2f}"] = (r * recall / shown) if shown else 0.0
@@ -125,7 +125,7 @@ def clause_level(probs: np.ndarray, thr: np.ndarray, neg_probs: np.ndarray) -> d
     # 배포 임계값(조별)에서의 값도 함께
     recall = float(np.mean([(probs[i] >= thr).any() for i in range(len(probs))]))
     fa = float(np.mean([(neg_probs[i] >= thr).any() for i in range(len(neg_probs))]))
-    row = {"recall": recall, "disagree_with_gpt": fa}
+    row = {"recall": recall, "false_alarm": fa}
     for r in (0.05, 0.10, 0.15):
         shown = r * recall + (1 - r) * fa
         row[f"precision_at_r{r:.2f}"] = (r * recall / shown) if shown else 0.0
@@ -202,7 +202,11 @@ def main() -> None:
                          "예전 리포트와 값이 다르다 — 리포트 머리의 stratum 줄로 확인할 것")
     ap.add_argument("--gpu", type=int, default=1)
     ap.add_argument("--batch-size", type=int, default=32)
-    ap.add_argument("--max-len", type=int, default=256)
+    # 기본값을 두지 않는다 — **체크포인트의 train_config에서 읽는다.**
+    # 256이 박혀 있어서 max_len 512로 학습한 `article_v2`를 256에서 잘라 채점하고 있었다
+    # (`Claude.md`: 서빙이 하드코딩해도 되는 학습 설정값은 없다 — 평가도 같다).
+    ap.add_argument("--max-len", type=int, default=None,
+                    help="미지정 시 체크포인트의 train_config.max_len을 쓴다")
     args = ap.parse_args()
 
     model_dir = Path(args.model_dir)
@@ -217,6 +221,8 @@ def main() -> None:
             "여기서 고르게 되고, 그게 곧 gold 오염이다. 재학습해서 임계값을 저장할 것"
         )
     thr = np.array([saved[a] for a in names], dtype=float)
+    if args.max_len is None:
+        args.max_len = int((metrics.get("train_config") or {}).get("max_len", 256))
 
     gold = load_ftc_gold(args.stratum)
     noisy = load_ftc_gold("noisy")
@@ -286,10 +292,32 @@ def main() -> None:
                 f"{delta:+.1f}%p [{lo_dev:+.1f},{hi_dev:+.1f}] — {v_dev}")
 
     # ----- 조항 단위 지표 (제품이 서는 축) -----
+    #
+    # **음성 풀은 출처로만 정의한다.** 예전에는 `clean.jsonl`만 읽고 거기서 다시
+    # `not r["articles"]`(GPT가 빈 배열이라 한 것)로 걸렀는데, 그 둘이 각각 순환이었다:
+    #
+    #   NOISE 제외      NOISE 판정 = forward != verify. **GPT 라벨로 만든 구분**이라
+    #                   "GPT가 짚은 음성"이 계통적으로 빠진다
+    #   agreed 빈 것만  GPT 라벨로 GPT를 채점하는 것. "오경보 2.6%"를 철회한 바로 그 이유
+    #
+    # 걸러낼수록 어려운 음성이 사라져 오경보율이 낮아진다 — 실측(article_v2):
+    #
+    #   홀드아웃 12문서 전부(n=300)   모델 5.3%   GPT(fwd) 9.7%   ← 출처로만 정의
+    #   ↳ CLEAN만(n=283)             모델 4.6%   GPT 4.9%
+    #     ↳ agreed 빈 것만(n=273)     모델 2.6%   GPT 1.5%        ← 옛 코드가 쓰던 풀
+    #
+    # 준거가 "정부가 발행한 표준계약서"라는 출처이므로 **풀도 출처로만 정의해야** 순환이 없다.
     from backend.training.train_article import exclude_gold_documents, load_article_records, split_negative_holdout
+    from backend.utils import load_jsonl
     _recs = exclude_gold_documents(load_article_records(PROJECT_ROOT / "data/fb_check/clean.jsonl"), gold)
-    _, _neg = split_negative_holdout(_recs, 12, 42)
-    _neg = [r for r in _neg if not r["articles"]]        # 정답이 빈 것만 = 오경보 판정 대상
+    _, _hold = split_negative_holdout(_recs, 12, 42)
+    _hold_docs = {r["group"] for r in _hold}
+    _all = list({r["chunk_id"]: r for r in
+                 load_jsonl(PROJECT_ROOT / "data/fb_check/clean.jsonl")
+                 + load_jsonl(PROJECT_ROOT / "data/fb_check/noise.jsonl")}.values())
+    _neg = [r for r in _all
+            if r.get("source") == "standard_contract"
+            and ":".join(str(r["chunk_id"]).split(":")[:2]) in _hold_docs]
     _nds = ArticleDataset([{"text": r["text"], "articles": [], "group": "g"} for r in _neg],
                           tokenizer, args.max_len, names)
     _NP = []
@@ -313,21 +341,23 @@ def main() -> None:
                 f"— **위 조 단위 표({len(gold)}건)와 평가셋이 다르다**")
     # 재현·오경보는 r과 무관한 **모델 속성**, 정밀도는 **분포의 함수**다. 갈라서 낸다 —
     # 붙여 놓으면 "73%"만 떼어져 r 없이 혼자 돌아다닌다.
-    logger.info(f"    {'τ':>6}{'재현':>8}{'GPT불일치':>11}   │ 정밀도(r 의존)  r=.05   r=.10   r=.15")
+    logger.info(f"    {'τ':>6}{'재현':>8}{'오경보':>11}   │ 정밀도(r 의존)  r=.05   r=.10   r=.15")
     for t, v in cl.items():
         if t == "dev_thresholds":
             continue
-        logger.info(f"    {t:>6}{v['recall'] * 100:>7.1f}%{v['disagree_with_gpt'] * 100:>10.1f}%   │"
+        logger.info(f"    {t:>6}{v['recall'] * 100:>7.1f}%{v['false_alarm'] * 100:>10.1f}%   │"
                     f"{v['precision_at_r0.05'] * 100:>19.0f}%{v['precision_at_r0.10'] * 100:>7.0f}%"
                     f"{v['precision_at_r0.15'] * 100:>7.0f}%")
     d = cl["dev_thresholds"]
-    logger.info(f"    {'배포':>6}{d['recall'] * 100:>7.1f}%{d['disagree_with_gpt'] * 100:>10.1f}%   │"
+    logger.info(f"    {'배포':>6}{d['recall'] * 100:>7.1f}%{d['false_alarm'] * 100:>10.1f}%   │"
                 f"{d['precision_at_r0.05'] * 100:>19.0f}%{d['precision_at_r0.10'] * 100:>7.0f}%"
                 f"{d['precision_at_r0.15'] * 100:>7.0f}%   ← 지금 배포하면 나오는 값")
-    logger.info("    ⚠ **'GPT불일치'는 오경보율이 아니다.** 음성 풀의 정답이 GPT 라벨"
-                "(forward ∩ verify) 그 자체이므로, 모델이 GPT보다 잘 찾아서 짚은 것도 여기 들어간다. "
-                "독립 준거로 잰 오경보율은 **이 연구에서 측정하지 않는다**(한계). "
-                "평가셋은 data/eval/prevalence/evalset_v1.json에 얼려 뒀다")
+    logger.info("    ★ 이 열은 **오경보율이다** — 음성 풀이 GPT 라벨이 아니라 출처(정부 발행 "
+                "표준계약서)로만 정의돼 있다. 예전에 `disagree_with_gpt`로 부르던 값은 "
+                "GPT가 빈 배열이라 한 건만 골라 잰 것이라 순환이었다(2.6%). 지금은 아니다")
+    logger.info("    ⚠ 다만 **하한이다**: 표준계약서는 실제 계약서보다 깨끗하고, 학습 데이터의 "
+                "음성 표본과 같은 코퍼스라 모델이 그 문체를 이미 배웠다. 표준계약서 전체(56문서)에서는 "
+                "9.4%로 오른다 — 이 12문서가 GPT 기준으로도 2배 쉬운 문서다")
     logger.info("    ⚠ 따라서 오른쪽 **정밀도 열도 절대값으로 인용하면 안 된다** — 분모에 이 값이 "
                 "들어간다. 설정 간 상대 비교에는 쓸 수 있다(모두 같은 자로 쟀다)")
     logger.info("    ── 상수 ──")
