@@ -1,6 +1,6 @@
 // frontend/components/sections/HowToUseSection.tsx
-import Link from "next/link";
 import { Upload, Cpu, FileText } from "lucide-react";
+import { StartAnalysisCta } from "@/components/StartAnalysisCta";
 
 const STEPS = [
   {
@@ -111,12 +111,7 @@ export function HowToUseSection() {
         </div>
 
         <div className="mt-10 text-center">
-          <Link
-            href="/analyze"
-            className="inline-flex items-center gap-2 px-6 py-3 bg-navy hover:opacity-90 text-white rounded-xl font-medium transition-colors text-sm shadow-sm"
-          >
-            지금 무료로 분석해보기
-          </Link>
+          <StartAnalysisCta className="inline-flex items-center gap-2 px-6 py-3 bg-navy hover:opacity-90 text-white rounded-xl font-medium transition-colors text-sm shadow-sm" />
         </div>
       </div>
     </section>

@@ -51,4 +51,8 @@ jobs:
           pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements-ci.txt
 
       - name: Run unit tests (no OpenAI/DB/GPU)
-        run: pytest tests/ -m "not integration" -v
+        # 그냥 `pytest`(콘솔 스크립트)로 실행하면 저장소 루트가 sys.path에 안 잡혀서
+        # `from backend...` import가 전부 ModuleNotFoundError로 깨진다.
+        # `python -m pytest`는 현재 폴더를 sys.path에 자동으로 넣어준다 — 로컬에서
+        # 항상 이 형태로 돌렸던 거라 로컬 재현이 안 됐다(2026-09-02 원인 확인).
+        run: python -m pytest tests/ -m "not integration" -v

@@ -81,7 +81,7 @@ export default function HeroPreviewB() {
           </form>
 
           <p className="text-white/50 text-xs mt-5">
-            회원가입 불필요 · 무료 이용 · 텍스트 저장 안 함
+            Google 계정 로그인 후 이용 · 저장하기를 눌렀을 때만 히스토리에 남음
           </p>
         </div>
       </section>

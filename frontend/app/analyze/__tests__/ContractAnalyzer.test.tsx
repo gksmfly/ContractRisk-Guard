@@ -465,4 +465,72 @@ describe("ContractAnalyzer 전체 흐름", () => {
 
     alertSpy.mockRestore();
   });
+  // 백엔드가 보낸 out_of_scope 조항이 화면에 실제로 그려지는지 본다.
+  //
+  // 이 테스트가 없어서 버그가 오래 살아남았다 — 요약 바의 "확인되지 않음 N"은
+  // `input_clauses - review_count` 뺄셈이라 배열을 안 읽어도 맞는 값이 나오고,
+  // 위쪽 SummaryBar 테스트는 그 숫자만 검증했다. 그래서 조항 원문이 state까지 와서
+  // 버려지는데도 테스트는 전부 통과했다. **숫자가 아니라 목록을 본다.**
+  it("판정이 나오지 않은 조항을 목록으로 보여준다", async () => {
+    const localMock: FullAnalyzeResult = {
+      ...mockResult,
+      total_clauses: 1,
+      review_count: 1,
+      input_clauses: 3,
+      clauses: [mockResult.clauses[0]],
+      out_of_scope: [
+        {
+          id: 2,
+          original: "제4조 (이용요금)\n이용자는 매월 말일까지 이용요금을 납부한다.",
+          reason: "약관규제법 제6~14조 기준으로는 위반이 확인되지 않았습니다.",
+        },
+        {
+          id: 3,
+          original: "제5조 (통지)\n회사의 통지는 홈페이지 게시로 갈음한다.",
+          reason: "약관규제법 제6~14조 기준으로는 위반이 확인되지 않았습니다.",
+        },
+      ],
+    };
+    global.fetch = jest.fn().mockResolvedValue(
+      mockStreamResponse([{ type: "done", result: localMock }])
+    ) as unknown as typeof fetch;
+
+    const user = userEvent.setup();
+    renderWithClient(<ContractAnalyzer />);
+
+    await user.type(
+      screen.getByLabelText("분석할 계약서 전문 입력"),
+      "회사는 사전 통지 없이 계약을 해지할 수 있는 조항을 포함한다."
+    );
+    await user.click(screen.getByRole("button", { name: "계약서 전체 분석 시작" }));
+    await waitFor(() => expect(screen.getByText("분석 결과")).toBeInTheDocument());
+
+    const section = within(screen.getByTestId("out-of-scope-section"));
+
+    // 건수와 조항 제목이 보인다 — 어떤 조항인지 식별할 수 있어야 한다.
+    expect(section.getByText("확인되지 않음 2건")).toBeInTheDocument();
+    expect(section.getAllByText("제4조 (이용요금)").length).toBeGreaterThan(0);
+    expect(section.getAllByText("제5조 (통지)").length).toBeGreaterThan(0);
+
+    // 원문도 함께 실려 있다(접힘 상태여도 DOM에는 있어야 인쇄본·펼치기가 성립한다).
+    expect(section.getAllByText(/매월 말일까지 이용요금을 납부한다/).length).toBeGreaterThan(0);
+    expect(section.getAllByText(/홈페이지 게시로 갈음한다/).length).toBeGreaterThan(0);
+
+    // "안전"으로 읽힐 문구를 붙이지 않는다 — 이 목록의 존재 이유가 그것이다.
+    expect(section.queryByText(/안전|문제없음|이상 없음/)).not.toBeInTheDocument();
+  });
+
+  it("out_of_scope가 비어 있으면 목록 섹션 자체를 그리지 않는다", async () => {
+    const user = userEvent.setup();
+    renderWithClient(<ContractAnalyzer />);
+
+    await user.type(
+      screen.getByLabelText("분석할 계약서 전문 입력"),
+      "회사는 사전 통지 없이 계약을 해지할 수 있는 조항을 포함한다."
+    );
+    await user.click(screen.getByRole("button", { name: "계약서 전체 분석 시작" }));
+    await waitFor(() => expect(screen.getByText("분석 결과")).toBeInTheDocument());
+
+    expect(screen.queryByTestId("out-of-scope-section")).not.toBeInTheDocument();
+  });
 });

@@ -26,7 +26,11 @@ function GoogleIcon() {
 
 export default function LoginPage() {
   const handleGoogleLogin = () => {
-    signIn("google", { callbackUrl: "/analyze" });
+    // 로그인 후 원래 있던 자리로 돌려보낸다. /analyze 같은 보호된 페이지에서 튕겨온
+    // 경우 NextAuth가 ?callbackUrl=... 을 붙여주고, 메인에서 그냥 눌러 들어온 경우엔
+    // 파라미터가 없으므로 메인("/")으로 되돌아간다.
+    const params = new URLSearchParams(window.location.search);
+    signIn("google", { callbackUrl: params.get("callbackUrl") || "/" });
   };
 
   return (

@@ -1,6 +1,6 @@
 // frontend/components/sections/CTASection.tsx
-import Link from "next/link";
-import { ArrowRight, Shield } from "lucide-react";
+import { Shield } from "lucide-react";
+import { StartAnalysisCta } from "@/components/StartAnalysisCta";
 
 export function CTASection() {
   return (
@@ -26,20 +26,14 @@ export function CTASection() {
                 지금 계약서를 검토해보세요
               </h2>
               <p className="text-slate-600 text-lg max-w-lg mx-auto leading-relaxed">
-                Google 로그인 후, 무료로, 10초 안에.
+                Google 계정으로 로그인하면 10초 안에.
                 <br />
                 계약 체결 전 한 번만 확인해도 다릅니다.
               </p>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <Link
-                href="/analyze"
-                className="inline-flex items-center justify-center gap-2 px-8 py-3.5 bg-navy hover:opacity-90 text-white rounded-xl font-semibold transition-colors text-sm shadow-lg shadow-navy/20"
-              >
-                무료로 분석 시작하기
-                <ArrowRight className="h-4 w-4" aria-hidden />
-              </Link>
+              <StartAnalysisCta className="inline-flex items-center justify-center gap-2 px-8 py-3.5 bg-navy hover:opacity-90 text-white rounded-xl font-semibold transition-colors text-sm shadow-lg shadow-navy/20" />
               <a
                 href="#examples"
                 className="inline-flex items-center justify-center gap-2 px-8 py-3.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl font-medium transition-colors text-sm border border-slate-300"
@@ -49,7 +43,7 @@ export function CTASection() {
             </div>
 
             <p className="text-xs text-slate-400">
-              입력한 텍스트는 저장되지 않으며 분석 후 즉시 폐기됩니다.
+              분석 결과는 직접 저장하기를 눌렀을 때만 히스토리에 남습니다.
             </p>
           </div>
         </div>

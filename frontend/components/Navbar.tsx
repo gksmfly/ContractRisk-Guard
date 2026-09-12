@@ -5,6 +5,7 @@ import { Menu, X } from "lucide-react";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSession, signOut } from "next-auth/react";
 import { Logo } from "@/components/Logo";
 
 const NAV_LINKS = [
@@ -18,6 +19,7 @@ export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const pathname = usePathname();
+  const { data: session } = useSession();
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 40);
@@ -92,24 +94,69 @@ export function Navbar() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <Link
-            href="/login"
-            className={`hidden sm:inline-block text-xs px-3 py-2 rounded transition-colors font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-              scrolled
-                ? "text-slate-300 hover:text-white focus-visible:ring-white focus-visible:ring-offset-navy"
-                : "text-slate-600 hover:text-navy focus-visible:ring-navy focus-visible:ring-offset-white"
-            }`}
-          >
-            로그인
-          </Link>
-          <Link
-            href="/analyze"
-            className={`text-xs px-4 py-2 bg-navy hover:opacity-90 text-white rounded-lg transition-opacity font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy focus-visible:ring-offset-2 ${
-              scrolled ? "ring-1 ring-white/15 focus-visible:ring-offset-navy" : "focus-visible:ring-offset-white"
-            }`}
-          >
-            무료로 시작
-          </Link>
+          {session ? (
+            <>
+              <button
+                onClick={() => signOut({ callbackUrl: "/" })}
+                className={`hidden sm:inline-block text-xs px-3 py-2 rounded transition-colors font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                  scrolled
+                    ? "text-slate-300 hover:text-white focus-visible:ring-white focus-visible:ring-offset-navy"
+                    : "text-slate-600 hover:text-navy focus-visible:ring-navy focus-visible:ring-offset-white"
+                }`}
+              >
+                로그아웃
+              </button>
+              <Link
+                href="/analyze"
+                className={`text-xs px-4 py-2 bg-navy hover:opacity-90 text-white rounded-lg transition-opacity font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy focus-visible:ring-offset-2 ${
+                  scrolled ? "ring-1 ring-white/15 focus-visible:ring-offset-navy" : "focus-visible:ring-offset-white"
+                }`}
+              >
+                분석 시작
+              </Link>
+              {/* 프로필 = 내 분석 히스토리 진입점 */}
+              <Link
+                href="/dashboard"
+                aria-label="내 분석 히스토리"
+                title={session.user?.name ?? "내 분석 히스토리"}
+                className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy focus-visible:ring-offset-2"
+              >
+                {session.user?.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- Google 프로필 이미지, next/image remotePatterns 미설정
+                  <img
+                    src={session.user.image}
+                    alt={session.user?.name ?? "프로필"}
+                    className="w-8 h-8 rounded-full object-cover border border-white/20"
+                  />
+                ) : (
+                  <span className="w-8 h-8 rounded-full bg-navy text-white text-xs font-semibold flex items-center justify-center border border-white/20">
+                    {(session.user?.name ?? session.user?.email ?? "?")[0]?.toUpperCase()}
+                  </span>
+                )}
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link
+                href="/login"
+                className={`hidden sm:inline-block text-xs px-3 py-2 rounded transition-colors font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                  scrolled
+                    ? "text-slate-300 hover:text-white focus-visible:ring-white focus-visible:ring-offset-navy"
+                    : "text-slate-600 hover:text-navy focus-visible:ring-navy focus-visible:ring-offset-white"
+                }`}
+              >
+                로그인
+              </Link>
+              <Link
+                href="/analyze"
+                className={`text-xs px-4 py-2 bg-navy hover:opacity-90 text-white rounded-lg transition-opacity font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy focus-visible:ring-offset-2 ${
+                  scrolled ? "ring-1 ring-white/15 focus-visible:ring-offset-navy" : "focus-visible:ring-offset-white"
+                }`}
+              >
+                로그인하고 시작
+              </Link>
+            </>
+          )}
           {/* Mobile hamburger */}
           <button
             onClick={() => setMenuOpen((v) => !v)}
@@ -148,6 +195,41 @@ export function Navbar() {
                 {link.label}
               </a>
             ))}
+
+            {/* 모바일에서도 히스토리·로그인 진입점을 제공한다 (데스크톱은 프로필 아이콘) */}
+            <div className={`mt-1 pt-2 border-t ${scrolled ? "border-white/10" : "border-slate-200"}`}>
+              {session ? (
+                <>
+                  <Link
+                    href="/dashboard"
+                    onClick={() => setMenuOpen(false)}
+                    className={`block text-sm py-2 px-2 rounded-lg transition-colors ${
+                      scrolled ? "text-slate-400 hover:text-white hover:bg-white/5" : "text-slate-600 hover:text-navy hover:bg-navy-soft"
+                    }`}
+                  >
+                    내 분석 히스토리
+                  </Link>
+                  <button
+                    onClick={() => { setMenuOpen(false); signOut({ callbackUrl: "/" }); }}
+                    className={`block w-full text-left text-sm py-2 px-2 rounded-lg transition-colors ${
+                      scrolled ? "text-slate-400 hover:text-white hover:bg-white/5" : "text-slate-600 hover:text-navy hover:bg-navy-soft"
+                    }`}
+                  >
+                    로그아웃
+                  </button>
+                </>
+              ) : (
+                <Link
+                  href="/login"
+                  onClick={() => setMenuOpen(false)}
+                  className={`block text-sm py-2 px-2 rounded-lg transition-colors ${
+                    scrolled ? "text-slate-400 hover:text-white hover:bg-white/5" : "text-slate-600 hover:text-navy hover:bg-navy-soft"
+                  }`}
+                >
+                  로그인
+                </Link>
+              )}
+            </div>
           </nav>
         </div>
       )}

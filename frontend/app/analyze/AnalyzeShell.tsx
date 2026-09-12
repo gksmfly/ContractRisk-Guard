@@ -15,8 +15,9 @@ export function AnalyzeShell({
 }) {
   return (
     <div className="min-h-screen bg-white">
-      {/* Dark sticky header */}
-      <header className="border-b border-slate-800/60 bg-navy/95 backdrop-blur-md sticky top-0 z-40 print:hidden">
+      {/* Dark sticky header — 항상 불투명한 네이비라 blur/투명도가 필요 없다.
+          (bg-navy/95 + backdrop-blur 조합이 sticky 스크롤 중 Safari에서 이음새를 만들어 제거) */}
+      <header className="border-b border-slate-800/60 bg-navy sticky top-0 z-40 print:hidden">
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
           <Link
             href="/"

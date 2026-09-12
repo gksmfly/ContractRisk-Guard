@@ -453,6 +453,75 @@ export function SummaryBar({ result }: { result: FullAnalyzeResult }) {
   );
 }
 
+// ── 확인되지 않음 목록 ──────────────────────────────────
+type OutOfScopeItem = NonNullable<FullAnalyzeResult["out_of_scope"]>[0];
+
+/** 판정이 나오지 않은 조항의 목록.
+ *
+ * **이 컴포넌트가 없으면 조항이 화면에서 통째로 사라진다.** 백엔드는 `out_of_scope`에
+ * 조항 원문을 담아 보내고(services/analyze.py `_tally`) 프록시도 그대로 통과시키는데,
+ * 예전에는 이걸 그리는 곳이 아무 데도 없었다. 그런데도 요약 바의 "확인되지 않음 N"은
+ * 멀쩡히 떴다 — 그 숫자는 배열 길이가 아니라 `input_clauses - review_count` 뺄셈이라
+ * 배열을 한 번도 안 읽어도 나오기 때문이다. 그래서 숫자만 보이고 목록은 없는,
+ * 눈으로는 버그로 안 보이는 상태가 유지됐다.
+ *
+ * schemas.py의 OutOfScopeClause가 일부러 어떤 등급도 안 붙이는 이유는 조항 단위
+ * 재현이 78%여서 이 칸의 5건 중 1건은 잘못 들어와 있고, 따라서 **사용자가 그 조항을
+ * 다시 봐야 하기 때문**이다. 목록이 없으면 다시 볼 방법 자체가 없어서, 그 설계가
+ * 막으려던 "검토했고 문제없음"이라는 오해가 그대로 발생한다.
+ */
+function OutOfScopeSection({ items }: { items: OutOfScopeItem[] }) {
+  if (!items.length) return null;
+
+  return (
+    <section className="space-y-3" data-testid="out-of-scope-section">
+      <div className="print:hidden">
+        <SectionLabel icon={Search}>확인되지 않음 {items.length}건</SectionLabel>
+      </div>
+      <p className="text-xs text-slate-500 leading-relaxed">
+        아래 조항은 판정이 나오지 않았습니다.{" "}
+        <strong className="font-semibold text-slate-600">
+          &quot;문제 없음&quot;이 아니라 &quot;확인되지 않음&quot;
+        </strong>
+        이므로 직접 확인해 주세요. {items[0].reason}
+      </p>
+
+      {/* 화면: 접어두되 조항 제목은 항상 보이게 — 어떤 조항인지 식별은 되어야 한다 */}
+      <ul className="space-y-1.5 print:hidden">
+        {items.map((item) => (
+          <li key={item.id}>
+            <details className="group bg-white border border-rule">
+              <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden px-3 py-2 flex items-start gap-2 text-sm text-slate-600 hover:bg-slate-50">
+                <span className="font-mono text-[11px] text-slate-400 shrink-0 mt-0.5">
+                  {item.id}
+                </span>
+                <span className="flex-1 min-w-0 truncate">
+                  {item.original.split("\n")[0].trim()}
+                </span>
+                <span className="text-[11px] text-slate-400 shrink-0 group-open:hidden">펼치기</span>
+                <span className="text-[11px] text-slate-400 shrink-0 hidden group-open:inline">접기</span>
+              </summary>
+              <p className="px-3 pb-3 pt-2 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap border-t border-rule">
+                {item.original}
+              </p>
+            </details>
+          </li>
+        ))}
+      </ul>
+
+      {/* 인쇄본에는 접지 않고 전문을 싣는다 — 리포트가 입력의 일부를 말없이 빠뜨리면 안 된다 */}
+      <ul className="hidden print:block space-y-3">
+        {items.map((item) => (
+          <li key={item.id} className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+            <span className="font-mono text-[11px] text-slate-400 mr-2">{item.id}</span>
+            {item.original}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 // ── Analysis progress (조항 단위 실시간 진행률) ─────────
 // 백엔드가 조항을 순차 처리하는 동안 SSE로 "조항 N/M 완료" 이벤트를 실제로
 // 흘려보낸다 — 그래프 내부(Analysis→Judgment/Retrieval fan-out, 재검색 루프)는
@@ -981,6 +1050,9 @@ export function ContractAnalyzer({ initialResult, initialTitle }: ContractAnalyz
               )}
             </div>
           )}
+
+          {/* 판정이 나오지 않은 조항 — 확인 필요 목록과 시각적 위계를 분리하되 감추지는 않는다 */}
+          <OutOfScopeSection items={displayResult.out_of_scope ?? []} />
 
           {/* Full clause list (print only) — 화면 표시 방식과 무관하게 PDF는 항상 전체 조항 상세를 담는다 */}
           <div className="hidden print:block space-y-6">

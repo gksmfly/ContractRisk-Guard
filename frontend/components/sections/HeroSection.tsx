@@ -1,7 +1,7 @@
 // frontend/components/sections/HeroSection.tsx
-import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { CountUp } from "@/components/CountUp";
+import { StartAnalysisCta } from "@/components/StartAnalysisCta";
 
 const STATS = [
   { value: "6단계", label: "AI 파이프라인 검증" },
@@ -58,14 +58,11 @@ export function HeroSection() {
 
         {/* CTA */}
         <div className="pt-2">
-          <Link
-            href="/analyze"
+          <StartAnalysisCta
+            arrow
+            withNote
             className="inline-flex items-center gap-2 px-8 py-3.5 bg-navy hover:opacity-90 text-white rounded-xl font-semibold transition-opacity text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy focus-visible:ring-offset-2"
-          >
-            약관 분석 무료로 시작하기
-            <span aria-hidden>→</span>
-          </Link>
-          <p className="text-slate-400 text-xs mt-3">Google 로그인 후 이용할 수 있어요 · 무료</p>
+          />
         </div>
 
         {/* Stats */}
