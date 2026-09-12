@@ -8,7 +8,7 @@ FB-Check 오케스트레이터 (Step 6)
   backward_grounding.py      : Backward Grounding E ⊂ C 인덱스 검증 (+ KoELECTRA 예측은 기록만)
   consistency_verification.py: Consistency Verify E → A' + L' 재라벨링
 
-  Decision: **L == L' → CLEAN** (논문 정의, KAICTS 2025). E⊂C는 사전 조건.
+  Decision: **L == L' → CLEAN** (논문 정의, KAICTS 2026). E⊂C는 사전 조건.
   위험 판정인데 A ∩ A'가 비면 NOISE(article_mismatch) — 조 라벨을 학습에 쓰기 위한 추가 조건.
 
   KoELECTRA는 투표하지 않는다. 자세한 근거는 run_fb_check()의 Decision 주석 참고.
@@ -216,7 +216,7 @@ def run_fb_check(
 
     # --- Decision: L == L' → CLEAN (논문 정의) ---
     #
-    # KoELECTRA(backward)는 **투표하지 않는다.** 논문(KAICTS 2025)이 정의한 역할은
+    # KoELECTRA(backward)는 **투표하지 않는다.** 논문(KAICTS 2026)이 정의한 역할은
     # `E ⊂ C` 인덱스 검증이고, FB-Check 최초 구현도 `forward_label == verify_label`만
     # 봤다(커밋 edb832d, 주석 "논문 정의"). 3표 다수결은 그 뒤에 추가된 것으로,
     # 논문과 구현이 어긋난 상태였다 — 지금 학습에 쓰는 clean.jsonl 694건은 논문

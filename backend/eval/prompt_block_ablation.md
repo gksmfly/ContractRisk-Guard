@@ -668,6 +668,9 @@ risk 불일치가 곧 Low가 아니라는 뜻이라 빈 배열이 2.5%뿐이다.
 (특히 지지도가 낮은 제11·12·13조), `label_mismatch` 422건을 낮은 가중치로 되살리는 것을
 저울질한다. "나쁜 데이터라 버렸다"로 기억하면 그 재검토 자체를 안 하게 된다.
 
+**(09-07 추가)** 이 재검토에 구체적 형태가 생겼다 — 되살릴 대상은 422건 전부가 아니라
+`forward == High`인 210건이다. 아래 "label_mismatch 게이트는 한 방향에서만 값을 한다" 참조.
+
 재현: `.venv/bin/python -m backend.eval.noise_reason_audit`
 
 ## snippet_not_found 66건 — 12%p 중 9.8%p가 매칭 버그였다
@@ -3579,12 +3582,28 @@ README의 주장은 "FB-Check filters hallucinated labels"이고 산출물은 CL
 
 ## label_mismatch 게이트는 한 방향에서만 값을 한다
 
-    forward Medium → verify High   354건   +10.9%p [+7.4,+14.4]   버리는 게 맞다
-    forward High   → verify Medium 189건   −2.6%p [−6.4,+1.2]     CLEAN과 구분 안 됨
+6칸 전수(forward → verify, CLEAN forward 대비):
 
-189건을 근거 없이 버리고 있다. 1.5절의 재검토 조건("표본 부족이 병목이면 label_mismatch를
-저가중치로 되살린다")에 **방향성 게이트**라는 구체적 처방이 생겼다. 적용은 별도 결정 —
-학습셋이 바뀌면 gold 채점이 다시 필요하다.
+    Medium → High    354건   +10.9%p [+7.4,+14.4]    버리는 게 맞다
+    Medium → Low     112건    +9.5%p [+3.5,+15.4]    버리는 게 맞다
+    High   → Medium  189건    −2.6%p [−6.4, +1.2]    CLEAN과 구분 안 됨
+    High   → Low      21건    +5.9%p [−5.4,+17.7]    미판정
+    Low    → Medium    7건   +11.5%p [+1.6,+24.8]    n=7
+    Low    → High      2건   +46.7%p                 n=2, 무의미
+
+**규칙은 High→Medium이 아니라 `forward == High`다.** 갈리는 축은 어디로 내려갔는가가
+아니라 forward가 무엇이라고 했는가다. 기제도 있다 — Medium은 이 프로젝트에서 이미 세 번
+불량 클래스로 확인됐다(정밀도 12~13% 고정, 출처별 분산 2.6배, 08-16 "Medium은 라벨 문제로
+확정"). forward=Medium은 라벨러가 확신이 없었다는 표시이고, forward=High → verify Medium은
+**강도 눈금의 불일치이지 조항 지목의 오류가 아니다**. 두 칸을 주워 담은 게 아니다.
+
+210건(189+21)을 근거 없이 버리고 있다. 1.5절의 재검토 조건("표본 부족이 병목이면
+label_mismatch를 저가중치로 되살린다")에 **`forward == High`만 되살린다**는 형태가 생겼다.
+**지금 켜지 않는다** — CLEAN 3,352 → 3,562(+6%)인데 데이터 축은 +119%에서도 미판정이었고,
+정의를 바꾸면 모든 수치를 다시 재야 한다. 켤 조건은 "다른 이유로 CLEAN 정의를 손댈 때
+같이". 값은 회수가 아니라 관찰에 있다: 일관성 필터는 *라벨이 바뀌었다*가 아니라
+*라벨러가 처음부터 확신이 없었다*를 잡을 때만 값을 한다. FB-Check의 2-way 판정(`L == L'`)이
+이 구분을 못 한다는 한계이기도 하다. → `reported_numbers.md` §2 ④
 
 ## 같은 날의 다른 사고 — flywheel_v3
 

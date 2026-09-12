@@ -3,7 +3,7 @@
 > **TL;DR**: Predicts which articles of the Korean Unfair Terms Regulation Act (약관규제법 §6–§14)
 > a contract clause violates. Training labels are produced without human annotators by a 3-stage
 > FB-Check pipeline (GPT-4o labels → evidence grounding → consistency re-labeling), and a fine-tuned
-> KoELECTRA does the inference. Published at KAICTS 2025.
+> KoELECTRA does the inference. Published at KAICTS 2026.
 >
 > **This README was substantially revised on 2026-08-31.** Follow-up measurement retracted two claims
 > from the published paper and validated a third. See [Revisions](#revisions-2026-08-31).
@@ -88,7 +88,7 @@ as "no significant difference".
 | Legal corpus | 16 laws, 26 interpretations, 1,995 court precedents, 2,488+ FTC cases |
 | Auto-labeled clauses (no human annotators) | 2,335 scored / 1,786 CLEAN + 549 NOISE (52.3% of the 4,466 seed records; the rest is unprocessed, not discarded) |
 | External evaluation set | 255 FTC cases (single clause **and** single cited article) |
-| Published | KAICTS 2025 |
+| Published | KAICTS 2026 |
 
 <details>
 <summary>Superseded figures from the original paper</summary>
