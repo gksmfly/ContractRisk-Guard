@@ -33,7 +33,7 @@ from backend.training.train_article import load_ftc_gold
 from backend.utils import PROJECT_ROOT, load_logger, save_json
 
 logger = load_logger("threshold_match_sweep.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/threshold_match_sweep.json"
+OUT_DIR = PROJECT_ROOT / "data/eval"   # 파일명에 태그를 붙인다 — 고정이면 다음 모델이 덮어쓴다
 
 
 def _probs(texts: list[str], model_dir: str, gpu: int) -> tuple[np.ndarray, list[str], np.ndarray]:
@@ -120,7 +120,7 @@ def main(argv: list[str] | None = None) -> None:
     diff = match["fpr"] - sllm_fpr
     verdict = ("인코더가 같은 재현에서 오경보가 더 낮다 — sLLM이 진 것"
                if hi < sllm_fpr else
-               "겹친다 — **sLLM이 준 것은 동작점 이동뿐**이라는 설명과 구분되지 않는다"
+               "겹친다 — sLLM이 준 것은 동작점 이동뿐이라는 설명과 구분되지 않는다"
                if lo <= sllm_fpr <= hi else
                "sLLM이 같은 재현에서 오경보가 더 낮다 — 실제 이득")
 
@@ -129,7 +129,7 @@ def main(argv: list[str] | None = None) -> None:
     logger.info(f"  ★ 같은 재현율에서 비교 (재현 ≈ {match['recall']*100:.1f}%)")
     logger.info(f"    인코더(임계값 ×{match['scale']:.2f})  오경보 {match['fpr']*100:.1f}% "
                 f"[{lo*100:.1f}, {hi*100:.1f}]")
-    logger.info(f"    EXAONE LoRA 7.8B          오경보 {sllm_fpr*100:.1f}%")
+    logger.info(f"    sLLM {args.tag:20} 오경보 {sllm_fpr*100:.1f}%")
     logger.info(f"    차 {diff*100:+.1f}%p → **{verdict}**")
     logger.info("  " + "=" * 62)
     logger.info("  ⚠ 이 배율은 gold에서 고른 값이라 **배포에 쓰지 않는다.** 비교량일 뿐이다")
@@ -139,8 +139,8 @@ def main(argv: list[str] | None = None) -> None:
                "deployed": base, "matched": match, "matched_fpr_ci95": [lo, hi],
                "diff_fpr": diff, "verdict": verdict, "sweep": rows,
                "caveat": "배율은 gold에서 고른 비교량. 배포 임계값은 dev에서 뽑은 thresholds.npy 그대로"},
-              OUT_PATH)
-    logger.info(f"저장: {OUT_PATH.relative_to(PROJECT_ROOT)}")
+              OUT_DIR / f"threshold_match_{args.tag}.json")
+    logger.info(f"저장: data/eval/threshold_match_{args.tag}.json")
 
 
 if __name__ == "__main__":
