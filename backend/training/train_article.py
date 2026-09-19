@@ -163,14 +163,58 @@ def load_ftc_gold(stratum: str = "clean") -> list[dict]:
 
     평가셋을 조용히 줄이는 것과, 줄인 사실과 이유를 같이 내보내는 것은 다르다.
     """
-    if stratum not in ("clean", "noisy", "all"):
+    if stratum not in ("clean", "noisy", "all", "multi1"):
         raise ValueError(f"알 수 없는 stratum: {stratum}")
     cases = json.loads(FTC_PATH.read_text(encoding="utf-8"))["사례"]
     gold: list[dict] = []
     for c in cases:
         cl = [str(x).strip() for x in (c.get("조항_원문") or []) if len(str(x).strip()) >= _MIN_CLAUSE_CHARS]
         arts = {a for g in (c.get("근거_법령") or []) if (a := normalize(str(g)))}
-        if len(cl) != 1 or not arts:
+        if not cl or not arts:
+            continue
+        if stratum == "multi1":
+            # **다조항·근거1 — 채점에 쓰지 말 것. 진단용으로만 남긴다 (2026-09-19 확정).**
+            #
+            # 조항이 여럿이지만 근거 법령이 하나뿐인 사건(95사건 240조항, 중복 제거 후 234).
+            # `len(cl) != 1`로 통째로 버려지던 구간이라 "gold를 2배로 늘릴 수 있다"고 보고
+            # 실제로 만들어 채점해봤다. **결과는 ②noisy와 같은 형태의 실패다:**
+            #
+            #     지층      n     조 F1   상수최고   상수대비   조항재현
+            #     clean    255   38.5%   36.1%    +2.4%p    78.4%
+            #     multi1   234   21.2%   60.3%   −39.1%p    64.1%
+            #
+            # 원인 둘, 둘 다 채점 대상의 성질이지 모델의 실패가 아니다:
+            #
+            #   (a) **제6조가 라벨의 60.3%**를 먹는다(clean은 31.4%). 제6조는 일반원칙
+            #       포괄 규정이라, 공정위가 다조항 사건에 조 하나만 인용하면 여기로 몰린다.
+            #       그래서 "항상 제6조"라는 상수가 F1 60.3%를 낸다.
+            #   (b) **사건당 2.49조항이 같은 라벨을 복제**한다. 독립 단위는 234가 아니라
+            #       문서 94개다. 문서 내 상관이 상수를 더 부풀린다.
+            #
+            # 진단 지표(위반_유형/조항 = 0.54 vs clean 1.08)는 귀속 가정과 정합했는데도
+            # 채점이 깨졌다 — **분포 진단만으로 지층의 사용 가능성을 판정할 수 없다**는
+            # 사례로 남긴다. 판정은 모델을 실제로 돌려봐야 나왔다.
+            #
+            # 같은 사건 안의 근사 중복은 뺀다(240건 중 6건) — 파서가 같은 조항을
+            # 띄어쓰기만 달리해 두 번 담는 경우가 있다.
+            if len(cl) < 2 or len(arts) != 1:
+                continue
+            import difflib as _dl
+            import re as _re
+            seen: list[str] = []
+            for t in cl:
+                n = _re.sub(r"\s+", "", t)
+                if any(_dl.SequenceMatcher(None, n, q).ratio() > 0.85 for q in seen):
+                    continue
+                seen.append(n)
+                gold.append({
+                    "text": t,
+                    "articles": sorted(arts, key=lambda a: int(a.strip("제조"))),
+                    "doc_id": str((c.get("셀_데이터") or {}).get("사건번호") or c.get("사건명", "")),
+                    "n_violation_types": len(c.get("위반_유형") or []),
+                })
+            continue
+        if len(cl) != 1:
             continue
         if stratum == "clean" and len(arts) != 1:
             continue
