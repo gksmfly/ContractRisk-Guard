@@ -1,4 +1,4 @@
-# backend/eval/lightrag_pilot.py
+# backend/eval/archive/lightrag_pilot.py
 """
 LightRAG vs 지금 Hybrid RRF(backend.api.services.retrieval) — 법조문 검색 적중률 비교
 파일럿. 원래 20.1% 실험은 스크립트가 안 남아있어 재현 불가능했으므로, FTC 케이스의
@@ -11,7 +11,7 @@ LightRAG vs 지금 Hybrid RRF(backend.api.services.retrieval) — 법조문 검�
 only_need_context로 원문 추출→적중 판정)이 실제로 도는지 확인한다. 비용·시간이
 가장 큰 작업이라 전체(3,323청크)로 바로 가지 않고 여기서 먼저 검증한다.
 
-실행: python -m backend.eval.lightrag_pilot
+실행: python -m backend.eval.archive.lightrag_pilot
 """
 
 import asyncio

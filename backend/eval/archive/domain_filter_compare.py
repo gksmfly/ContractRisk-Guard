@@ -1,4 +1,4 @@
-# backend/eval/domain_filter_compare.py
+# backend/eval/archive/domain_filter_compare.py
 """
 법령 코퍼스는 극단적으로 불균형하다 — 3,323청크 중 약관의 규제에 관한 법률은 43개뿐인데
 FTC 근거_법령 인용의 94.7%(2,314/2,444)를 차지한다. 지금 RRF는 법령 전체(16개 법령/
@@ -20,7 +20,7 @@ top-K를 뽑되(소수 파티션의 후보가 애초에 후보 풀에도 못 들
 동일 ground truth(FTC 근거_법령, 법령 전체 3,323청크, seed=42, 100건) — rerank_compare.py,
 lightrag_compare_final.py와 같은 쿼리 세트로 직접 비교 가능.
 
-실행: .venv/bin/python -m backend.eval.domain_filter_compare
+실행: .venv/bin/python -m backend.eval.archive.domain_filter_compare
 """
 
 from typing import Any
@@ -28,7 +28,7 @@ from typing import Any
 from backend.api.services.retrieval import _fuse_reciprocal_rank, _get_cached_embedder, _search_dense, _search_sparse
 from backend.db.connection import get_conn
 from backend.db.loader import embed_texts
-from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, build_ground_truth
+from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("domain_filter_compare.log")
@@ -106,7 +106,7 @@ def rrf_baseline_hit(cur: Any, embedder: Any, query_text: str, correct_pairs: li
 
 def main() -> None:
     law_recs = load_jsonl(LAWS_PATH)
-    queries = build_ground_truth(law_recs, n_cases=_N_QUERIES)
+    queries = build_ground_truth(law_recs, n_cases=N_QUERIES)
     logger.info(f"  평가 쿼리 {len(queries)}건 생성(법령 전체 대상, 동일 seed/로직)")
 
     embedder = _get_cached_embedder()

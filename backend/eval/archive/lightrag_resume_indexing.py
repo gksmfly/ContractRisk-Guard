@@ -1,4 +1,4 @@
-# backend/eval/lightrag_resume_indexing.py
+# backend/eval/archive/lightrag_resume_indexing.py
 """
 lightrag_compare.py의 본작업이 잔액 부족으로 1,500/3,323청크에서 중단됐다. 기존
 인덱스(data/eval/lightrag_full_storage, 이미 119MB 저장됨)를 지우지 않고 그대로 열어서
@@ -8,7 +8,7 @@ lightrag_compare.py의 본작업이 잔액 부족으로 1,500/3,323청크에서 
 잔액이 빠듯한 상태(약 $0.82)라 진행률 로그를 100청크마다(원래 250) 더 촘촘히 남겨서
 중간에 잔액이 바닥나 실패하더라도 어디까지 됐는지 바로 알 수 있게 한다.
 
-실행: python -m backend.eval.lightrag_resume_indexing
+실행: python -m backend.eval.archive.lightrag_resume_indexing
 """
 
 import asyncio
@@ -18,7 +18,8 @@ from lightrag.kg.shared_storage import initialize_pipeline_status
 from lightrag.llm.openai import gpt_4o_mini_complete, openai_embed
 from lightrag.utils import EmbeddingFunc
 
-from backend.eval.lightrag_compare import LAWS_PATH, WORKING_DIR
+from backend.eval.archive.lightrag_compare import WORKING_DIR
+from backend.eval.common import LAWS_PATH
 from backend.utils import load_jsonl, load_logger
 
 logger = load_logger("lightrag_resume_indexing.log")

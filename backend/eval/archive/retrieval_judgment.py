@@ -1,4 +1,4 @@
-# backend/eval/retrieval_judgment.py
+# backend/eval/archive/retrieval_judgment.py
 """
 검색 기반 판단(KoE5 유사사례 top-5 검색 + GPT-4o-mini few-shot) — models/README.md에
 서술만 있고 코드가 없던 실험을 재현 가능한 형태로 옮긴 것. Phase B 비교 평가
@@ -61,7 +61,7 @@ def retrieval_judge(client: OpenAI, clause_text: str, exclude_chunk_id: str | No
 
     (risk_level, neighbor_agreement)를 반환한다 — neighbor_agreement는 최종 판정과 같은
     risk_level을 가진 이웃 사례 개수(0~5). 하이브리드 앙상블이 "GPT가 이웃 합의를 무시하고
-    헷징했는지"를 판단하는 신뢰도 신호로 쓴다(backend/eval/hybrid_ensemble.py 참고).
+    헷징했는지"를 판단하는 신뢰도 신호로 쓴다(backend/eval/archive/hybrid_ensemble.py 참고).
     """
     neighbors = search_similar_labeled_clauses(clause_text, top_k=_TOP_K, exclude_chunk_id=exclude_chunk_id)
     messages = [

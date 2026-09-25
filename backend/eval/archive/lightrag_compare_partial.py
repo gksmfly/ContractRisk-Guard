@@ -1,4 +1,4 @@
-# backend/eval/lightrag_compare_partial.py
+# backend/eval/archive/lightrag_compare_partial.py
 """
 lightrag_compare.py의 본작업이 잔액 부족(인덱싱 도중 $0.82로 하락) 위험으로 중단됨 —
 법령 3,323청크 중 1,500청크(45%)까지 인덱싱된 상태에서 멈췄다. 다행히 그 1,500청크
@@ -8,7 +8,7 @@ lightrag_compare.py의 본작업이 잔액 부족(인덱싱 도중 $0.82로 하�
 재인덱싱 없이(추가 비용 0원) 기존 인덱스(`data/eval/lightrag_full_storage`)를 그대로
 열어서, 정답이 이미 인덱싱된 법령(민법 제외) 안에 있는 케이스만으로 평가한다.
 
-실행: python -m backend.eval.lightrag_compare_partial
+실행: python -m backend.eval.archive.lightrag_compare_partial
 """
 
 import asyncio
@@ -18,15 +18,13 @@ from lightrag.kg.shared_storage import initialize_pipeline_status
 from lightrag.llm.openai import gpt_4o_mini_complete, openai_embed
 from lightrag.utils import EmbeddingFunc
 
-from backend.eval.lightrag_compare import (
-    _N_QUERIES,
+from backend.eval.archive.lightrag_compare import (
     _QUERY_LOG_EVERY,
-    LAWS_PATH,
     WORKING_DIR,
-    build_ground_truth,
     hybrid_rrf_hit,
     lightrag_hit,
 )
+from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("lightrag_compare_partial.log")
@@ -40,7 +38,7 @@ async def main() -> None:
 
     # 정답이 인덱싱된 법령 안에 있는 케이스만 남긴다(build_ground_truth가 extract_article_text에
     # 없는 pair는 자동 제외 — indexed_recs만 넘기면 민법 인용 케이스가 자연히 걸러짐)
-    queries = build_ground_truth(indexed_recs, n_cases=_N_QUERIES)
+    queries = build_ground_truth(indexed_recs, n_cases=N_QUERIES)
     logger.info(f"  평가 쿼리 {len(queries)}건 생성(약관규제법 등 이미 인덱싱된 법령만 대상)")
 
     rag = LightRAG(

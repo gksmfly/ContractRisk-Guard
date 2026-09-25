@@ -1,4 +1,4 @@
-# backend/eval/stage2_recall_diagnosis.py
+# backend/eval/archive/stage2_recall_diagnosis.py
 """
 2단계(라우팅 이후 조문 검색) 실패 원인 진단 — "순위 문제"인가 "검색 문제"인가.
 
@@ -15,7 +15,7 @@
 독립적으로 측정한다. 후보 풀을 크게 잡고(법령당 top-50) 정답 조문이 **몇 위에** 있는지
 분포를 낸다.
 
-실행: .venv/bin/python -m backend.eval.stage2_recall_diagnosis
+실행: .venv/bin/python -m backend.eval.archive.stage2_recall_diagnosis
 """
 
 import json
@@ -24,8 +24,8 @@ from collections import Counter
 from backend.api.services.retrieval import _fuse_reciprocal_rank, _get_cached_embedder
 from backend.db.connection import get_conn
 from backend.db.loader import embed_texts
-from backend.eval.domain_filter_compare import _dense_with_score, _sparse_with_score
-from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, build_ground_truth
+from backend.eval.archive.domain_filter_compare import _dense_with_score, _sparse_with_score
+from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("stage2_recall_diagnosis.log")
@@ -50,7 +50,7 @@ def main() -> None:
     recorded = {q["case_name"]: q for q in report["per_query"]}
 
     law_recs = load_jsonl(LAWS_PATH)
-    queries = build_ground_truth(law_recs, n_cases=_N_QUERIES)
+    queries = build_ground_truth(law_recs, n_cases=N_QUERIES)
     embedder = _get_cached_embedder()
 
     rows = []

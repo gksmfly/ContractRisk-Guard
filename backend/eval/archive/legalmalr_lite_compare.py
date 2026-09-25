@@ -1,4 +1,4 @@
-# backend/eval/legalmalr_lite_compare.py
+# backend/eval/archive/legalmalr_lite_compare.py
 """
 LegalMALR(법령 검색 특화 멀티에이전트 쿼리 이해 + 리랭킹)의 "쿼리 재구성" 부분을
 경량 근사한다 — 원 논문을 이 세션에서 직접 검증하지 못했으므로(reference 확인 불가,
@@ -14,13 +14,13 @@ backend/eval/retrieval_alternatives_survey.md 참고) 논문 그대로의 재현
 동일 ground truth(FTC 근거_법령, 법령 전체 3,323청크, seed=42, 100건), RRF 검색은
 domain_filter_compare.py의 rrf_baseline_hit()와 동일 로직(파티션 없음, top_k=8) 재사용.
 
-실행: .venv/bin/python -m backend.eval.legalmalr_lite_compare
+실행: .venv/bin/python -m backend.eval.archive.legalmalr_lite_compare
 """
 
 from backend.api.services.retrieval import _get_cached_embedder
 from backend.db.connection import get_conn
-from backend.eval.domain_filter_compare import rrf_baseline_hit
-from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, build_ground_truth
+from backend.eval.archive.domain_filter_compare import rrf_baseline_hit
+from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.eval.local_llm import generate_json
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
@@ -43,7 +43,7 @@ _FEWSHOT = [
 
 def main() -> None:
     law_recs = load_jsonl(LAWS_PATH)
-    queries = build_ground_truth(law_recs, n_cases=_N_QUERIES)
+    queries = build_ground_truth(law_recs, n_cases=N_QUERIES)
     logger.info(f"  평가 쿼리 {len(queries)}건 생성(법령 전체 대상, 동일 seed/로직)")
 
     embedder = _get_cached_embedder()

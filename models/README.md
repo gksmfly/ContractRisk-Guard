@@ -238,7 +238,7 @@ High/Low 각 10건 스팟체크에서 **High에도 실제 문제가 있었다** 
 
 ## Phase B: KoELECTRA vs 검색 기반 3-class 비교 평가 (2026-07-21)
 
-Phase A 데이터셋에 두 판단 방식을 동일하게 돌려 class별 precision/recall/F1 비교(`backend/eval/compare_judgment.py`). **주의: 이 평가의 'High' 정의(위반유형 2개+)는 883/534건 평가의 'High' 정의(FTC 케이스 전체)와 달라서 그 결과와 직접 비교 불가 — 별도의 새 벤치마크.**
+Phase A 데이터셋에 두 판단 방식을 동일하게 돌려 class별 precision/recall/F1 비교(`backend/eval/archive/compare_judgment.py`). **주의: 이 평가의 'High' 정의(위반유형 2개+)는 883/534건 평가의 'High' 정의(FTC 케이스 전체)와 달라서 그 결과와 직접 비교 불가 — 별도의 새 벤치마크.**
 
 ### 1차 결과 (정제 전 1,052건, 정제 후 860건 — 둘 다 KoELECTRA 우세)
 
@@ -253,7 +253,7 @@ Phase A 데이터셋에 두 판단 방식을 동일하게 돌려 class별 precis
 
 Low 오분류 사례를 직접 재현해보니(KoE5 검색 → GPT few-shot 판단 과정을 reasoning 포함해서 재실행), **KoE5가 찾아온 유사 사례 5개가 전부(5/5) Low인데도 GPT가 "~일 수 있다" 식으로 이론적 트집을 만들어 Medium을 선택**하는 패턴 확인. `clean_clauses` 전체 분포(Low 335/High 78/Medium 65)도 Low가 다수라 이웃 사례 풀 구성 문제가 아니었다 — GPT-4o-mini 특유의 애매한 척도 헷징 편향(잘 알려진 LLM 특성)으로 판단.
 
-이 평가셋에 국한된 문제가 아니라는 진단이었으므로, confusion matrix 수치에 맞춘 땜질이 아니라 **"제공된 근거를 실제로 따르라"는 일반 원칙**으로 프롬프트를 보강(`backend/eval/retrieval_judgment.py`의 `_SYSTEM`): 유사 사례 다수 일치 시 그 판정을 따르고, 구체적 근거 없는 추측만으로 벗어나지 말 것을 명시.
+이 평가셋에 국한된 문제가 아니라는 진단이었으므로, confusion matrix 수치에 맞춘 땜질이 아니라 **"제공된 근거를 실제로 따르라"는 일반 원칙**으로 프롬프트를 보강(`backend/eval/archive/retrieval_judgment.py`의 `_SYSTEM`): 유사 사례 다수 일치 시 그 판정을 따르고, 구체적 근거 없는 추측만으로 벗어나지 말 것을 명시.
 
 ### 최종 결과 (860건, 검색기반 v2 — 결론 역전)
 
@@ -289,7 +289,7 @@ leakage 통제 후 두 방식이 사실상 동점이므로, 성능 외 요인으
 - KoELECTRA: 무료(로컬 GPU), 빠름(API 왕복 없음), "GPT 독립적 로컬 판단"이라는 원 설계 서사 유지, leakage 리스크 구조적으로 없음
 - 검색기반: 판단마다 GPT API 호출 추가(지연시간·비용), 원 설계 서사와 충돌, 프롬프트 변경에 민감(헷징 편향 사례처럼)
 
-**`backend/agents/judgment_agent.py`는 이미 KoELECTRA(v4)를 쓰고 있으므로 코드 변경 불필요.** 검색기반(`backend/eval/retrieval_judgment.py`, `backend/eval/compare_judgment.py`)은 폐기하지 않고 "대안 검토 후 leakage 통제 재검증까지 거쳐 기각"한 실험 기록으로 남긴다 — 이 진단·재검증 과정 자체가 방법론적으로 유의미함(단순 벤치마크 숫자 비교보다 data leakage를 능동적으로 의심하고 검증한 사례).
+**`backend/agents/judgment_agent.py`는 이미 KoELECTRA(v4)를 쓰고 있으므로 코드 변경 불필요.** 검색기반(`backend/eval/archive/retrieval_judgment.py`, `backend/eval/archive/compare_judgment.py`)은 폐기하지 않고 "대안 검토 후 leakage 통제 재검증까지 거쳐 기각"한 실험 기록으로 남긴다 — 이 진단·재검증 과정 자체가 방법론적으로 유의미함(단순 벤치마크 숫자 비교보다 data leakage를 능동적으로 의심하고 검증한 사례).
 
 ## 알려진 방법론적 한계
 

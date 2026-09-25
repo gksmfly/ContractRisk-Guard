@@ -14,7 +14,7 @@
 
 ## 배경
 
-`backend/eval/lightrag_compare_final.py` 최종 비교(법령 전체 3,323청크)에서 LightRAG가
+`backend/eval/archive/lightrag_compare_final.py` 최종 비교(법령 전체 3,323청크)에서 LightRAG가
 RRF보다 수치상 우세했지만(20% vs 12%, McNemar p=0.115 유의성 미확보) 근본원인을 더
 파보니, **LightRAG 자체가 코퍼스 확장에 따라 성능이 퇴화**한다는 게 확인됐다(76개
 공유 쿼리 직접비교, 9:0 flip, 이항검정 p=0.004 — 상세는 memory

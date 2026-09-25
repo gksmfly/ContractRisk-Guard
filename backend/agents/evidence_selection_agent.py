@@ -56,7 +56,7 @@ from backend.labeling.articles import ARTICLES, LAW_NAME
 #     top-1  35%   top-2  43%   top-3  54%   top-5  66%   top-10  80%   top-20  88%
 #
 # 5로 둔 것은 화면에 근거를 몇 개까지 보여줄지의 절충이다 — 재현율만 보면 10이 더 낫다.
-# 재현: `backend/eval/law_router_compare.py`
+# 재현: `backend/eval/archive/law_router_compare.py`
 _FINAL_K = 5
 
 # 후보가 하나도 없을 때(DB 미가동·미적재 등)만 쓰는 최종 fallback.

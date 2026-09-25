@@ -1,4 +1,4 @@
-# backend/eval/lbox_embedding_compare.py
+# backend/eval/archive/lbox_embedding_compare.py
 """
 Contextual Retrieval(옵션4, contextual_retrieval_compare.py)에서 쓴 KoE5(범용 임베딩)를
 LBOX(한국 리걸테크 회사)의 법률 도메인 특화 임베딩 모델(`lbox/legalstructure-aware-
@@ -17,7 +17,7 @@ embedding-pretrained-model`, bge-m3-retromae 기반)로 바꿔서 같은 dense-o
 Dense-only 순수 비교(contextual_retrieval_compare.py와 동일 방법론) — 법령 3,323청크
 전체를 메모리에 올려 numpy 코사인 유사도로 비교.
 
-실행: .venv/bin/python -m backend.eval.lbox_embedding_compare
+실행: .venv/bin/python -m backend.eval.archive.lbox_embedding_compare
 """
 
 from typing import Any
@@ -26,7 +26,7 @@ import numpy as np
 import torch
 from transformers import AutoModel, AutoTokenizer
 
-from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, build_ground_truth
+from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("lbox_embedding_compare.log")
@@ -75,7 +75,7 @@ def _cosine_top_k(query_vec: np.ndarray, corpus_vecs: np.ndarray, k: int) -> lis
 
 def main() -> None:
     law_recs = load_jsonl(LAWS_PATH)
-    queries = build_ground_truth(law_recs, n_cases=_N_QUERIES)
+    queries = build_ground_truth(law_recs, n_cases=N_QUERIES)
     logger.info(f"  평가 쿼리 {len(queries)}건 생성(contextual_retrieval_compare.py와 동일 seed/로직)")
 
     logger.info(f"  LBOX 임베딩 모델 로드: {_MODEL_ID}")

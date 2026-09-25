@@ -1,4 +1,4 @@
-# backend/eval/combo_best_compare.py
+# backend/eval/archive/combo_best_compare.py
 """
 가장 성능이 좋았던 두 방법(LegalMALR-lite 쿼리 재구성, RAPTOR-lite 법령 라우팅)에
 Cross-Encoder 재랭킹까지 얹은 "종합 콤보" — 각각 33%, 33%까지 올렸던 두 기법을 합치면
@@ -10,7 +10,7 @@ Cross-Encoder 재랭킹까지 얹은 "종합 콤보" — 각각 33%, 33%까지 �
 
 동일 ground truth(FTC 근거_법령, 법령 전체 3,323청크, seed=42, 100건).
 
-실행: .venv/bin/python -m backend.eval.combo_best_compare
+실행: .venv/bin/python -m backend.eval.archive.combo_best_compare
 """
 
 from typing import Any
@@ -20,8 +20,13 @@ from sentence_transformers import CrossEncoder
 from backend.api.services.retrieval import _get_cached_embedder
 from backend.db.connection import get_conn
 from backend.db.loader import embed_texts
-from backend.eval.domain_filter_compare import _dense_with_score, _law_names, _sparse_with_score, rrf_baseline_hit
-from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, build_ground_truth
+from backend.eval.archive.domain_filter_compare import (
+    _dense_with_score,
+    _law_names,
+    _sparse_with_score,
+    rrf_baseline_hit,
+)
+from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.eval.local_llm import generate_json
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
@@ -80,7 +85,7 @@ def combo_best_hit(cur: Any, embedder: Any, reranker: CrossEncoder, clause: str,
 
 def main() -> None:
     law_recs = load_jsonl(LAWS_PATH)
-    queries = build_ground_truth(law_recs, n_cases=_N_QUERIES)
+    queries = build_ground_truth(law_recs, n_cases=N_QUERIES)
     logger.info(f"  평가 쿼리 {len(queries)}건 생성(법령 전체 대상, 동일 seed/로직)")
 
     logger.info(f"  Cross-Encoder 로드: {_RERANKER_MODEL}")

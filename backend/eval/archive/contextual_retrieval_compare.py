@@ -1,4 +1,4 @@
-# backend/eval/contextual_retrieval_compare.py
+# backend/eval/archive/contextual_retrieval_compare.py
 """
 Contextual Retrieval(Anthropic 방식) 근사 구현 — 청크마다 소속 문맥(법령명·조문번호)을
 본문 앞에 명시적으로 붙여서 임베딩한다. 원래 기법은 LLM으로 문맥 요약을 생성하지만,
@@ -15,7 +15,7 @@ Dense-only 비교(프리픽스 유무)로 순수하게 이 효과만 격리한�
 새로 계산해 방법론 차이를 없앤다. 법령 3,323청크 전체를 메모리에 올려 numpy 코사인
 유사도로 비교(로컬 연산, API 비용 없음).
 
-실행: .venv/bin/python -m backend.eval.contextual_retrieval_compare
+실행: .venv/bin/python -m backend.eval.archive.contextual_retrieval_compare
 """
 
 from typing import Any
@@ -24,7 +24,7 @@ import numpy as np
 
 from backend.api.services.retrieval import _get_cached_embedder
 from backend.db.loader import embed_texts
-from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, build_ground_truth
+from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("contextual_retrieval_compare.log")
@@ -56,7 +56,7 @@ def _cosine_top_k(query_vec: np.ndarray, corpus_vecs: np.ndarray, k: int) -> lis
 
 def main() -> None:
     law_recs = load_jsonl(LAWS_PATH)
-    queries = build_ground_truth(law_recs, n_cases=_N_QUERIES)
+    queries = build_ground_truth(law_recs, n_cases=N_QUERIES)
     logger.info(f"  평가 쿼리 {len(queries)}건 생성(법령 전체 대상, 동일 seed/로직)")
 
     embedder = _get_cached_embedder()

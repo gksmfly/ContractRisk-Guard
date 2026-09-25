@@ -1,4 +1,4 @@
-# backend/eval/stage2_improvement_compare.py
+# backend/eval/archive/stage2_improvement_compare.py
 """
 2단계(라우팅 이후 조문 랭킹) 개선안 3종을 같은 100건 ground truth로 한꺼번에 비교한다.
 
@@ -19,7 +19,7 @@ LLM 호출 절약).
 베이스라인 재현 검증: pool=8 / top=5 설정이 기존 실측치 33/100을 그대로 재현해야
 이 하네스를 신뢰할 수 있다 — 결과표 맨 윗줄에서 확인할 것.
 
-실행: .venv/bin/python -m backend.eval.stage2_improvement_compare
+실행: .venv/bin/python -m backend.eval.archive.stage2_improvement_compare
 """
 
 import json
@@ -28,10 +28,10 @@ from typing import Any
 from backend.api.services.retrieval import _fuse_reciprocal_rank, _get_cached_embedder
 from backend.db.connection import get_conn
 from backend.db.loader import embed_texts
-from backend.eval.domain_filter_compare import _dense_with_score, _sparse_with_score
-from backend.eval.legalmalr_lite_compare import _FEWSHOT as _REFORM_FEWSHOT
-from backend.eval.legalmalr_lite_compare import _SYSTEM as _REFORM_SYSTEM
-from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, build_ground_truth
+from backend.eval.archive.domain_filter_compare import _dense_with_score, _sparse_with_score
+from backend.eval.archive.legalmalr_lite_compare import _FEWSHOT as _REFORM_FEWSHOT
+from backend.eval.archive.legalmalr_lite_compare import _SYSTEM as _REFORM_SYSTEM
+from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.eval.local_llm import generate_json
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
@@ -114,7 +114,7 @@ def _llm_rerank(clause: str, pool: list[dict]) -> list[dict]:
 def main(limit: int | None = None) -> None:
     recorded = {q["case_name"]: q for q in json.loads(EXAONE_REPORT.read_text())["per_query"]}
     law_recs = load_jsonl(LAWS_PATH)
-    queries = build_ground_truth(law_recs, n_cases=_N_QUERIES)
+    queries = build_ground_truth(law_recs, n_cases=N_QUERIES)
     if limit:
         queries = queries[:limit]
     embedder = _get_cached_embedder()

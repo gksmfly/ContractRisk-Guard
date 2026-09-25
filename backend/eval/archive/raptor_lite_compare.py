@@ -1,4 +1,4 @@
-# backend/eval/raptor_lite_compare.py
+# backend/eval/archive/raptor_lite_compare.py
 """
 RAPTOR(계층적 인덱싱)의 핵심 아이디어 — "브루트포스로 전부 검색하지 않고 계층을 타고
 내려가며 검색 범위를 좁힌다" — 를 경량 근사한다. 이 법령 코퍼스는 이미 law_name이라는
@@ -13,7 +13,7 @@ domain_filter_compare.py(옵션2)는 16개 파티션을 전부 검색해서 점�
 
 동일 ground truth(FTC 근거_법령, 법령 전체 3,323청크, seed=42, 100건).
 
-실행: .venv/bin/python -m backend.eval.raptor_lite_compare
+실행: .venv/bin/python -m backend.eval.archive.raptor_lite_compare
 """
 
 from typing import Any
@@ -21,8 +21,13 @@ from typing import Any
 from backend.api.services.retrieval import _fuse_reciprocal_rank, _get_cached_embedder
 from backend.db.connection import get_conn
 from backend.db.loader import embed_texts
-from backend.eval.domain_filter_compare import _dense_with_score, _law_names, _sparse_with_score, rrf_baseline_hit
-from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, build_ground_truth
+from backend.eval.archive.domain_filter_compare import (
+    _dense_with_score,
+    _law_names,
+    _sparse_with_score,
+    rrf_baseline_hit,
+)
+from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.eval.local_llm import generate_json
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
@@ -66,7 +71,7 @@ def routed_hit(cur: Any, embedder: Any, query_text: str, predicted_laws: list[st
 
 def main() -> None:
     law_recs = load_jsonl(LAWS_PATH)
-    queries = build_ground_truth(law_recs, n_cases=_N_QUERIES)
+    queries = build_ground_truth(law_recs, n_cases=N_QUERIES)
     logger.info(f"  평가 쿼리 {len(queries)}건 생성(법령 전체 대상, 동일 seed/로직)")
 
     embedder = _get_cached_embedder()

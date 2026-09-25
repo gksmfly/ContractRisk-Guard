@@ -1,4 +1,4 @@
-# backend/eval/hybrid_ensemble.py
+# backend/eval/archive/hybrid_ensemble.py
 """
 KoELECTRA + 검색기반(v2) 앙상블이 둘 중 하나보다 나은지 확인 — 재학습(피처 융합) 전에
 값싸게 신호를 먼저 확인하는 단계.
@@ -19,7 +19,7 @@ neighbor_agreement는 KoE5 이웃 5개 중 최종 판정과 같은 risk_level을
 = 헷징 의심, 진단했던 문제)면 그때만 KoELECTRA로 대체하고, "이웃들도 실제로
 Medium을 가리킨다"(agreement 높음 = 근거 있는 판단)면 그대로 유지한다.
 
-실행: python -m backend.eval.hybrid_ensemble
+실행: python -m backend.eval.archive.hybrid_ensemble
 """
 
 import json
@@ -32,7 +32,7 @@ from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 
 from backend.agents.judgment_agent import predict_articles
-from backend.eval.retrieval_judgment import retrieval_judge
+from backend.eval.archive.retrieval_judgment import retrieval_judge
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 load_dotenv()

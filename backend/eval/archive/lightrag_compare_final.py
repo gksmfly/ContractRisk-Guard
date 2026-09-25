@@ -1,10 +1,10 @@
-# backend/eval/lightrag_compare_final.py
+# backend/eval/archive/lightrag_compare_final.py
 """
 법령 코퍼스(3,323청크) 전체 인덱싱이 완료된 뒤 돌리는 최종 비교 — 민법 포함
 전체 법령 대상, 재인덱싱 없이 기존 완성된 인덱스(data/eval/lightrag_full_storage)를
 그대로 연다. lightrag_compare_partial.py(약관규제법 등 94.7%만 커버)의 완전판.
 
-실행: python -m backend.eval.lightrag_compare_final
+실행: python -m backend.eval.archive.lightrag_compare_final
 """
 
 import asyncio
@@ -14,15 +14,13 @@ from lightrag.kg.shared_storage import initialize_pipeline_status
 from lightrag.llm.openai import gpt_4o_mini_complete, openai_embed
 from lightrag.utils import EmbeddingFunc
 
-from backend.eval.lightrag_compare import (
-    _N_QUERIES,
+from backend.eval.archive.lightrag_compare import (
     _QUERY_LOG_EVERY,
-    LAWS_PATH,
     WORKING_DIR,
-    build_ground_truth,
     hybrid_rrf_hit,
     lightrag_hit,
 )
+from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("lightrag_compare_final.log")
@@ -33,7 +31,7 @@ async def main() -> None:
     all_recs = load_jsonl(LAWS_PATH)
     logger.info(f"  법령 전체 인덱싱 완료 상태 재사용({len(all_recs)}청크, 민법 포함)")
 
-    queries = build_ground_truth(all_recs, n_cases=_N_QUERIES)
+    queries = build_ground_truth(all_recs, n_cases=N_QUERIES)
     logger.info(f"  평가 쿼리 {len(queries)}건 생성(전체 법령 대상, 민법 포함)")
 
     rag = LightRAG(

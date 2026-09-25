@@ -1,4 +1,4 @@
-# backend/eval/lightrag_compare.py
+# backend/eval/archive/lightrag_compare.py
 """
 LightRAG vs 지금 Hybrid RRF(backend.api.services.retrieval) — 법조문 검색 적중률
 본비교. lightrag_pilot.py로 파이프라인 동작은 검증됨(RRF 20.0% ≈ 원래 문서 20.1%,
@@ -12,14 +12,12 @@ LightRAG vs 지금 Hybrid RRF(backend.api.services.retrieval) — 법조문 검�
 대신 **정답 조문의 실제 본문 텍스트**(법령마다 문구가 고유함)가 컨텍스트에 부분
 문자열로 등장하는지로 판정한다 — 법령명 구분 문제가 자동으로 해결됨.
 
-실행: python -m backend.eval.lightrag_compare
+실행: python -m backend.eval.archive.lightrag_compare
 """
 
 import asyncio
 import json
 import os
-import random
-import re
 import shutil
 
 from lightrag import LightRAG, QueryParam
@@ -27,51 +25,16 @@ from lightrag.kg.shared_storage import initialize_pipeline_status
 from lightrag.llm.openai import gpt_4o_mini_complete, openai_embed
 from lightrag.utils import EmbeddingFunc
 
+from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("lightrag_compare.log")
 
 WORKING_DIR = str(PROJECT_ROOT / "data/eval/lightrag_full_storage")
-LAWS_PATH = PROJECT_ROOT / "data/processed/laws.jsonl"
-FTC_PATH = PROJECT_ROOT / "data/raw/ftc_cases/ftc_cases_parsed.json"
 OUT_PATH = PROJECT_ROOT / "data/eval/lightrag_vs_rrf_report.json"
 
-_PAT = re.compile(r"^(.*?)\s*제\s*(\d+)\s*조")
-_N_QUERIES = 100
 _INDEX_LOG_EVERY = 250
 _QUERY_LOG_EVERY = 50
-
-
-def build_ground_truth(law_recs: list[dict], n_cases: int, seed: int = 42) -> list[dict]:
-    """FTC 근거_법령 전체(3개 법령)를 파싱해 평가 쿼리를 만든다. 정답 조문의 실제 본문도 같이 붙인다."""
-    extract_article_text = {(r["metadata"]["law_name"], r["metadata"]["article_no"]): r["text"] for r in law_recs}
-
-    with open(FTC_PATH, encoding="utf-8") as f:
-        cases = json.load(f).get("사례", [])
-
-    candidates = []
-    for case in cases:
-        grounds = case.get("근거_법령", [])
-        clauses = case.get("조항_원문", [])
-        if not grounds or not clauses:
-            continue
-        pairs = set()
-        for g in grounds:
-            m = _PAT.match(g.replace("\n", " ").strip())
-            if m:
-                pairs.add((m.group(1).strip(), m.group(2)))
-        pairs = {p for p in pairs if p in extract_article_text}  # 코퍼스에 실제 있는 것만
-        if not pairs:
-            continue
-        candidates.append({
-            "case_name": case.get("사건명", ""),
-            "clause": str(clauses[0])[:300],
-            "correct_pairs": sorted(pairs),
-            "correct_texts": [extract_article_text[p][:60] for p in pairs],  # 판정용 — 조문 본문 앞부분
-        })
-
-    random.seed(seed)
-    return random.sample(candidates, min(n_cases, len(candidates)))
 
 
 async def build_index(law_recs: list[dict]) -> LightRAG:
@@ -118,7 +81,7 @@ async def lightrag_hit(rag: LightRAG, query_text: str, correct_texts: list[str])
 
 async def main() -> None:
     law_recs = load_jsonl(LAWS_PATH)
-    queries = build_ground_truth(law_recs, n_cases=_N_QUERIES)
+    queries = build_ground_truth(law_recs, n_cases=N_QUERIES)
     logger.info(f"  평가 쿼리 {len(queries)}건 생성(법령 전체 대상, 샘플링)")
 
     rag = await build_index(law_recs)

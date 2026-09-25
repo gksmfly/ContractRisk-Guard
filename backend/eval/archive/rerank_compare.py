@@ -1,4 +1,4 @@
-# backend/eval/rerank_compare.py
+# backend/eval/archive/rerank_compare.py
 """
 LightRAG의 실패 원인(그래프 희석)이 "그래프 구조 자체"에 있다는 분석(memory
 project_lightrag_vs_rrf.md 참고) 이후, 그래프 없이 정밀도만 올리는 최소 변경안을
@@ -10,13 +10,13 @@ RRF 후보군(top_k_per_source를 넉넉히 키움)에 Cross-Encoder(BAAI/bge-re
 신뢰할 수 없다고 이미 문서화됨(project_lightrag_vs_rrf.md) — 이번이 이 비교의 첫
 재현 가능한 버전이다.
 
-실행: .venv/bin/python -m backend.eval.rerank_compare
+실행: .venv/bin/python -m backend.eval.archive.rerank_compare
 """
 
 from sentence_transformers import CrossEncoder
 
 from backend.api.services.retrieval import fetch_candidates
-from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, build_ground_truth
+from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("rerank_compare.log")
@@ -50,7 +50,7 @@ def rrf_only_hit(query_text: str, correct_pairs: list[tuple]) -> bool:
 
 def main() -> None:
     law_recs = load_jsonl(LAWS_PATH)
-    queries = build_ground_truth(law_recs, n_cases=_N_QUERIES)
+    queries = build_ground_truth(law_recs, n_cases=N_QUERIES)
     logger.info(f"  평가 쿼리 {len(queries)}건 생성(법령 전체 대상, lightrag_compare_final.py와 동일 seed/로직)")
 
     logger.info(f"  Cross-Encoder 로드: {_RERANKER_MODEL}")

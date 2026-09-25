@@ -196,6 +196,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--ref-model", default="models/article_v2",
                     help="조 목록의 출처. 여기서 다시 고르지 않는다")
     ap.add_argument("--limit", type=int, default=0, help="연기 테스트용. 0이면 전부")
+    ap.add_argument("--load-4bit", action="store_true",
+                    help="NF4 양자화로 로드. 14B급은 bf16이 32GB에 안 들어간다")
     args = ap.parse_args(argv)
 
     os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
@@ -224,8 +226,19 @@ def main(argv: list[str] | None = None) -> None:
     tok = AutoTokenizer.from_pretrained(args.base, trust_remote_code=True)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
-    model = AutoModelForCausalLM.from_pretrained(
-        args.base, dtype=torch.bfloat16, trust_remote_code=True).to(dev)
+    if args.load_4bit:
+        # 14B는 bf16 가중치만 28GB라 LoRA를 얹으면 32GB를 넘는다. NF4로 약 9GB.
+        # ⚠ 양자화는 **비교 조건을 바꾼다** — 7.8B(bf16)와 14B(4bit)를 나란히 놓을 때
+        #    "크기 차이"와 "양자화 차이"가 섞인다. 결과에 플래그를 남긴다.
+        from transformers import BitsAndBytesConfig
+        model = AutoModelForCausalLM.from_pretrained(
+            args.base, trust_remote_code=True,
+            quantization_config=BitsAndBytesConfig(
+                load_in_4bit=True, bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.bfloat16, bnb_4bit_use_double_quant=True))
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            args.base, dtype=torch.bfloat16, trust_remote_code=True).to(dev)
     _patch_input_embeddings(model)
     model.config.use_cache = False
     model.gradient_checkpointing_enable()
@@ -304,6 +317,7 @@ def main(argv: list[str] | None = None) -> None:
         "base_model": args.base, "tag": args.tag, "names": names, "folded": folded,
         "n_train": len(tr_ds), "n_dev": len(dv_ds), "n_gold": len(gold),
         "epochs": args.epochs, "lora_r": args.lora_r, "lr": args.lr,
+        "load_4bit": args.load_4bit, "seed": args.seed,
         "f1_all": float(np.mean(f1s)),
         "f1_picked": float(np.mean([_f1(p, g["articles"]) for p, g in picked])) if picked else 0.0,
         "n_picked": len(picked),

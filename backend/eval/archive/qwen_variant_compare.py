@@ -1,4 +1,4 @@
-# backend/eval/qwen_variant_compare.py
+# backend/eval/archive/qwen_variant_compare.py
 """
 가장 성능이 좋았던 두 방법(LegalMALR-lite 쿼리 재구성, RAPTOR-lite 법령 라우팅)을 로컬
 모델만 EXAONE-3.5-7.8B-Instruct(한국어 특화, 7.8B) 대신 Qwen2.5-14B-Instruct(다국어 범용,
@@ -6,19 +6,19 @@
 분리해서 본다. 프롬프트·few-shot·ground truth는 legalmalr_lite_compare.py,
 raptor_lite_compare.py와 완전히 동일하게 재사용한다.
 
-실행: .venv/bin/python -m backend.eval.qwen_variant_compare
+실행: .venv/bin/python -m backend.eval.archive.qwen_variant_compare
 """
 
 from backend.api.services.retrieval import _get_cached_embedder
 from backend.db.connection import get_conn
-from backend.eval.domain_filter_compare import _law_names, rrf_baseline_hit
-from backend.eval.legalmalr_lite_compare import _FEWSHOT as _REFORM_FEWSHOT
-from backend.eval.legalmalr_lite_compare import _SYSTEM as _REFORM_SYSTEM
-from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, build_ground_truth
+from backend.eval.archive.domain_filter_compare import _law_names, rrf_baseline_hit
+from backend.eval.archive.legalmalr_lite_compare import _FEWSHOT as _REFORM_FEWSHOT
+from backend.eval.archive.legalmalr_lite_compare import _SYSTEM as _REFORM_SYSTEM
+from backend.eval.archive.raptor_lite_compare import _FEWSHOT as _ROUTE_FEWSHOT
+from backend.eval.archive.raptor_lite_compare import _SYSTEM_TMPL as _ROUTE_SYSTEM_TMPL
+from backend.eval.archive.raptor_lite_compare import routed_hit
+from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.eval.local_llm import generate_json
-from backend.eval.raptor_lite_compare import _FEWSHOT as _ROUTE_FEWSHOT
-from backend.eval.raptor_lite_compare import _SYSTEM_TMPL as _ROUTE_SYSTEM_TMPL
-from backend.eval.raptor_lite_compare import routed_hit
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("qwen_variant_compare.log")
@@ -29,7 +29,7 @@ _MODEL_KEY = "qwen2.5-14b"
 
 def main() -> None:
     law_recs = load_jsonl(LAWS_PATH)
-    queries = build_ground_truth(law_recs, n_cases=_N_QUERIES)
+    queries = build_ground_truth(law_recs, n_cases=N_QUERIES)
     logger.info(f"  평가 쿼리 {len(queries)}건 생성(legalmalr_lite/raptor_lite와 동일 seed/로직)")
     logger.info(f"  모델: {_MODEL_KEY}(로딩에 시간 소요될 수 있음)")
 

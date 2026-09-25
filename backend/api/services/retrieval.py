@@ -30,7 +30,7 @@ Evidence Selection Agent 구축 전 사전 실험(clean_clauses 478건, 정답 �
 가 담당한다. (주의: 이 실험 스크립트는 레포에 안 남아있어 재현 불가 — 아래
 LightRAG 비교가 훨씬 신뢰도 높은 재현 가능한 수치.)
 
-**LightRAG 대안 비교(2026-08-05, `backend/eval/lightrag_compare*.py`, 법령 전체
+**LightRAG 대안 비교(2026-08-05, `backend/eval/archive/lightrag_compare*.py`, 법령 전체
 확정)**: 원래 설계는 LightRAG였는데 Mecab 의존성 때문에 성능 비교 없이 Hybrid
 RRF로 대체됐다. FTC 근거_법령(공정위 실제 인용 법조문, 981케이스 2,444건, 100%
 파싱·매칭 확인)을 ground truth로 재현 가능한 비교를 진행. 법령 전체 3,323청크
@@ -77,7 +77,7 @@ survey 문서 참고.
    텍스트 위에서 측정한 값**이다.
 
 2) **RAPTOR-lite(EXAONE 라우팅)는 상수 기준선에 완패한다.** 상수와 비교하지 않은 게
-   원인이었다. `backend/eval/law_router_compare.py` 실측(100건, 후보 20/법령, top-5):
+   원인이었다. `backend/eval/archive/law_router_compare.py` 실측(100건, 후보 20/법령, top-5):
 
        RRF(필터 없음)            18%
        EXAONE top-2 라우팅        37%
@@ -349,7 +349,7 @@ def fetch_candidates(
     재검색은 범위를 넓히는 마지막 시도라 좁히는 필터와 상충한다).
 
     **좁힐수록 좋아진다**는 것이 이 코퍼스의 실측 결과다
-    (`backend/eval/law_router_compare.py`, FTC 의결서 100건, top-5):
+    (`backend/eval/archive/law_router_compare.py`, FTC 의결서 100건, top-5):
 
         필터 없음(법령 전체 16개 파티션)          18%
         EXAONE이 예측한 top-2 법령                37%

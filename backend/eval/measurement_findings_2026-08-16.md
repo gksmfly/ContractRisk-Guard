@@ -62,7 +62,7 @@ gpt-4o-mini는 민법을 안전빵으로 같이 집는데, 민법은 1,305청크
 26%) 또는 gpt-4o-mini(20%).
 
 ```bash
-.venv/bin/python -m backend.eval.raptor_lite_openai_compare          # 전체 100건
+.venv/bin/python -m backend.eval.archive.raptor_lite_openai_compare          # 전체 100건
 ```
 
 ---
@@ -94,7 +94,7 @@ gpt-4o-mini는 민법을 안전빵으로 같이 집는데, 민법은 1,305청크
 LightRAG 20%, RAPTOR-lite 33%)가 top-5 기준이다.
 
 ```bash
-.venv/bin/python -m backend.eval.stage2_recall_diagnosis
+.venv/bin/python -m backend.eval.archive.stage2_recall_diagnosis
 ```
 
 ---
@@ -136,7 +136,7 @@ top-2~5만 노출하는 운영 환경에 정확히 필요한 개선.
 **트레이드오프**: C안은 조항당 EXAONE 호출이 1→2회. 20조항 계약서면 순차 추론 40회.
 
 ```bash
-.venv/bin/python -m backend.eval.stage2_improvement_compare
+.venv/bin/python -m backend.eval.archive.stage2_improvement_compare
 ```
 
 ---

@@ -1,4 +1,4 @@
-# backend/eval/raptor_lite_openai_compare.py
+# backend/eval/archive/raptor_lite_openai_compare.py
 """
 RAPTOR-lite 법령 라우팅을 **OpenAI gpt-4o-mini**로 수행해, 로컬 EXAONE-3.5-7.8B 결과
 (33%)와 직접 비교한다.
@@ -19,8 +19,8 @@ EXAONE 결과와 쿼리 단위로 짝지어 비교(McNemar)할 수 있다. 바�
 모델 하나뿐이다.
 
 실행:
-    .venv/bin/python -m backend.eval.raptor_lite_openai_compare --limit 5   # 스모크
-    .venv/bin/python -m backend.eval.raptor_lite_openai_compare             # 전체 100건
+    .venv/bin/python -m backend.eval.archive.raptor_lite_openai_compare --limit 5   # 스모크
+    .venv/bin/python -m backend.eval.archive.raptor_lite_openai_compare             # 전체 100건
 """
 
 import argparse
@@ -33,9 +33,9 @@ from openai import OpenAI
 
 from backend.api.services.retrieval import _get_cached_embedder
 from backend.db.connection import get_conn
-from backend.eval.domain_filter_compare import _law_names, rrf_baseline_hit
-from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, build_ground_truth
-from backend.eval.raptor_lite_compare import _FEWSHOT, _SYSTEM_TMPL, routed_hit
+from backend.eval.archive.domain_filter_compare import _law_names, rrf_baseline_hit
+from backend.eval.archive.raptor_lite_compare import _FEWSHOT, _SYSTEM_TMPL, routed_hit
+from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("raptor_lite_openai_compare.log")
@@ -96,7 +96,7 @@ def _load_exaone_per_query() -> dict[str, bool] | None:
 
 def main(limit: int | None = None) -> None:
     law_recs = load_jsonl(LAWS_PATH)
-    queries = build_ground_truth(law_recs, n_cases=_N_QUERIES)
+    queries = build_ground_truth(law_recs, n_cases=N_QUERIES)
     if limit:
         queries = queries[:limit]
     logger.info(f"  평가 쿼리 {len(queries)}건 (모델={ROUTER_EVAL_MODEL}, 동일 seed/ground truth)")

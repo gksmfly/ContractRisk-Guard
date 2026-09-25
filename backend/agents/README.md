@@ -57,7 +57,7 @@ GPT-4o Forward Labeling(`backend.fb_check.forward_labeling.run_forward()`) 재�
     약관규제법 + EXAONE 예측 추가  40/100   ← 추가만 해도 해롭다
     약관규제법 고정              65/100   ← EXAONE만 맞은 케이스 0건, McNemar p<0.00001
 
-이득의 정체는 "똑똑하게 고르기"가 아니라 **"좁히기"** 였다. 재현: `backend/eval/law_router_compare.py`.
+이득의 정체는 "똑똑하게 고르기"가 아니라 **"좁히기"** 였다. 재현: `backend/eval/archive/law_router_compare.py`.
 한계 — 이 평가셋은 전부 FTC 약관 사건이라 약관규제법이 100% 정답이다. 재검색 시도마다 다른 전략:
 
 | 회차 | top_k | pg_trgm 임계값 | 검색 범위 | 법령 필터 |

@@ -44,7 +44,7 @@ from collections import Counter
 from pathlib import Path
 
 from backend.db.connection import get_conn
-from backend.eval.lightrag_compare import LAWS_PATH, build_ground_truth
+from backend.eval.common import LAWS_PATH, build_ground_truth
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("precedent_ground_truth.log")

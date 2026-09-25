@@ -1,4 +1,4 @@
-# backend/eval/combo_1_2_compare.py
+# backend/eval/archive/combo_1_2_compare.py
 """
 옵션1(RRF + Cross-Encoder 재랭킹)과 옵션2(도메인 필터링 Hybrid)를 합친 조합 —
 둘 다 그래프 없이 동작하고 서로 다른 단계(후보 생성 vs 정밀 재정렬)에 작용해서
@@ -11,7 +11,7 @@
 동일 ground truth(FTC 근거_법령, 법령 전체 3,323청크, seed=42, 100건) — rerank_compare.py,
 domain_filter_compare.py와 같은 쿼리 세트라 4개 리포트를 직접 비교할 수 있다.
 
-실행: .venv/bin/python -m backend.eval.combo_1_2_compare
+실행: .venv/bin/python -m backend.eval.archive.combo_1_2_compare
 """
 
 from typing import Any
@@ -21,8 +21,13 @@ from sentence_transformers import CrossEncoder
 from backend.api.services.retrieval import _get_cached_embedder
 from backend.db.connection import get_conn
 from backend.db.loader import embed_texts
-from backend.eval.domain_filter_compare import _dense_with_score, _law_names, _sparse_with_score, rrf_baseline_hit
-from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, build_ground_truth
+from backend.eval.archive.domain_filter_compare import (
+    _dense_with_score,
+    _law_names,
+    _sparse_with_score,
+    rrf_baseline_hit,
+)
+from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("combo_1_2_compare.log")
@@ -59,7 +64,7 @@ def combo_hit(cur: Any, embedder: Any, reranker: CrossEncoder, query_text: str, 
 
 def main() -> None:
     law_recs = load_jsonl(LAWS_PATH)
-    queries = build_ground_truth(law_recs, n_cases=_N_QUERIES)
+    queries = build_ground_truth(law_recs, n_cases=N_QUERIES)
     logger.info(f"  평가 쿼리 {len(queries)}건 생성(법령 전체 대상, 동일 seed/로직)")
 
     logger.info(f"  Cross-Encoder 로드: {_RERANKER_MODEL}")

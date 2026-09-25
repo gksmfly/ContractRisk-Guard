@@ -1,4 +1,4 @@
-# backend/eval/lightrag_scoped_compare.py
+# backend/eval/archive/lightrag_scoped_compare.py
 """
 옵션3(GraphRAG 서브그래프 스코핑)을 "안 해봄"으로 남기지 말고 실제로 시도한다.
 
@@ -20,7 +20,7 @@ KoE5가 아니라서 다른 옵션들과 임베딩 모델 자체가 다르다는
 "스코핑 효과"만 보려는 것이지 "임베딩 모델 비교"가 아님을 결과 해석 시 감안해야 함).
 API 비용 발생(쿼리당 임베딩 1회, 100건 — 소액).
 
-실행: .venv/bin/python -m backend.eval.lightrag_scoped_compare
+실행: .venv/bin/python -m backend.eval.archive.lightrag_scoped_compare
 """
 
 import asyncio
@@ -31,10 +31,11 @@ from lightrag.llm.openai import gpt_4o_mini_complete, openai_embed
 from lightrag.utils import EmbeddingFunc
 
 from backend.db.connection import get_conn
-from backend.eval.domain_filter_compare import _law_names
-from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, WORKING_DIR, build_ground_truth
+from backend.eval.archive.domain_filter_compare import _law_names
+from backend.eval.archive.lightrag_compare import WORKING_DIR
+from backend.eval.archive.raptor_lite_compare import _FEWSHOT, _SYSTEM_TMPL
+from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.eval.local_llm import generate_json
-from backend.eval.raptor_lite_compare import _FEWSHOT, _SYSTEM_TMPL
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("lightrag_scoped_compare.log")
@@ -54,7 +55,7 @@ def _text_to_law(chunk_text: str, article_text_index: dict[str, tuple]) -> tuple
 
 async def main() -> None:
     law_recs = load_jsonl(LAWS_PATH)
-    queries = build_ground_truth(law_recs, n_cases=_N_QUERIES)
+    queries = build_ground_truth(law_recs, n_cases=N_QUERIES)
     logger.info(f"  평가 쿼리 {len(queries)}건 생성(법령 전체 대상, 동일 seed/로직)")
 
     article_text_index = {

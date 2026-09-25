@@ -1,4 +1,4 @@
-# backend/eval/compare_judgment.py
+# backend/eval/archive/compare_judgment.py
 """
 KoELECTRA(v4) vs 검색기반(KoE5+GPT-4o-mini few-shot) 판단 방식 비교 — Phase B.
 
@@ -17,7 +17,7 @@ forward_labeling.run_forward()로 evidence_span만 먼저 뽑아(도메인·risk
 evidence_span 추출도 GPT-4o-mini 호출이 필요해서(원문 1,052건), 캐시 파일에
 저장해 재실행 시 API를 다시 호출하지 않는다.
 
-실행: python -m backend.eval.compare_judgment [--sample N]
+실행: python -m backend.eval.archive.compare_judgment [--sample N]
 """
 
 import argparse
@@ -31,7 +31,7 @@ from openai import OpenAI
 from sklearn.metrics import classification_report, confusion_matrix
 
 from backend.agents.judgment_agent import predict_articles
-from backend.eval.retrieval_judgment import retrieval_judge
+from backend.eval.archive.retrieval_judgment import retrieval_judge
 from backend.fb_check.forward_labeling import run_forward
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 

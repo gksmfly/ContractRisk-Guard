@@ -1,4 +1,4 @@
-# backend/eval/law_router_compare.py
+# backend/eval/archive/law_router_compare.py
 """
 법령 라우팅 방식 비교 — LLM 라우터가 상수 기준선을 이기는가.
 
@@ -55,7 +55,7 @@
       `backend/agents/evidence_selection_agent.py::_FINAL_K`
 
 실행:
-    PYTHONPATH=. EMBED_DEVICE=cuda:1 .venv/bin/python -m backend.eval.law_router_compare
+    PYTHONPATH=. EMBED_DEVICE=cuda:1 .venv/bin/python -m backend.eval.archive.law_router_compare
 """
 
 import json
@@ -65,13 +65,13 @@ from typing import Any
 from backend.api.services.retrieval import _fuse_reciprocal_rank, _get_cached_embedder
 from backend.db.connection import get_conn
 from backend.db.loader import embed_texts
-from backend.eval.domain_filter_compare import (
+from backend.eval.archive.domain_filter_compare import (
     _dense_with_score,
     _search_dense,
     _search_sparse,
     _sparse_with_score,
 )
-from backend.eval.lightrag_compare import _N_QUERIES, LAWS_PATH, build_ground_truth
+from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("law_router_compare.log")
@@ -181,7 +181,7 @@ def mcnemar(a: list[bool], b: list[bool]) -> dict:
 
 
 def main() -> None:
-    queries = build_ground_truth(load_jsonl(LAWS_PATH), n_cases=_N_QUERIES)
+    queries = build_ground_truth(load_jsonl(LAWS_PATH), n_cases=N_QUERIES)
     exaone = _load_exaone_predictions()
     logger.info(f"  평가 쿼리 {len(queries)}건 | EXAONE 예측 기록 {len(exaone)}건")
 
