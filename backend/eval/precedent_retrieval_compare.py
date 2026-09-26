@@ -40,8 +40,8 @@ from math import comb
 from typing import Any
 
 from backend.agents.evidence_selection_agent import _FINAL_K, evidence_selection_node
-from backend.api.services.retrieval import fetch_candidates
 from backend.eval.precedent_ground_truth import build_precedent_gold, build_reference_index
+from backend.retrieval.search import fetch_candidates
 from backend.utils import PROJECT_ROOT, load_logger, save_json
 
 logger = load_logger("precedent_retrieval_compare.log")

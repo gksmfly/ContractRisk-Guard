@@ -9,7 +9,6 @@ raptor_lite_compare.py와 완전히 동일하게 재사용한다.
 실행: .venv/bin/python -m backend.eval.archive.qwen_variant_compare
 """
 
-from backend.api.services.retrieval import _get_cached_embedder
 from backend.db.connection import get_conn
 from backend.eval.archive.domain_filter_compare import _law_names, rrf_baseline_hit
 from backend.eval.archive.legalmalr_lite_compare import _FEWSHOT as _REFORM_FEWSHOT
@@ -19,6 +18,7 @@ from backend.eval.archive.raptor_lite_compare import _SYSTEM_TMPL as _ROUTE_SYST
 from backend.eval.archive.raptor_lite_compare import routed_hit
 from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.eval.local_llm import generate_json
+from backend.retrieval.search import _get_cached_embedder
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("qwen_variant_compare.log")

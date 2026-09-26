@@ -18,7 +18,6 @@ domain_filter_compare.py(옵션2)는 16개 파티션을 전부 검색해서 점�
 
 from typing import Any
 
-from backend.api.services.retrieval import _fuse_reciprocal_rank, _get_cached_embedder
 from backend.db.connection import get_conn
 from backend.db.loader import embed_texts
 from backend.eval.archive.domain_filter_compare import (
@@ -29,6 +28,7 @@ from backend.eval.archive.domain_filter_compare import (
 )
 from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.eval.local_llm import generate_json
+from backend.retrieval.search import _fuse_reciprocal_rank, _get_cached_embedder
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("raptor_lite_compare.log")

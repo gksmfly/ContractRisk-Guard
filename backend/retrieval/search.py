@@ -1,11 +1,12 @@
-# backend/api/services/retrieval.py
+# backend/retrieval/search.py
 """
 근거 법령·판례 검색 — chunks 테이블(법령 조문 + 판례) 대상 Hybrid(Dense+Sparse) Retrieval,
 clean_clauses 테이블 대상 유사 라벨 조항 검색(Red-team Agent용)
 
 backend.agents의 retrieval_strategy_agent/red_team_agent가 이 모듈을 호출하는 얇은
 LangGraph 노드다 — 실제 검색 로직(DB 접근, 임베딩, 랭킹 융합)은 SRP상 여기(DB 서비스
-레이어)에 남겨둔다.
+레이어)에 남겨둔다. `backend.api`를 import하지 않는다 — 의존 방향은
+api → agents → retrieval → db 한 방향이다.
 
 **⚠️ 화면의 "적용 법령"은 더 이상 이 모듈이 만들지 않는다 (2026-08-31).**
 법령은 `evidence_selection_agent`가 **예측한 조에서 직접 매핑**한다 — 검색으로 붙이면
@@ -99,9 +100,9 @@ survey 문서 참고.
 
 from typing import Any
 
-from backend.api.schemas import LegalBasis
 from backend.db.connection import get_conn
 from backend.db.loader import embed_texts, get_embedder
+from backend.retrieval.schemas import LegalBasis
 from backend.utils import load_logger
 
 logger = load_logger("retrieval.log")

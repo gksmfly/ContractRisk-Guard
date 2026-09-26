@@ -11,7 +11,7 @@
 
 from typing import TypedDict
 
-from backend.api.schemas import LegalBasis
+from backend.retrieval.schemas import LegalBasis
 
 
 class ClauseState(TypedDict, total=False):

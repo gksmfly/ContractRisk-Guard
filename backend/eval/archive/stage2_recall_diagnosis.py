@@ -21,11 +21,11 @@
 import json
 from collections import Counter
 
-from backend.api.services.retrieval import _fuse_reciprocal_rank, _get_cached_embedder
 from backend.db.connection import get_conn
 from backend.db.loader import embed_texts
 from backend.eval.archive.domain_filter_compare import _dense_with_score, _sparse_with_score
 from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
+from backend.retrieval.search import _fuse_reciprocal_rank, _get_cached_embedder
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("stage2_recall_diagnosis.log")

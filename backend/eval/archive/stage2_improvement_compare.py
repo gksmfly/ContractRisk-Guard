@@ -25,7 +25,6 @@ LLM 호출 절약).
 import json
 from typing import Any
 
-from backend.api.services.retrieval import _fuse_reciprocal_rank, _get_cached_embedder
 from backend.db.connection import get_conn
 from backend.db.loader import embed_texts
 from backend.eval.archive.domain_filter_compare import _dense_with_score, _sparse_with_score
@@ -33,6 +32,7 @@ from backend.eval.archive.legalmalr_lite_compare import _FEWSHOT as _REFORM_FEWS
 from backend.eval.archive.legalmalr_lite_compare import _SYSTEM as _REFORM_SYSTEM
 from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.eval.local_llm import generate_json
+from backend.retrieval.search import _fuse_reciprocal_rank, _get_cached_embedder
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("stage2_improvement_compare.log")

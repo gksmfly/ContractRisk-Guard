@@ -1,6 +1,8 @@
 # backend/api/schemas.py
 from pydantic import BaseModel
 
+from backend.retrieval.schemas import LegalBasis
+
 
 class AnalyzeRequest(BaseModel):
     text: str
@@ -10,12 +12,6 @@ class EvidenceSpan(BaseModel):
     text: str
     start: int
     end: int
-
-
-class LegalBasis(BaseModel):
-    law: str
-    article: str
-    description: str
 
 
 class ClauseResult(BaseModel):

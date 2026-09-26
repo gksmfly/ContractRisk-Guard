@@ -20,7 +20,7 @@ import time
 
 from openai import OpenAI
 
-from backend.api.services.retrieval import search_similar_labeled_clauses
+from backend.retrieval.search import search_similar_labeled_clauses
 from backend.utils import load_logger
 
 logger = load_logger("retrieval_judgment.log")

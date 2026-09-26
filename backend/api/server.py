@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # `judgment_agent.predict_articles()`가 첫 호출에 lazy 로드됐고, 지연 벤치마크에서
     # 1조항 20.4초 vs 이후 조항당 ~11초로 약 10초가 첫 사용자에게 전가되고 있었다.
     from backend.agents.judgment_agent import _get_electra
-    from backend.api.services.retrieval import _get_cached_embedder
+    from backend.retrieval.search import _get_cached_embedder
 
     _validate_required_env()
     init_pool()

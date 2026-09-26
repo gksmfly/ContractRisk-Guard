@@ -1,6 +1,6 @@
 # tests/agents/test_retrieval_strategy_agent.py
 """
-backend/api/services/retrieval.py의 _fuse_reciprocal_rank() 단위 테스트 +
+backend/retrieval/search.py의 _fuse_reciprocal_rank() 단위 테스트 +
 backend/agents/retrieval_strategy_agent.py의 법령 라우팅 통합(1회차만 라우팅,
 재시도는 필터 해제) 단위 테스트.
 
@@ -16,7 +16,7 @@ from typing import Any
 import pytest
 
 import backend.agents.retrieval_strategy_agent as retrieval_strategy_agent
-from backend.api.services.retrieval import _fuse_reciprocal_rank
+from backend.retrieval.search import _fuse_reciprocal_rank
 
 
 def _row(chunk_id: str, source: str = "law") -> tuple[str, str, dict, str]:

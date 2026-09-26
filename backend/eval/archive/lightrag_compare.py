@@ -1,6 +1,6 @@
 # backend/eval/archive/lightrag_compare.py
 """
-LightRAG vs 지금 Hybrid RRF(backend.api.services.retrieval) — 법조문 검색 적중률
+LightRAG vs 지금 Hybrid RRF(backend.retrieval.search) — 법조문 검색 적중률
 본비교. lightrag_pilot.py로 파이프라인 동작은 검증됨(RRF 20.0% ≈ 원래 문서 20.1%,
 방법론 신뢰성 확인) — 단 파일럿은 LightRAG에 약관규제법 43청크만 넣고 RRF는 법령
 전체 3,323청크에서 찾게 해서 불공정 비교였다(LightRAG 93.3% vs RRF 20.0%, 코퍼스
@@ -66,7 +66,7 @@ async def build_index(law_recs: list[dict]) -> LightRAG:
 
 
 def hybrid_rrf_hit(query_text: str, correct_pairs: list[tuple]) -> bool:
-    from backend.api.services.retrieval import fetch_candidates
+    from backend.retrieval.search import fetch_candidates
 
     candidates = fetch_candidates(query_text, top_k_per_source=5, sparse_similarity_threshold=0.10, unified=False)
     found = {(c["metadata"].get("law_name"), c["metadata"].get("article_no")) for c in candidates.get("law", [])}

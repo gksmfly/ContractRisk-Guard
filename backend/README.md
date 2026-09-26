@@ -15,13 +15,14 @@
 | `training/` | Step 5/8: `train.py` — KoELECTRA 파인튜닝 CLI (`--gpu`, `--epochs`, `--seed`, `--no-fulltext-augment` 등) |
 | `db/` | `loader.py` — PostgreSQL+pgvector 적재(`chunks`/`seed_clauses`/`clean_clauses`/`noise_clauses`, `nlpai-lab/KoE5` 임베딩). `embedding_benchmark.py`는 임베딩 모델 비교 실험(KoE5 채택 근거) |
 | `agents/` | Step 10: 고정 6단계 LangGraph 파이프라인 — Analysis(GPT) → **Judgment(모델, 여기가 게이트)** → 반박 브랜치(Red-team)와 근거 브랜치(Retrieval Strategy→Evidence Selection→Evidence Verification, 재검색 루프). 병렬이 아니다 — Evidence Selection이 Judgment의 조 출력을 읽는다 |
-| `api/` | Step 12: FastAPI 서빙 — `server.py`(앱 진입점), `routers/analyze.py`(엔드포인트), `schemas.py`(요청/응답 스키마), `services/analyze.py`(`run_analyze`/`run_analyze_stream`, 조항 분리+그래프 병렬 실행), `services/retrieval.py`(Dense(KoE5)+Sparse(pg_trgm) Hybrid 검색+RRF 융합), `services/latency_benchmark.py`(처리 속도 측정) |
+| `api/` | Step 12: FastAPI 서빙 — `server.py`(앱 진입점), `routers/analyze.py`(엔드포인트), `schemas.py`(요청/응답 스키마), `services/analyze.py`(`run_analyze`/`run_analyze_stream`, 조항 분리+그래프 병렬 실행), `services/latency_benchmark.py`(처리 속도 측정) |
+| `retrieval/` | `search.py` — 법령·판례 Dense(KoE5)+Sparse(pg_trgm) Hybrid 검색+RRF 융합, 유사 라벨 조항 검색. `schemas.py` — `LegalBasis`. agents·api가 공통으로 쓰고, 자신은 `db/`·`utils.py`만 import한다 |
 | `eval/` | KoELECTRA vs 검색기반(KoE5+GPT-4o-mini) 판단 방식 비교 평가 — `retrieval_judgment.py`(검색기반 판단 함수), `compare_judgment.py`(비교 룰너) |
 | `utils.py` | 공통 유틸 — `save_json`/`save_jsonl`/`load_jsonl`/`load_logger`/`PROJECT_ROOT` |
 
 `scripts/utils.py`는 크롤 스크립트 전용 별도 유틸(`save_json`/`setup_logger`/`PROJECT_ROOT`)로, 위 `backend/utils.py`와 의도적으로 분리되어 있다(크롤러는 `backend/` 나머지 모듈에 의존하지 않고 독립 실행 가능해야 함).
 
-각 디렉토리의 상세 내용은 하위 `README.md`(`agents/`, `api/`, `db/`, `domain/`, `eval/`, `fb_check/`, `labeling/`, `model/`, `preprocess/`, `scripts/`, `training/`)를 참고.
+각 디렉토리의 상세 내용은 하위 `README.md`(`agents/`, `api/`, `db/`, `domain/`, `eval/`, `fb_check/`, `labeling/`, `model/`, `preprocess/`, `retrieval/`, `scripts/`, `training/`)를 참고.
 
 ## 파이프라인 실행 순서
 

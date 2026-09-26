@@ -15,8 +15,8 @@ RRF 후보군(top_k_per_source를 넉넉히 키움)에 Cross-Encoder(BAAI/bge-re
 
 from sentence_transformers import CrossEncoder
 
-from backend.api.services.retrieval import fetch_candidates
 from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
+from backend.retrieval.search import fetch_candidates
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("rerank_compare.log")

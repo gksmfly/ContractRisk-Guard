@@ -1,6 +1,6 @@
 # backend/eval/archive/lightrag_pilot.py
 """
-LightRAG vs 지금 Hybrid RRF(backend.api.services.retrieval) — 법조문 검색 적중률 비교
+LightRAG vs 지금 Hybrid RRF(backend.retrieval.search) — 법조문 검색 적중률 비교
 파일럿. 원래 20.1% 실험은 스크립트가 안 남아있어 재현 불가능했으므로, FTC 케이스의
 근거_법령 필드(공정위가 실제로 인용한 법조문)를 새 ground truth로 쓴다 — 981개
 케이스, 2,444개 인용이 법령 코퍼스(data/processed/laws.jsonl)의 (law_name, article_no)
@@ -86,7 +86,7 @@ async def build_index() -> LightRAG:
 
 def hybrid_rrf_hit(query_text: str, correct_articles: list[str]) -> bool:
     """지금 프로덕션이 쓰는 Hybrid RRF 방식으로 같은 질의를 검색해 적중 여부 확인."""
-    from backend.api.services.retrieval import fetch_candidates
+    from backend.retrieval.search import fetch_candidates
 
     candidates = fetch_candidates(query_text, top_k_per_source=5, sparse_similarity_threshold=0.10, unified=False)
     law_candidates = candidates.get("law", [])

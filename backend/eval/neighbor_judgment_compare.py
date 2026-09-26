@@ -38,9 +38,9 @@ from math import comb
 
 import numpy as np
 
-from backend.api.services.retrieval import search_similar_clauses
 from backend.eval.ensemble_compare import GT_PATH, SPAN_CACHE_PATH, predict_probs
 from backend.model.electra import INV_RISK_MAP, RISK_MAP
+from backend.retrieval.search import search_similar_clauses
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("neighbor_judgment_compare.log")

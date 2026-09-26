@@ -1,6 +1,6 @@
 # backend/preprocess/
 
-Step 2: `data/domain/{law,case,commentary}/`의 필터링된 문서를 텍스트 정제 + 청킹해 `data/processed/{laws,precedents,interpretations}.jsonl`로 만듭니다. RAG(`backend/api/services/retrieval.py`)와 DB 적재(`backend/db/loader.py`)가 이 출력을 그대로 씁니다.
+Step 2: `data/domain/{law,case,commentary}/`의 필터링된 문서를 텍스트 정제 + 청킹해 `data/processed/{laws,precedents,interpretations}.jsonl`로 만듭니다. RAG(`backend/retrieval/search.py`)와 DB 적재(`backend/db/loader.py`)가 이 출력을 그대로 씁니다.
 
 ---
 

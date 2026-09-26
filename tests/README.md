@@ -33,7 +33,7 @@ tests/
 
 | 파일 | 범위 | 외부 의존성 |
 |---|---|---|
-| `test_retrieval_strategy_agent.py` | `backend/api/services/retrieval.py`의 RRF(reciprocal rank fusion) 병합 로직 | 없음 |
+| `test_retrieval_strategy_agent.py` | `backend/retrieval/search.py`의 RRF(reciprocal rank fusion) 병합 로직 | 없음 |
 | `test_evidence_selection_agent.py` | `backend/agents/evidence_selection_agent.py` | 없음 |
 | `test_evidence_verification_agent.py` | `backend/agents/evidence_verification_agent.py`의 재시도 로직 | 없음 |
 | `test_red_team_agent.py` | `backend/agents/red_team_agent.py` | 없음 |

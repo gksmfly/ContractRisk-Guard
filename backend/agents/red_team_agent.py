@@ -28,7 +28,7 @@ from langchain_core.runnables import RunnableConfig
 from openai import OpenAI
 
 from backend.agents.state import ClauseState
-from backend.api.services.retrieval import search_similar_labeled_clauses
+from backend.retrieval.search import search_similar_labeled_clauses
 from backend.utils import load_logger
 
 logger = load_logger("red_team_agent.log")

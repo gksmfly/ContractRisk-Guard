@@ -26,7 +26,7 @@ from typing import Any
 
 import torch
 
-from backend.api.services.retrieval import get_law_names
+from backend.retrieval.search import get_law_names
 from backend.utils import load_logger
 
 logger = load_logger("query_router.log")

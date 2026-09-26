@@ -2,7 +2,7 @@
 """Retrieval Strategy Agent — 근거 문구로 관련 법령·판례 후보를 Hybrid(Dense+Sparse) 검색한다.
 
 실제 검색 로직(DB 접근, KoE5 임베딩, pg_trgm Sparse 검색, RRF 융합)은
-backend.api.services.retrieval에 있다 — 이 노드는 그래프 상태를 읽어 후보 풀을
+backend.retrieval.search에 있다 — 이 노드는 그래프 상태를 읽어 후보 풀을
 조회하고 상태에 써 넣는 역할만 한다. 최종 선택(재랭킹)은 Evidence Selection Agent가
 한다.
 
@@ -40,7 +40,7 @@ top-K 밖으로 밀린다. **상수 기준선을 먼저 재지 않은 것이 원
 """
 
 from backend.agents.state import ClauseState
-from backend.api.services.retrieval import fetch_candidates
+from backend.retrieval.search import fetch_candidates
 
 _BASE_TOP_K = 6
 

@@ -1,7 +1,7 @@
 # backend/db/connection.py
 """API 요청 경로에서 공용으로 쓰는 psycopg2 커넥션 풀.
 
-backend.api.services.retrieval은 요청(조항)마다 검색을 수행하므로, 매번
+backend.retrieval.search는 요청(조항)마다 검색을 수행하므로, 매번
 psycopg2.connect()로 새 연결을 맺으면 TCP+인증 왕복 비용이 그대로 지연시간에
 더해지고 동시 요청이 몰리면 Postgres max_connections를 고갈시킬 수 있다.
 이 모듈은 프로세스 수명 동안 재사용하는 풀을 제공한다.

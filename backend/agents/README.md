@@ -45,7 +45,7 @@ Analysis(GPT-4o) → Judgment(KoELECTRA) ─┤                                 
 GPT-4o Forward Labeling(`backend.fb_check.forward_labeling.run_forward()`) 재사용 — 조항 유형(domain)·근거 문구(evidence_span)·판단 이유(reasoning) 1차 분석. FB-Check 파이프라인과 동일 프롬프트로 일관성 유지. `config["configurable"]["client"]`로 OpenAI 클라이언트를 주입받는다.
 
 ### `retrieval_strategy_node` (`retrieval_strategy_agent.py`)
-`backend.api.services.retrieval.fetch_candidates()` 호출부. 최초 시도(`retry_count=0`)에서는
+`backend.retrieval.search.fetch_candidates()` 호출부. 최초 시도(`retry_count=0`)에서는
 법령 검색을 **약관규제법 제6~14조로 고정**한다 — 46청크 중 실질 규범은 이 9개뿐이고 나머지
 37개는 심사청구·분쟁조정 같은 절차 조문이라 필터가 없으면 상위를 차지한다(top-5 66% → 81%).
 

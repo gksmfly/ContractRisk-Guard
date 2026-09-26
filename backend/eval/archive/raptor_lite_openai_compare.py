@@ -31,11 +31,11 @@ from math import comb
 
 from openai import OpenAI
 
-from backend.api.services.retrieval import _get_cached_embedder
 from backend.db.connection import get_conn
 from backend.eval.archive.domain_filter_compare import _law_names, rrf_baseline_hit
 from backend.eval.archive.raptor_lite_compare import _FEWSHOT, _SYSTEM_TMPL, routed_hit
 from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
+from backend.retrieval.search import _get_cached_embedder
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("raptor_lite_openai_compare.log")

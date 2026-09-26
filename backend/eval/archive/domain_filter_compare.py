@@ -25,10 +25,10 @@ lightrag_compare_final.py와 같은 쿼리 세트로 직접 비교 가능.
 
 from typing import Any
 
-from backend.api.services.retrieval import _fuse_reciprocal_rank, _get_cached_embedder, _search_dense, _search_sparse
 from backend.db.connection import get_conn
 from backend.db.loader import embed_texts
 from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
+from backend.retrieval.search import _fuse_reciprocal_rank, _get_cached_embedder, _search_dense, _search_sparse
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("domain_filter_compare.log")

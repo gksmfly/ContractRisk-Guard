@@ -22,9 +22,9 @@ from typing import Any
 
 import numpy as np
 
-from backend.api.services.retrieval import _get_cached_embedder
 from backend.db.loader import embed_texts
 from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
+from backend.retrieval.search import _get_cached_embedder
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("contextual_retrieval_compare.log")

@@ -165,7 +165,7 @@ def resolve_embed_device() -> str:
 def get_embedder() -> Any:
     """KoE5 SentenceTransformer를 로드한다.
 
-    backend.api.services.retrieval처럼 다른 모듈에서 검색 쿼리를 임베딩할 때도
+    backend.retrieval.search처럼 다른 모듈에서 검색 쿼리를 임베딩할 때도
     이 함수를 재사용해, DB 적재 시점과 검색 시점의 임베딩 모델이 어긋나지 않도록 한다.
     """
     try:

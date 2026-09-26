@@ -33,9 +33,6 @@ FastAPI 서빙 레이어 — 계약서 텍스트/PDF를 받아 고정 6단계 �
 3. 모델이 조를 하나도 지목하지 않은 조항은 **버리지 않고** `OutOfScopeClause`로 목록에 남깁니다 — 예전에는 `None`을 반환하고 호출부가 버려서 조항이 응답에서 통째로 사라졌습니다(입력 20 → 결과 10건).
 4. `_extract_spans()`로 evidence_span의 원문 내 위치(start/end) 계산 — 완전일치 → 공백 정규화 → 퍼지(0.85). FB-Check와 **같은 기준**을 씁니다(검증이 통과시킨 근거를 서빙이 버리면 하이라이트가 조용히 사라집니다).
 
-### `services/retrieval.py`
-법령·판례 Hybrid(Dense+Sparse) 검색 — `backend.agents`의 Retrieval Strategy/Evidence Selection/Red-team이 공통으로 재사용하는 DB 서비스 레이어. 상세는 코드 상단 docstring 참고(RRF 융합, KoE5 임베딩, pg_trgm Sparse, 법원 심급 가중치 등 설계 근거가 정리돼 있음).
-
 ### `services/latency_benchmark.py`
 `run_analyze()` 처리 속도 측정 — 조항 수(1/5/10/20)별로 총 소요·조항당 평균 시간을 잰다.
 ```bash

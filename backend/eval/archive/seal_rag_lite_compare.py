@@ -20,9 +20,9 @@ rerank_compare.py(옵션1)와 직접 비교 가능.
 
 from sentence_transformers import CrossEncoder
 
-from backend.api.services.retrieval import fetch_candidates
 from backend.eval.archive.rerank_compare import _CANDIDATE_POOL, _RERANKER_MODEL, _TOP_K, rrf_only_hit
 from backend.eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
+from backend.retrieval.search import fetch_candidates
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("seal_rag_lite_compare.log")
