@@ -76,6 +76,9 @@ models/*
 # ===== User =====
 temp/
 
+# ===== Backups (backend/scripts/backup.py) =====
+backups/
+
 # ===== Next.js (frontend/) =====
 frontend/.next/
 frontend/*.tsbuildinfo
