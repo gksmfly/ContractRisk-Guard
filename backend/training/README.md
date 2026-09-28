@@ -27,6 +27,40 @@ python -m backend.training.train --data-source clean --seed 123 --no-fulltext-au
 ```
 기본 저장 경로는 `seed`→`models/v1`, `clean`→`models/v2`, `--model-dir`로 임의 지정 가능(v3 이후 전부 이렇게 지정해서 씀).
 
+### `train_article.py` (현행 — 조 multi-label)
+
+운영 모델 `models/article_v2`를 만든 학습 스크립트. 규칙은 파일 머리 docstring에 있다(held-out gold 미사용, 문서 단위 분할, 상수 기준선 병기, 체크포인트는 dev로 선택).
+
+- `--negative-holdout-docs FILE`: 음성 홀드아웃을 시드 추첨 대신 **고정 문서 목록**으로 뗀다. 데이터가 늘면 추첨 결과가 바뀌어 이전 세대가 학습한 문서가 평가셋이 되기 때문
+- `metrics.json`에 `labels_sha256`(학습 데이터 지문), `negative_holdout_doc_ids`, `train_config.seed`를 남긴다(2026-09-28부터. `article_v2`에는 없다)
+
+### `retrain.py` — 새 데이터가 들어왔을 때
+
+데이터만 바꿔 재학습하고, 사전 등록 규칙으로 무해 확인한 뒤, 이력을 남긴다. **서빙 전환은 하지 않는다.**
+
+```
+① 스냅숏 → ② 변경 확인 → ③ 라벨러 확인(다르면 멈춤) → ④ 분포 이동 경고
+→ ⑤ 현행 설정 그대로 학습 → ⑥ 무해 확인 → ⑦ 이력 기록 → ⑧ (--promote-as) 승격
+```
+
+| 판정 | 기준 | 기각 조건 |
+|---|---|---|
+| 주 ① | gold clean 255 조항 단위 재현 | 후보−현행 페어드 CI 상한 < 0 |
+| 주 ② | 표준계약서 홀드아웃 12문서 오경보 | 후보−현행 문서 부트스트랩 CI 하한 > 0 |
+| 기록 | 조 F1 차이, 후보의 상수 대비, 첫 기록 대비 누적 이동 | 판정에 안 씀 |
+
+- **통과는 "나빠지지 않았다"이지 개선의 증거가 아니다.** gold 255로는 조 F1 +3%p도 가릴 수 없다
+- 홀드아웃 문서는 [`negative_holdout_docs.json`](negative_holdout_docs.json)에 고정돼 있다
+- 이력: `data/eval/retrain_history.jsonl`(환경변수 `RETRAIN_HISTORY`). 세대별 고정 평가셋 지표가 쌓여 누적 하락을 본다
+- 모델 붕괴 모니터링을 따로 두지 않은 이유와 대신 막는 위험은 `retrain.py` docstring 참고
+
+```bash
+python -m backend.training.retrain --check-only                          # 데이터 확인만(GPU 불필요)
+python -m backend.training.retrain --gpu 1                               # 학습·판정·기록
+python -m backend.training.retrain --gpu 1 --promote-as models/article_v3
+MODEL_DIR=models/article_v3 uvicorn backend.api.server:app               # 서빙 전환은 사람이
+```
+
 ---
 
 ## 참고

@@ -86,18 +86,13 @@ def stamp(path: Path, note: dict | None = None) -> float:
     return fp
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description="체크포인트 승격")
-    ap.add_argument("src", nargs="?", help="원본(실험) 체크포인트. --stamp-only면 생략")
-    ap.add_argument("dst", help="운영 이름")
-    ap.add_argument("--stamp-only", action="store_true",
-                    help="이미 복사된 디렉터리에 검증·지문·기록만 얹는다(복사 안 함)")
-    ap.add_argument("--why", default="", help="승격 사유 한 줄")
-    a = ap.parse_args()
-    dst = Path(a.dst)
+def promote(src: Path | None, dst: Path, why: str = "") -> float:
+    """복사(선택) → 인코더 왕복 → 지문 기록 → load() 왕복. 실패하면 SystemExit.
 
-    if not a.stamp_only:
-        src = Path(a.src)
+    `src`가 None이면 이미 있는 `dst`에 검증·지문만 얹는다(`--stamp-only`).
+    `backend.training.retrain`도 이 함수를 부른다 — 승격 절차가 두 벌이 되면 한쪽이 빠진다.
+    """
+    if src is not None:
         if dst.exists():
             raise SystemExit(f"{dst} 가 이미 있다 — 덮어쓰지 않는다. --stamp-only를 쓰거나 지울 것")
         logger.info(f"========== 승격 {src} → {dst} ==========")
@@ -113,8 +108,8 @@ def main() -> None:
 
     fp = stamp(dst, {
         "name": dst.name,
-        "source_checkpoint": str(a.src) if a.src else "(stamp-only)",
-        "why": a.why or "실험 폴더(models/_*)를 운영이 가리키지 않게 한다",
+        "source_checkpoint": str(src) if src is not None else "(stamp-only)",
+        "why": why or "실험 폴더(models/_*)를 운영이 가리키지 않게 한다",
         "verified": {"encoder_keys": n_keys, "encoder_weight_diff": diff},
     })
     logger.info(f"  ② 지문 기록   {fp:.6f} (save()와 같은 함수로 계산)")
@@ -122,6 +117,18 @@ def main() -> None:
     reloaded = ArticleMultiLabelElectra.load(dst)        # 여기서 지문 검사가 실제로 돈다
     logger.info(f"  ③ load() 왕복  통과 — 조 {len(reloaded.article_names)}개")
     logger.info(f"  승격 완료: {dst}")
+    return fp
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="체크포인트 승격")
+    ap.add_argument("src", nargs="?", help="원본(실험) 체크포인트. --stamp-only면 생략")
+    ap.add_argument("dst", help="운영 이름")
+    ap.add_argument("--stamp-only", action="store_true",
+                    help="이미 복사된 디렉터리에 검증·지문·기록만 얹는다(복사 안 함)")
+    ap.add_argument("--why", default="", help="승격 사유 한 줄")
+    a = ap.parse_args()
+    promote(None if a.stamp_only else Path(a.src), Path(a.dst), a.why)
 
 
 if __name__ == "__main__":

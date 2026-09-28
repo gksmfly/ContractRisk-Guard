@@ -8,7 +8,8 @@
 tests/
 ├── api/         API 서버 인프라 (인증, rate limit, health check, DB 커넥션, 업로드)
 ├── analyze/     analyze 파이프라인 진입점(backend/api/services/analyze.py)
-└── agents/      개별 LangGraph 에이전트 노드
+├── agents/      개별 LangGraph 에이전트 노드
+└── training/    재학습 파이프라인의 데이터 확인·판정 규칙
 ```
 
 ### `tests/api/`
@@ -38,6 +39,12 @@ tests/
 | `test_evidence_verification_agent.py` | `backend/agents/evidence_verification_agent.py`의 재시도 로직 | 없음 |
 | `test_red_team_agent.py` | `backend/agents/red_team_agent.py` | 없음 |
 
+### `tests/training/`
+
+| 파일 | 범위 | 외부 의존성 |
+|---|---|---|
+| `test_retrain.py` | `backend/training/retrain.py`의 데이터 확인(스냅숏·라벨러·분포 이동), 무해 판정 규칙, 부트스트랩, 학습 인자 복원, 홀드아웃 고정 | 없음 — 학습·채점(GPU)은 범위 밖 |
+
 ## 실행
 
 ```bash
@@ -56,6 +63,6 @@ pytest tests/ -m integration
 
 ## 현재 커버리지
 
-- `backend/fb_check/`, `backend/training/`, `backend/scripts/` 등 데이터/모델 파이프라인 단계는 아직 자동화된 테스트가 없음(주로 1회성 스크립트 실행 후 결과 파일을 수동 검증하는 방식으로 운영 중).
+- `backend/training/`은 `retrain.py`의 GPU 없는 부분만 테스트가 있다. 학습 루프·채점과 `backend/scripts/`는 자동화된 테스트가 없음(1회성 스크립트 실행 후 결과 파일을 수동 검증하는 방식으로 운영 중).
 - `backend/api/services/latency_benchmark.py`는 pytest가 아니라 별도 스크립트로 지연시간을 측정한다(테스트가 아닌 벤치마크).
 - `backend/agents/graph.py`(전체 그래프 조립)와 `backend/agents/judgment_agent.py`는 개별 노드 테스트가 아직 없음 — `tests/analyze/test_analyze_integration.py`가 전체 파이프라인을 통째로 검증하는 걸로 간접 커버.

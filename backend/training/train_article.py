@@ -34,6 +34,7 @@ single-label과 다른 점이 손실 하나가 아니라 평가 전체다 — �
 """
 
 import argparse
+import hashlib
 import json
 import os
 import random
@@ -69,6 +70,15 @@ _MIN_CLAUSE_CHARS = 30
 # ─────────────────────────────────────────────────────────────────────────────
 # 데이터
 # ─────────────────────────────────────────────────────────────────────────────
+
+def file_sha256(path: Path) -> str:
+    """라벨 파일 지문. 재학습이 '새 데이터가 있는가'를 이 값으로 판단한다."""
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
 
 def load_article_records(path: Path, augment: bool = False,
                          label_source: str = "agreed") -> list[dict]:
@@ -229,7 +239,8 @@ def load_ftc_gold(stratum: str = "clean") -> list[dict]:
     return gold
 
 
-def split_negative_holdout(records: list[dict], n_docs: int, seed: int) -> tuple[list[dict], list[dict]]:
+def split_negative_holdout(records: list[dict], n_docs: int, seed: int,
+                           fixed_docs: list[str] | None = None) -> tuple[list[dict], list[dict]]:
     """표준계약서 문서 `n_docs`개를 학습에서 **완전히** 떼어 음성 평가셋으로 만든다.
 
     ## 왜 필요한가 — 고정 gold도 편향돼 있다
@@ -253,18 +264,31 @@ def split_negative_holdout(records: list[dict], n_docs: int, seed: int) -> tuple
     고정 seed로, `--negative-ratio`와 무관하게 먼저 뗀다. 나중에 떼면 팔마다 평가셋이
     달라져 비교가 또 깨진다 — 이 파일에서 두 번째로 같은 실수를 하는 셈이 된다.
     문서 단위인 것도 같은 이유다(형제 조항 누수).
+
+    ## `fixed_docs` — 데이터가 늘어도 같은 문서를 뗀다
+
+    시드 추첨은 **그 시점의 문서 목록** 위에서 돈다. 라벨링이 진행돼 표준계약서 문서가
+    하나라도 늘면 목록이 바뀌어 다른 12개가 뽑히고, 이전 세대가 학습한 문서가 새 세대의
+    평가셋이 된다. 세대 간 비교(`retrain`)는 문서 ID 목록을 고정해 넘긴다.
     """
-    if n_docs <= 0:
+    if fixed_docs is not None:
+        held = set(fixed_docs)
+        present = {r["group"] for r in records if r.get("source") == "standard_contract"}
+        missing = sorted(held - present)
+        if missing:
+            raise SystemExit(f"고정 홀드아웃 문서 {len(missing)}개가 데이터에 없다: {missing[:5]}")
+    elif n_docs <= 0:
         return records, []
-    neg_docs = sorted({r["group"] for r in records if r.get("source") == "standard_contract"})
-    if n_docs >= len(neg_docs):
-        raise SystemExit(f"--negative-holdout {n_docs}: 표준계약서 문서가 {len(neg_docs)}개뿐이다")
-    rng = random.Random(seed)          # ratio와 무관한 고정 시드 — 팔마다 같은 평가셋
-    held = set(rng.sample(neg_docs, n_docs))
+    else:
+        neg_docs = sorted({r["group"] for r in records if r.get("source") == "standard_contract"})
+        if n_docs >= len(neg_docs):
+            raise SystemExit(f"--negative-holdout {n_docs}: 표준계약서 문서가 {len(neg_docs)}개뿐이다")
+        rng = random.Random(seed)          # ratio와 무관한 고정 시드 — 팔마다 같은 평가셋
+        held = set(rng.sample(neg_docs, n_docs))
     train = [r for r in records if r["group"] not in held]
     holdout = [r for r in records if r["group"] in held]
     empty = sum(1 for r in holdout if not r["articles"]) / max(1, len(holdout))
-    logger.info(f"  음성 held-out: 표준계약서 문서 {n_docs}개 / 조항 {len(holdout)}건 분리 "
+    logger.info(f"  음성 held-out: 표준계약서 문서 {len(held)}개 / 조항 {len(holdout)}건 분리 "
                 f"(빈 배열 {empty * 100:.1f}%) — 학습·임계값 튜닝에 쓰지 않는다")
     return train, holdout
 
@@ -529,6 +553,9 @@ def main(argv: list[str] | None = None) -> None:
                          "--negative-ratio보다 먼저, 고정 시드로 갈라지므로 모든 팔이 같은 "
                          "평가셋을 쓴다. FTC gold만으로는 ratio 비교가 편향된다 "
                          "(split_negative_holdout 참고)")
+    ap.add_argument("--negative-holdout-docs", type=str, default="", metavar="JSON",
+                    help="홀드아웃 문서 ID 목록(JSON 배열) 파일. 주면 시드 추첨 대신 이 문서들을 "
+                         "뗀다 — 데이터가 늘어도 세대 간 평가셋이 같게 유지된다(retrain이 쓴다)")
     ap.add_argument("--negative-ratio", type=float, default=None, metavar="비율",
                     help="FTC 대비 표준계약서(음성 표본) 비율. 미지정이면 시드 구성 그대로. "
                          "빈 라벨이 과반이면 모델이 아무것도 예측하지 않는 쪽으로 끌리므로 "
@@ -558,11 +585,14 @@ def main(argv: list[str] | None = None) -> None:
         records = exclude_gold_documents(records, gold)
         # 순서가 중요하다 — 음성 held-out을 ratio보다 **먼저**, ratio와 무관한 고정 시드로
         # 갈라야 모든 팔이 같은 평가셋을 본다.
-        records, neg_holdout = split_negative_holdout(records, args.negative_holdout, 42)
+        fixed = (json.loads(Path(args.negative_holdout_docs).read_text(encoding="utf-8"))
+                 if args.negative_holdout_docs else None)
+        records, neg_holdout = split_negative_holdout(records, args.negative_holdout, 42, fixed)
         records = apply_negative_ratio(records, args.negative_ratio, args.seed)
 
     if not records:
         raise SystemExit("학습 레코드가 없다 — 라벨 생성이 끝났는지 확인할 것")
+    holdout_docs = [] if args.dry_run else sorted({r["group"] for r in neg_holdout})
 
     counts = Counter(a for r in records for a in r["articles"])
     names = select_article_labels(dict(counts), args.min_support)
@@ -673,12 +703,16 @@ def main(argv: list[str] | None = None) -> None:
         "label_source": args.label_source,
         "negative_ratio": args.negative_ratio,
         "negative_holdout_docs": args.negative_holdout,
+        # 세대 간 비교가 이 둘에 기댄다 — 어떤 데이터로 학습했고 어느 문서를 뗐는지
+        "negative_holdout_doc_ids": holdout_docs,
+        "labels_path": str(args.labels),
+        "labels_sha256": None if args.dry_run else file_sha256(Path(args.labels)),
         "train_subsample": args.train_subsample,
         "best_macro_f1_excl_majority": best,
         "constant_baselines": baselines,
         "baseline_to_beat": _BAR,
         "train_config": {"batch_size": args.batch_size, "lr": args.lr, "max_len": args.max_len,
-                         "epochs": args.epochs, "min_support": args.min_support},
+                         "epochs": args.epochs, "min_support": args.min_support, "seed": args.seed},
         "history": history,
     }, model_dir / "metrics.json")
 
