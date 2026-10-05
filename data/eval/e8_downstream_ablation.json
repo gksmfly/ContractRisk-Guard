@@ -1,0 +1,120 @@
+{
+    "RETRACTED": "철회(2026-10-03): 제13조 헤드 인공물 + 팔별 동작점 비교. 대체 data/eval/e8b_matched.json, 근거 eval/reported_numbers.md §8",
+    "experiment": "E8",
+    "description": "하류 학습 ablation (사전 등록, 미판정 예상)",
+    "arms": {
+        "A": "필터 없음(forward, 2305건)",
+        "B": "무작위(forward, 1473건)",
+        "C": "FB-Check(agreed, 1473건)"
+    },
+    "seeds": [
+        42,
+        7,
+        123
+    ],
+    "mde_pp": 4.3,
+    "judgment_rule": "CI 하한 > 0 → C > X, CI 상한 < 0 → X > C, 포함 → 미판정 MDE±4%p",
+    "summaries": {
+        "A": {
+            "arm": "A",
+            "seeds": [
+                42,
+                7,
+                123
+            ],
+            "gold_recall_pp": 83.4,
+            "holdout_fpr_pp": 9.33,
+            "gold_f1_pp": 41.72,
+            "recall_std_pp": 2.18,
+            "fpr_std_pp": 1.19
+        },
+        "B": {
+            "arm": "B",
+            "seeds": [
+                42,
+                7,
+                123
+            ],
+            "gold_recall_pp": 88.5,
+            "holdout_fpr_pp": 30.44,
+            "gold_f1_pp": 38.44,
+            "recall_std_pp": 0.98,
+            "fpr_std_pp": 26.38
+        },
+        "C": {
+            "arm": "C",
+            "seeds": [
+                42,
+                7,
+                123
+            ],
+            "gold_recall_pp": 79.87,
+            "holdout_fpr_pp": 6.67,
+            "gold_f1_pp": 42.23,
+            "recall_std_pp": 0.74,
+            "fpr_std_pp": 0.47
+        }
+    },
+    "comparisons": {
+        "C_vs_A": {
+            "comparison": "C vs A",
+            "n_per_seed": 255,
+            "recall": {
+                "mean_pp": -3.53,
+                "ci95": [
+                    -6.01,
+                    -1.05
+                ],
+                "verdict": "A > C"
+            },
+            "fpr": {
+                "mean_pp": -2.67,
+                "ci95": [
+                    -4.67,
+                    -0.67
+                ],
+                "verdict": "A > C"
+            },
+            "f1": {
+                "mean_pp": 0.51,
+                "ci95": [
+                    -1.81,
+                    2.81
+                ],
+                "verdict": "미판정, MDE ±4%p"
+            },
+            "mde_pp": 4.3,
+            "note": "article_v1→v2 페어드 CI 반폭 ±4.3%p 기준 (paper_plan §E8)"
+        },
+        "C_vs_B": {
+            "comparison": "C vs B",
+            "n_per_seed": 255,
+            "recall": {
+                "mean_pp": -8.63,
+                "ci95": [
+                    -11.37,
+                    -5.88
+                ],
+                "verdict": "B > C"
+            },
+            "fpr": {
+                "mean_pp": -23.78,
+                "ci95": [
+                    -26.89,
+                    -20.78
+                ],
+                "verdict": "B > C"
+            },
+            "f1": {
+                "mean_pp": 3.79,
+                "ci95": [
+                    1.37,
+                    6.16
+                ],
+                "verdict": "C > B"
+            },
+            "mde_pp": 4.3,
+            "note": "article_v1→v2 페어드 CI 반폭 ±4.3%p 기준 (paper_plan §E8)"
+        }
+    }
+}
