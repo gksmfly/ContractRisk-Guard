@@ -5,7 +5,7 @@ Strategy Agent가 이 결과로 법령 검색 범위를 좁힌다).
 배경: 법령 코퍼스는 43청크(약관의 규제에 관한 법률)~1,305청크(민법)로 극단적으로
 불균형한데, 필터 없이 전체를 한 풀에서 RRF로 경쟁시키면 소수 법령의 정답 조문이
 대형 법령들에 밀려 top_k 밖으로 나간다(`backend/eval/retrieval_alternatives_survey.md`
-"핵심 발견" 참고). backend.eval.archive.raptor_lite_compare.py로 같은 100건 FTC 근거_법령
+"핵심 발견" 참고). eval.archive.raptor_lite_compare.py로 같은 100건 FTC 근거_법령
 ground truth에서 실측: 필터 없는 RRF 8% → 이 방식(EXAONE 라우팅 후 검색) 33%,
 McNemar p<0.0001.
 

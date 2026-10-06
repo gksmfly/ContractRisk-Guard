@@ -4,7 +4,7 @@
 `data/`·`models/`는 git에 없어서 디스크가 죽으면 같이 사라진다. 결과 파일은 서버 밖으로
 옮겨야 백업이 된다. DB `accounts`에 OAuth 토큰이 있어 암호화 없이는 만들지 않는다.
 
-실행(암호를 두 번 묻는다 — 잃어버리면 복구 불가):
+실행(시작할 때 암호를 두 번 묻는다 — 잃어버리면 복구 불가):
     .venv/bin/python -m backend.scripts.backup
     .venv/bin/python -m backend.scripts.backup --dry-run      # 담길 목록과 크기만
 
@@ -14,6 +14,7 @@
 
 import argparse
 import datetime
+import getpass
 import hashlib
 import os
 import subprocess
@@ -70,6 +71,19 @@ def dump_db(out_dir: Path) -> None:
         conn.close()
 
 
+def ask_passphrase() -> str:
+    print("\n백업 암호를 정합니다. 입력한 글자는 화면에 안 보입니다. **영문 입력 상태**에서 치세요.")
+    for _ in range(3):
+        p1 = getpass.getpass("  암호(8자 이상): ")
+        if len(p1) < 8:
+            print("  8자보다 짧습니다 — 다시")
+            continue
+        if getpass.getpass("  한 번 더: ") == p1:
+            return p1
+        print("  두 번 입력이 다릅니다 — 다시")
+    sys.exit("3번 실패해서 멈췄습니다. 아무것도 만들지 않았습니다.")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -88,6 +102,7 @@ def main() -> None:
     if args.dry_run:
         return
 
+    passphrase = ask_passphrase()
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
     out = BACKUP_DIR / f"contractrisk_{stamp}.tar.zst.gpg"
@@ -98,8 +113,7 @@ def main() -> None:
         dump_db(db_dir)
         print(f"  DB 테이블 {len(DB_TABLES)}개 내보냄")
 
-        if sys.stdin.isatty():
-            os.environ.setdefault("GPG_TTY", os.ttyname(sys.stdin.fileno()))
+        print("  압축·암호화 중 — 몇 분 걸립니다")
         tar = subprocess.Popen(
             ["tar", "-C", str(PROJECT_ROOT), *[f"--exclude={e}" for e in EXCLUDE], "-cf", "-", *INCLUDE,
              "-C", tmp, "db_dump"],
@@ -107,9 +121,16 @@ def main() -> None:
         )
         zst = subprocess.Popen(["zstd", "-T0", "-3", "-q"], stdin=tar.stdout, stdout=subprocess.PIPE)
         tar.stdout.close()
+        # pinentry 창 대신 파이프로 암호를 넘긴다 — 명령행 인자로 넘기면 `ps`에 보인다
+        r, w = os.pipe()
+        os.write(w, passphrase.encode() + b"\n")
+        os.close(w)
         gpg = subprocess.run(
-            ["gpg", "--symmetric", "--cipher-algo", "AES256", "--output", str(out)], stdin=zst.stdout
+            ["gpg", "--batch", "--yes", "--pinentry-mode", "loopback", "--passphrase-fd", str(r),
+             "--no-symkey-cache", "--symmetric", "--cipher-algo", "AES256", "--output", str(out)],
+            stdin=zst.stdout, pass_fds=(r,),
         )
+        os.close(r)
         zst.stdout.close()
         if tar.wait() != 0 or zst.wait() != 0 or gpg.returncode != 0:
             out.unlink(missing_ok=True)
