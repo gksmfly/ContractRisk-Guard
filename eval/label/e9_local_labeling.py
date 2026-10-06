@@ -37,14 +37,19 @@ import numpy as np
 
 from backend.fb_check.consistency_verification import (
     _FEW_SHOT_EXAMPLES as VERIFY_FEWSHOT,
+)
+from backend.fb_check.consistency_verification import (
     _SYSTEM_SPAN as VERIFY_SYSTEM,
 )
 from backend.fb_check.forward_labeling import (
     _FEW_SHOT_EXAMPLES as FWD_FEWSHOT,
+)
+from backend.fb_check.forward_labeling import (
     _SYSTEM as FWD_SYSTEM,
 )
 from backend.labeling.articles import ARTICLES, normalize
-from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json, save_jsonl
+from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
+from eval.label.label_ablation import random_keep_baseline
 
 logger = load_logger("e9_local_labeling.log")
 
@@ -323,36 +328,32 @@ def _ci(a: np.ndarray, rng: np.random.Generator) -> tuple[float, float]:
     return float(boots[int(BOOT_CI * 0.025)] * 100), float(boots[int(BOOT_CI * 0.975)] * 100)
 
 
-def _e1_verdict(rows_all: list[dict], rows_clean: list[dict], ref: dict,
-                key: str, rng: np.random.Generator) -> dict:
-    """E1과 같은 판정 규칙: local-CLEAN(non-empty agreed) > 무작위 97.5%ile."""
-    scores_all   = _score_set(rows_all,   key, ref)
-    scores_clean = _score_set(rows_clean, key, ref)
-    n_clean      = len(scores_clean)
+def _e1_verdict(rows_all: list[dict], ref: dict, key: str, rng: np.random.Generator) -> dict:
+    """E1과 같은 판정 규칙: local-CLEAN(non-empty agreed)의 F1 > 레코드 수준 같은 수 무작위 97.5%ile.
 
-    if len(scores_all) == 0 or n_clean == 0:
+    2026-09-30 수정: 옛 구현은 빈 라벨을 뺀 배열에서 뽑아 표본 크기가 필터 쪽과 달랐다
+    (label_ablation.random_keep_baseline 주석 참고).
+    """
+    has    = np.array([bool(r.get(key)) for r in rows_all])
+    scores = np.array([_f1(set(r[key]), ref[r["doc"]]) if r.get(key) else 0.0 for r in rows_all])
+    keep   = np.array([bool(r.get("agreed_articles")) for r in rows_all])
+    if not has.any() or not keep.any():
         return {"verdict": "집계_불가(데이터_없음)"}
-
-    boot_means = np.array([
-        scores_all[rng.choice(len(scores_all), size=min(n_clean, len(scores_all)), replace=False)].mean()
-        for _ in range(BOOT_N)
-    ])
-    pct975   = float(np.percentile(boot_means, 97.5))
-    c_mean   = float(scores_clean.mean())
-    perm_p   = float((boot_means >= c_mean).mean())
-    lo, hi   = _ci(scores_clean, rng)
-    verdict  = ("CLEAN > 무작위 97.5%ile" if c_mean > pct975 else "미판정(C ≤ B 97.5%ile)")
-
+    r = random_keep_baseline(scores, has, keep, rng, BOOT_N)
+    rs = random_keep_baseline(scores, has, keep, rng, BOOT_N, groups=[x["doc"] for x in rows_all])
+    lo, hi = _ci(scores[keep & has], rng)
     return {
-        "n_all":    int(len(scores_all)),
-        "n_clean":  int(n_clean),
-        "A_f1":     round(float(scores_all.mean()) * 100, 2),
-        "C_f1":     round(c_mean * 100, 2),
+        "n_all":    int(has.sum()),
+        "n_clean":  r["n_scored"],
+        "A_f1":     round(float(scores[has].mean()) * 100, 2),
+        "C_f1":     round(r["mean_f1"] * 100, 2),
         "C_ci95":   [round(lo, 1), round(hi, 1)],
-        "B_p975":   round(pct975 * 100, 2),
-        "diff_pp":  round((c_mean - boot_means.mean()) * 100, 2),
-        "perm_p":   round(perm_p, 4),
-        "verdict":  verdict,
+        "B_p975":   round(r["B_p975"] * 100, 2),
+        "diff_pp":  round(r["diff_pp"], 2),
+        "perm_p":   round(r["perm_p"], 4),
+        "verdict":  "CLEAN > 무작위 97.5%ile" if r["pass"] else "미판정(C ≤ B 97.5%ile)",
+        "docstrat": {"diff_pp": round(rs["diff_pp"], 2), "perm_p": round(rs["perm_p"], 4),
+                     "verdict": "CLEAN > 문서 층화 무작위" if rs["pass"] else "미판정"},
     }
 
 
@@ -430,7 +431,6 @@ def analyze() -> None:
     """모든 모델 raw/*.jsonl 읽어 E9 최종 결과 산출."""
     logger.info("=== E9 분석 ===")
     population, ref = load_population()
-    pop_ids = {r["chunk_id"]: r for r in population}
 
     rng = np.random.default_rng(SEED)
     per_model: dict[str, dict] = {}
@@ -443,15 +443,26 @@ def analyze() -> None:
 
     for raw_path in raw_files:
         model_key = raw_path.stem
-        rows = [json.loads(l) for l in raw_path.read_text("utf-8").splitlines() if l.strip()]
+        rows = []
+        for line in raw_path.read_text("utf-8").splitlines():
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass    # 중단된 실행이 남긴 잘린 마지막 줄 — run_full 체크포인트도 같은 규칙으로 건너뛴다
         logger.info(f"  모델: {model_key} — {len(rows)}건")
 
         parse_errors = sum(1 for r in rows if r.get("parse_error"))
         rows_valid   = [r for r in rows if not r.get("parse_error") and r.get("doc") in ref]
         rows_clean   = [r for r in rows_valid if r.get("agreed_articles")]  # non-empty agreed
+        if len(rows) < len(population):
+            logger.warning(f"  {model_key}: {len(rows)}/{len(population)} — 미완료라 집계에서 뺀다")
+            continue
 
-        forward_verdict = _e1_verdict(rows_valid, rows_clean, ref, "forward_articles", rng)
-        agreed_verdict  = _e1_verdict(rows_valid, rows_clean, ref, "agreed_articles",  rng)
+        forward_verdict = _e1_verdict(rows_valid, ref, "forward_articles", rng)
+        # ⚠ agreed 기준은 퇴화한 검정이다: 남기는 기준(agreed 비어 있지 않음)과 채점 대상(agreed 비어
+        # 있지 않음)이 같은 집합이라 C == A, 차가 구조적으로 0이다. 기록만 남기고 판정에 쓰지 않는다
+        agreed_verdict  = {**_e1_verdict(rows_valid, ref, "agreed_articles", rng),
+                           "note": "퇴화 검정(C ≡ A) — 판정에 쓰지 않음. 선별력은 q1_forward_f1(forward 기준)이 E1 틀이다"}
 
         per_model[model_key] = {
             "n_total":        len(rows),
@@ -466,16 +477,43 @@ def analyze() -> None:
 
     kappa = _fleiss_kappa(labeler_results, rng)
 
-    gpt_f1_ref = 46.7  # E1 FBCheck(ref) forward_nonempty 결과 (논문 기준)
+    # ── 질문 1 비교표 (2026-09-30 수정) ──
+    # 옛 비교 기준 `gpt_f1_ref = 46.7`은 GPT **CLEAN**의 forward F1이었다 — 로컬 라벨러의
+    # **전체** forward F1과 모집단이 다르다. 같은 2,305건에서 GPT forward를 다시 채점하고,
+    # 빈 예측 비율(coverage)과 빈 포함 F1을 같이 적는다. non-empty F1만 보면 빈 배열을
+    # 많이 내는 라벨러가 확신 있는 레코드만 채점받아 유리해진다.
+    gpt_rows = {}
+    for path in (CLEAN_PATH, NOISE_PATH):
+        for r in load_jsonl(path):
+            if r.get("source") == "ftc_case" and _doc_of(r.get("chunk_id", "")) in ref:
+                gpt_rows[r["chunk_id"]] = {"doc": _doc_of(r["chunk_id"]),
+                                           "forward_articles": list(_label_set(r.get("forward_articles")))}
+    ids = [r["chunk_id"] for r in population]
+
+    def _q1_row(rows_by_id: dict) -> dict:
+        rs = [rows_by_id[i] for i in ids if i in rows_by_id]
+        full = np.array([_f1(set(r.get("forward_articles") or []), ref[r["doc"]]) for r in rs])
+        ne = np.array([_f1(set(r["forward_articles"]), ref[r["doc"]]) for r in rs if r.get("forward_articles")])
+        return {"n": len(rs), "coverage": round(len(ne) / len(rs), 4),
+                "f1_nonempty_pp": round(float(ne.mean()) * 100, 2),
+                "f1_incl_empty_pp": round(float(full.mean()) * 100, 2)}
+
+    from eval.analysis.confound_articles import best_constant
+    c_f1, c_set = best_constant([("ftc_case", frozenset(ref[gpt_rows[i]["doc"]])) for i in ids])
+    const = {"articles": sorted(c_set), "f1_pp": round(c_f1 * 100, 2)}
+    q1_table = {"gpt-4o": _q1_row(gpt_rows)}
+    for k, rows_valid in labeler_results.items():
+        q1_table[k] = _q1_row({r["chunk_id"]: r for r in rows_valid})
 
     report = {
         "experiment":     "E9",
         "description":    "로컬 오픈모델 라벨러 — FB-Check 일반화 (C1'')",
-        "population":     f"CLEAN 1473 + NOISE 832 = 2305 (source=ftc_case)",
+        "population":     "CLEAN 1473 + NOISE 832 = 2305 (source=ftc_case)",
         "seed":           SEED,
         "boot_n":         BOOT_N,
         "judgment_rule":  "local-CLEAN(non-empty agreed_articles) mean F1 > B_random 97.5%ile",
-        "gpt4o_ref_f1_pp": gpt_f1_ref,
+        "q1_table":       q1_table,
+        "q1_constant":    const,
         "per_model":      per_model,
         "q3_fleiss_kappa": kappa,
     }

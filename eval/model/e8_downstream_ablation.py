@@ -9,6 +9,31 @@
     (선택) D (CleanLab, forward, 1287건)
 각 팔 3시드(42 · 7 · 123). 학습 설정은 article_v2와 동일.
 
+## 2026-09-30 추가 팔 (P1 — E8 재분석, paper_plan.md §P1-1)
+
+C는 A·B와 **두 가지가 동시에** 다르다 — 라벨 소스(agreed vs forward)와 음성 비율
+(빈 라벨 59.2% vs 44~45%). C−B 차를 "필터 효과"로 귀속할 수 없다. 분해용 팔:
+
+    D   CLEAN 레코드 + forward 라벨    A→D = 필터(레코드 선택) 효과, D→C = 라벨 소스 효과
+                                       B↔D = 같은 수·같은 라벨 소스에서 무작위 vs FB-Check
+    X        AI Hub 전문가 라벨 전량(평가셋 누수 제거본)   ← E_expert
+    X3352    AI Hub에서 C와 같은 수(3,352)                ← 같은 N 비교
+    X1000    AI Hub 1,000건                                ← 학습 곡선 한 점
+    XC       AI Hub, 같은 시드 C의 실제 학습 수              ← 진짜 같은 N 비교
+
+## 2026-10-04 추가 팔 — 필터 방법·구성요소의 하류 학습 (전부 forward 라벨, A에서 빼기만)
+
+    G    Grounding만   A − snippet_not_found NOISE (33건)        ≈ A (구조상)
+    K    Consistency만 A − label/article_mismatch NOISE (1,080건) ≈ D (구조상, D ∪ snippet 33건)
+    CL   CleanLab      공정위 조항: A − CleanLab이 고른 832건 (`data/eval/e3_removed_ids.json`)
+                       표준계약서·근거 없는 공정위 조항: D와 동일 (CleanLab OOF가 이 부분엔 없다)
+                       → CL과 D는 **근거 있는 공정위 조항을 어느 규칙으로 고르느냐**만 다르다
+
+## 2026-10-05 추가 — 백본 비교
+
+    RB   C와 같은 데이터·설정, 백본만 klue/roberta-base(110M, KoELECTRA-base와 같은 크기)
+         08월 백본 8종 비교는 누수 있던 옛 분할·옛 라벨 체계에서 잰 것이라 현행 설정으로 다시 잰다
+
 판정: C−A · C−B 각각. CI가 0을 포함하면 "미판정, MDE ±4%p"로 보고.
 
 ## 실행
@@ -54,6 +79,27 @@ OUT_PATH     = PROJECT_ROOT / "data/eval/e8_downstream_ablation.json"
 
 # arm B 무작위 선택 시드 (학습 시드와 분리)
 B_SUBSET_SEED = 42
+
+AIHUB_PATH = PROJECT_ROOT / "data/aihub_tos/train.jsonl"
+# 백본만 바꾸는 팔 → 사전학습 모델 id (데이터·라벨은 C와 같다)
+BACKBONE_ARMS = {"RB": "klue/roberta-base"}
+
+# 말투 편향 줄이기 팔 (paper_plan §7-2) → (라벨 파일, 백본). 라벨 = agreed
+STYLE_DIR = PROJECT_ROOT / "data/eval/style_aug"
+STYLE_ARMS = {
+    "KSN": (STYLE_DIR / "labels_SN.jsonl", None),
+    "KSS": (STYLE_DIR / "labels_SS.jsonl", None),
+    "RSN": (STYLE_DIR / "labels_SN.jsonl", "klue/roberta-base"),
+    "RSS": (STYLE_DIR / "labels_SS.jsonl", "klue/roberta-base"),
+    # 새 시험 데이터 재검증 (paper_plan §7-3): 새 시험 문서를 뺀 라벨
+    "NC":   (PROJECT_ROOT / "data/eval/fresh/labels_NC.jsonl", None),
+    "NRSN": (PROJECT_ROOT / "data/eval/fresh/labels_NRSN.jsonl", "klue/roberta-base"),
+}
+
+# AI Hub 팔 → 학습 부분표본 크기(0 = 전량)
+AIHUB_ARMS = {"X": 0, "X3352": 3352, "X1000": 1000, "XC": -1}
+# XC: 같은 시드 C 팔의 **실제 학습 수**(gold 배제·홀드아웃·dev 분리 후)에 맞춘다. C의 3,352는 분리 전
+# 파일 건수라 실제 학습은 1,813~2,074건이다 — X3352는 C보다 1.7배 많이 학습한 것이었다(10-03 발견)
 
 
 # ── 데이터 준비 ──────────────────────────────────────────────────────────────
@@ -128,13 +174,49 @@ def prepare_arms() -> dict[str, Path]:
         logger.info(f"  Arm B: {arm_b_path} 이미 있음")
     paths["B"] = arm_b_path
 
+    # ── Arm D: CLEAN 레코드 + forward 라벨 (C와 레코드 동일, 라벨 소스만 A·B와 같게) ──
+    paths["D"] = CLEAN_PATH
+    for arm in BACKBONE_ARMS:
+        paths[arm] = CLEAN_PATH
+    for arm, (labels, _) in STYLE_ARMS.items():
+        paths[arm] = labels
+    for arm in AIHUB_ARMS:
+        paths[arm] = AIHUB_PATH
+
+    # ── G / K / CL: A(forward 전체)에서 규칙별로 빼기 ──
+    a_recs = load_jsonl(arm_a_path)
+    reason = lambda r: str(r.get("noise_reason") or "").split(":")[0]  # noqa: E731
+    rules = {
+        "G": lambda r: not (r.get("status") == "NOISE" and reason(r) == "snippet_not_found"),
+        "K": lambda r: not (r.get("status") == "NOISE" and reason(r) in ("label_mismatch", "article_mismatch")),
+    }
+    removed_path = PROJECT_ROOT / "data/eval/e3_removed_ids.json"
+    if removed_path.exists():
+        from eval.label.label_ablation import _ref_by_doc
+        cl_removed = set(json.loads(removed_path.read_text(encoding="utf-8"))["cleanlab_removed"])
+        ref = _ref_by_doc()
+
+        def _keep_cl(r: dict) -> bool:
+            if r.get("source") == "ftc_case" and _doc_of(r.get("chunk_id", "")) in ref:
+                return r["chunk_id"] not in cl_removed      # E3 모집단: CleanLab 규칙
+            return r.get("status") == "CLEAN"               # 그 밖: D와 동일
+        rules["CL"] = _keep_cl
+    for arm, keep in rules.items():
+        out = ARM_DATA_DIR / f"arm_{arm}_forward.jsonl"
+        if not out.exists():
+            recs = [r for r in a_recs if keep(r)]
+            save_jsonl(recs, out)
+            logger.info(f"  Arm {arm}: {out} 저장 ({len(recs)}건, A 대비 −{len(a_recs) - len(recs)})")
+        paths[arm] = out
+
     return paths
 
 
 # ── 학습 ─────────────────────────────────────────────────────────────────────
 
 def _arm_label_source(arm: str) -> str:
-    return "agreed" if arm == "C" else "forward"
+    # AI Hub는 agreed == forward == 전문가 라벨이라 어느 쪽이든 같다
+    return "agreed" if arm == "C" or arm in AIHUB_ARMS or arm in BACKBONE_ARMS or arm in STYLE_ARMS else "forward"
 
 
 def _model_dir(arm: str, seed: int) -> Path:
@@ -163,16 +245,29 @@ def train_arm(arm: str, seed: int, labels_path: Path, gpu: int) -> Path:
         "--min-support", str(tc["min_support"]),
         "--seed",        str(seed),
         "--label-source", _arm_label_source(arm),
-        "--negative-holdout", str(metrics_v2["negative_holdout_docs"]),
-        "--negative-holdout-docs", str(HOLDOUT_PATH),
         "--gpu", str(gpu),
     ]
+    # 음성 홀드아웃은 표준계약서 문서 id라 AI Hub 데이터에는 없다(학습기가 "문서가 없다"로 멈춘다).
+    # AI Hub 팔은 그 문서를 애초에 못 보므로 떼어낼 것도 없다 — 평가셋은 모든 팔이 같다.
+    if arm not in AIHUB_ARMS:
+        argv += ["--negative-holdout", str(metrics_v2["negative_holdout_docs"]),
+                 "--negative-holdout-docs", str(HOLDOUT_PATH)]
+    n_sub = AIHUB_ARMS.get(arm, 0)
+    if n_sub == -1:
+        n_sub = json.loads((_model_dir("C", seed) / "metrics.json").read_text(encoding="utf-8"))["train_samples"]
+    if n_sub:
+        argv += ["--train-subsample", str(n_sub)]
     if metrics_v2.get("negative_ratio") is not None:
         argv += ["--negative-ratio", str(metrics_v2["negative_ratio"])]
 
     logger.info(f"  Arm {arm} seed {seed}: 학습 시작 → {out_dir}")
     logger.info(f"    명령: {' '.join(argv[2:])}")
-    result = subprocess.run(argv, capture_output=False)
+    env = None
+    backbone = BACKBONE_ARMS.get(arm) or (STYLE_ARMS[arm][1] if arm in STYLE_ARMS else None)
+    if backbone:
+        import os
+        env = {**os.environ, "BASE_MODEL": backbone}
+    result = subprocess.run(argv, capture_output=False, env=env)
     if result.returncode != 0:
         raise RuntimeError(f"Arm {arm} seed {seed} 학습 실패 (returncode={result.returncode})")
 
@@ -246,7 +341,6 @@ def _arm_summary(arm: str, seed_evals: list[dict]) -> dict:
 def _compare_arms(arm_c_evals: list[dict], arm_x_evals: list[dict],
                   label: str) -> dict:
     """C와 X를 개별 레코드 단위 페어드 비교."""
-    from backend.training.retrain import paired_ci as _paired_ci_retrain
     c_arrs = [e["_arrays"] for e in arm_c_evals]
     x_arrs = [e["_arrays"] for e in arm_x_evals]
 
@@ -281,7 +375,8 @@ def _compare_arms(arm_c_evals: list[dict], arm_x_evals: list[dict],
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--arms",      nargs="+", choices=["A", "B", "C"], default=["A", "B", "C"])
+    parser.add_argument("--arms",      nargs="+", choices=["A", "B", "C", "D", "X", "X3352", "X1000", "XC", "CL", "G", "K", "RB", "KSN", "KSS", "RSN", "RSS", "NC", "NRSN"],
+                        default=["A", "B", "C"])
     parser.add_argument("--seeds",     nargs="+", type=int, default=SEEDS)
     parser.add_argument("--gpu",       type=int,  default=0)
     parser.add_argument("--prep-only", action="store_true", help="데이터 파일만 만들고 멈춤")
@@ -351,6 +446,9 @@ def _analyze(gpu: int, arms: list[str]) -> None:
         comparisons["C_vs_B"] = _compare_arms(arm_evals["C"], arm_evals["B"], "B")
 
     report = {
+        # 이 함수의 판정은 철회됐다 — 학습 팔을 추가로 돌릴 때마다 이 파일이 다시 써지므로 표시를 코드에 둔다
+        "RETRACTED":   ("철회(2026-10-03): 제13조 헤드 인공물 + 팔별 동작점 비교. "
+                        "대체 data/eval/e8b_matched.json, 근거 eval/reported_numbers.md §8"),
         "experiment":  "E8",
         "description": "하류 학습 ablation (사전 등록, 미판정 예상)",
         "arms":        {"A": "필터 없음(forward, 2305건)", "B": "무작위(forward, 1473건)",

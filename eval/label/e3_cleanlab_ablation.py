@@ -22,17 +22,15 @@ CleanLab은 모델이 라벨을 고르는 방법이라 OOF 모델을 같은 라�
 표에 명시한다.
 
 실행 (GPU 필요, 5회 학습 × ~30분 = 2~3시간 예상):
-    .venv/bin/python -m eval.e3_cleanlab_ablation --gpu 0
-    .venv/bin/python -m eval.e3_cleanlab_ablation --gpu 0 --skip-train  # OOF 저장본 재사용
+    .venv/bin/python -m eval.label.e3_cleanlab_ablation --gpu 1
+    .venv/bin/python -m eval.label.e3_cleanlab_ablation --gpu 1 --skip-train  # OOF 저장본 재사용
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import random
-from collections import Counter, defaultdict
-from pathlib import Path
+from collections import Counter
 
 import numpy as np
 import torch
@@ -40,27 +38,26 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 
-from eval.channel.fbcheck_external_eval import _f1, _labels, _ref_by_doc, _doc_of
-from backend.labeling.articles import ARTICLES, normalize
 from backend.model.electra import ArticleMultiLabelElectra
-from backend.training.train import BASE_MODEL, split_by_document
+from backend.training.train import BASE_MODEL
 from backend.training.train_article import (
     ArticleDataset,
     compute_article_pos_weight,
     infer,
-    load_article_records,
-    load_ftc_gold,
     per_article_metrics,
     select_article_labels,
     tune_thresholds,
 )
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
+from eval.channel.fbcheck_external_eval import _doc_of, _f1, _labels, _ref_by_doc
+from eval.label.label_ablation import filter_diff_ci, random_keep_baseline
 
 logger = load_logger("e3_cleanlab_ablation.log")
 
 CLEAN_PATH = PROJECT_ROOT / "data/fb_check/clean.jsonl"
 NOISE_PATH = PROJECT_ROOT / "data/fb_check/noise.jsonl"
 OOF_PATH   = PROJECT_ROOT / "data/eval/e3_oof_probs.npz"
+REMOVED_PATH = PROJECT_ROOT / "data/eval/e3_removed_ids.json"
 OUT_PATH   = PROJECT_ROOT / "data/eval/e3_cleanlab_ablation.json"
 
 N_FOLDS   = 5
@@ -83,6 +80,7 @@ def _load_population(ref: dict) -> tuple[list[dict], list[dict]]:
         if r.get("source") != "ftc_case" or doc not in ref:
             return None
         return {
+            "chunk_id":     r.get("chunk_id", ""),
             "doc":          doc,
             "text":         (r.get("text") or "").strip(),
             "articles":     sorted(_labels(r.get("forward_articles"))),
@@ -223,48 +221,38 @@ def _confidence_remove(population: list[dict], oof: np.ndarray,
 
 # ── E1 비교 틀 재사용 ─────────────────────────────────────────────────────────
 
-def _score_pop(population: list[dict], ref: dict,
-               keep_mask: np.ndarray, nonempty: bool = True) -> np.ndarray:
-    out = []
-    for i, r in enumerate(population):
-        if not keep_mask[i]:
-            continue
-        fwd = set(r["articles"])
-        if nonempty and not fwd:
-            continue
-        out.append(_f1(fwd, ref[r["doc"]]))
-    return np.array(out)
+def _compare_vs_random(scores: np.ndarray, has: np.ndarray, keep: np.ndarray,
+                       rng: np.random.Generator, label: str, docs: list[str] | None = None) -> dict:
+    """필터가 남긴 집합 vs 레코드 수준 같은 수 무작위 유지 (label_ablation과 같은 기준선).
+
+    2026-09-30 수정: 옛 구현은 빈 라벨을 뺀 배열에서 1,473개를 뽑아 필터 쪽(빈 라벨 제외
+    1,142~1,287건)과 표본 크기가 달랐다 — 통과 쪽으로 기운다.
+    """
+    r = random_keep_baseline(scores, has, keep, rng, BOOT_N)
+    rs = random_keep_baseline(scores, has, keep, rng, BOOT_N, groups=docs) if docs else None
+    verdict = "이 필터가 질을 높인다(> B 97.5%ile)" if r["pass"] else "미판정"
+    logger.info(f"  {label:<25} n={r['n_scored']} mean={r['mean_f1']*100:.1f}%  "
+                f"B_p975={r['B_p975']*100:.1f}%  Δ={r['diff_pp']:+.1f}%p  {verdict}")
+    return {"n": r["n_scored"], "mean_f1": r["mean_f1"], "B_p975": r["B_p975"],
+            "diff_pp": r["diff_pp"], "perm_p": r["perm_p"], "verdict": verdict,
+            "docstrat": ({"diff_pp": rs["diff_pp"], "perm_p": rs["perm_p"],
+                          "verdict": "질을 높인다(문서 층화)" if rs["pass"] else "미판정"} if rs else None)}
 
 
-def _compare_vs_random(scores_method: np.ndarray, scores_all: np.ndarray,
-                       n_keep: int, rng: np.random.Generator,
-                       label: str) -> dict:
-    """scores_method(필터된 1,473건)를 B(무작위 10,000번)와 비교."""
-    boot = np.array([
-        scores_all[rng.choice(len(scores_all), size=min(n_keep, len(scores_all)), replace=False)].mean()
-        for _ in range(BOOT_N)
-    ])
-    pct975 = float(np.percentile(boot, 97.5))
-    m_mean = float(scores_method.mean()) if len(scores_method) else float("nan")
-    verdict = ("이 필터가 질을 높인다(> B 97.5%ile)" if m_mean > pct975
-               else "미판정")
-    logger.info(f"  {label:<25} mean={m_mean*100:.1f}%  B_p975={pct975*100:.1f}%  {verdict}")
-    return {"n": int(len(scores_method)), "mean_f1": float(m_mean),
-            "B_p975": float(pct975), "diff_pp": float((m_mean - boot.mean()) * 100),
-            "perm_p": float((boot >= m_mean).mean()), "verdict": verdict}
+def _paired_vs_fbcheck(scores: np.ndarray, has: np.ndarray, keep_method: np.ndarray,
+                       keep_fb: np.ndarray, rng: np.random.Generator,
+                       docs: list[str] | None = None) -> dict:
+    """이 필터 − FB-Check. 레코드를 한 번에 재표집해 두 집합의 겹침을 보존한다.
 
-
-def _paired_vs_fbcheck(scores_method: np.ndarray, scores_fbcheck: np.ndarray,
-                       rng: np.random.Generator) -> dict:
-    """레코드 단위 페어드 부트스트랩(겹치는 레코드가 많다)."""
-    n = min(len(scores_method), len(scores_fbcheck))
-    diff = scores_method[:n] - scores_fbcheck[:n]
-    boot = np.array([diff[rng.integers(0, n, n)].mean() for _ in range(BOOT_CI)])
-    lo, hi = float(np.percentile(boot, 2.5) * 100), float(np.percentile(boot, 97.5) * 100)
-    obs = float(diff.mean() * 100)
-    verdict = ("이 필터 > FB-Check(유의)" if lo > 0 else
-               "FB-Check > 이 필터(유의)" if hi < 0 else "미판정")
-    return {"diff_vs_fbcheck_pp": obs, "ci95_pp": [lo, hi], "verdict": verdict}
+    2026-09-30 수정: 옛 구현은 (1) 서로 다른 두 필터 결과 배열을 **위치 순서대로** 짝지어
+    뺐고 (2) 호출부가 같은 배열을 두 번 넘겨 차가 항상 0이었으며 (3) 결과를 리포트에
+    싣지도 않았다. "FB-Check > CleanLab +0.4%p"는 CI 없는 평균 차였다.
+    """
+    d = filter_diff_ci(scores, has, keep_method, keep_fb, rng, BOOT_CI, groups=docs)
+    verdict = {"A > B(유의)": "이 필터 > FB-Check(유의)",
+               "B > A(유의)": "FB-Check > 이 필터(유의)"}.get(d["verdict"], "미판정")
+    return {"diff_vs_fbcheck_pp": d["diff_pp"], "ci95_pp": d["ci95_pp"],
+            "mde80_pp": d["mde80_pp"], "verdict": verdict}
 
 
 # ── main ─────────────────────────────────────────────────────────────────────
@@ -310,34 +298,29 @@ def main() -> None:
     logger.info(f"  신뢰도 임계값 제거: {len(ct_remove_idx)}건")
 
     # ── 비교용 마스크 ──
-    all_mask  = np.ones(len(population), dtype=bool)
     cl_mask   = np.array([i not in cl_remove_idx for i in range(len(population))])
     ct_mask   = np.array([i not in ct_remove_idx for i in range(len(population))])
     fb_mask   = np.array([True]  * n_clean + [False] * n_remove)  # FB-Check = CLEAN만
 
-    # ── FTC 대비 F1 계산 ──
-    s_all  = _score_pop(population, ref, all_mask)
-    s_cl   = _score_pop(population, ref, cl_mask)
-    s_ct   = _score_pop(population, ref, ct_mask)
-    s_fb   = _score_pop(population, ref, fb_mask)
+    # ── FTC 대비 F1 계산 (레코드 벡터 + 마스크) ──
+    has    = np.array([bool(r["articles"]) for r in population])
+    scores = np.array([_f1(set(r["articles"]), ref[r["doc"]]) if r["articles"] else 0.0
+                       for r in population])
+    s_all  = scores[has]
+    clean_set = set(range(n_clean))
 
     logger.info("  === E3 비교 ===")
-    result_cl = _compare_vs_random(s_cl, s_all, n_clean, rng, "CleanLab")
-    result_ct = _compare_vs_random(s_ct, s_all, n_clean, rng, "신뢰도임계값")
-    result_fb = _compare_vs_random(s_fb, s_all, n_clean, rng, "FB-Check(참고)")
-
-    # FB-Check와 페어드 비교 (겹치는 레코드: CLEAN 부분만)
-    # CleanLab/CT가 남긴 레코드 중 FB-Check(CLEAN)와 겹치는 것
-    clean_set = set(range(n_clean))
-    cl_clean  = sorted(clean_set - cl_remove_idx)
-    ct_clean  = sorted(clean_set - ct_remove_idx)
-    fb_clean  = list(range(n_clean))
-
-    paired_cl_fb = _paired_vs_fbcheck(
-        np.array([_f1(set(population[i]["articles"]), ref[population[i]["doc"]]) for i in cl_clean]),
-        np.array([_f1(set(population[i]["articles"]), ref[population[i]["doc"]]) for i in cl_clean]),
-        rng,
-    )
+    docs = [r["doc"] for r in population]
+    result_cl = _compare_vs_random(scores, has, cl_mask, rng, "CleanLab", docs)
+    result_ct = _compare_vs_random(scores, has, ct_mask, rng, "신뢰도임계값", docs)
+    result_fb = _compare_vs_random(scores, has, fb_mask, rng, "FB-Check(참고)", docs)
+    paired_cl_fb = _paired_vs_fbcheck(scores, has, cl_mask, fb_mask, rng)
+    paired_ct_fb = _paired_vs_fbcheck(scores, has, ct_mask, fb_mask, rng)
+    # 문서 군집 재표집 — 같은 문서 조항이 정답을 공유하므로 레코드 단위 CI는 좁게 나온다
+    paired_cl_fb["doc_cluster"] = _paired_vs_fbcheck(scores, has, cl_mask, fb_mask, rng, docs)
+    paired_ct_fb["doc_cluster"] = _paired_vs_fbcheck(scores, has, ct_mask, fb_mask, rng, docs)
+    logger.info(f"  CleanLab − FB-Check  {paired_cl_fb}")
+    logger.info(f"  신뢰도임계값 − FB-Check  {paired_ct_fb}")
 
     # CleanLab과 FB-Check의 제거 집합 겹침
     cl_noise_removed   = cl_remove_idx & set(range(n_clean, len(population)))
@@ -365,6 +348,7 @@ def main() -> None:
             "n_noise_removed":  len(cl_noise_removed),
             "n_clean_removed":  len(cl_clean_removed),
             "overlap_with_noise_pct": float(len(cl_noise_removed) / n_remove * 100),
+            "vs_fbcheck": paired_cl_fb,
         },
         "ConfThreshold": {
             **result_ct,
@@ -372,6 +356,7 @@ def main() -> None:
             "n_noise_removed":  len(ct_noise_removed),
             "n_clean_removed":  len(ct_clean_removed),
             "overlap_with_noise_pct": float(len(ct_noise_removed) / n_remove * 100),
+            "vs_fbcheck": paired_ct_fb,
         },
         "FBCheck_ref": {
             **result_fb,
@@ -381,6 +366,11 @@ def main() -> None:
 
     save_json(report, OUT_PATH)
     logger.info(f"저장: {OUT_PATH}")
+    # 하류 학습 팔(E8 CL)이 같은 제거 집합을 쓰도록 ID를 남긴다
+    save_json({"cleanlab_removed": sorted(population[i]["chunk_id"] for i in cl_remove_idx),
+               "confthreshold_removed": sorted(population[i]["chunk_id"] for i in ct_remove_idx)},
+              REMOVED_PATH)
+    logger.info(f"제거 ID 저장: {REMOVED_PATH}")
 
 
 if __name__ == "__main__":
