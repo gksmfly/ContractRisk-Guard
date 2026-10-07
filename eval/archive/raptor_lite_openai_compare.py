@@ -39,8 +39,8 @@ from backend.retrieval.search import _get_cached_embedder
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("raptor_lite_openai_compare.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/raptor_lite_openai_vs_rrf_report.json"
-EXAONE_REPORT = PROJECT_ROOT / "data/eval/raptor_lite_vs_rrf_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/archive/raptor_lite_openai_vs_rrf_report.json"
+EXAONE_REPORT = PROJECT_ROOT / "data/eval/archive/raptor_lite_vs_rrf_report.json"
 
 ROUTER_EVAL_MODEL = os.environ.get("ROUTER_EVAL_MODEL", "gpt-4o-mini")
 

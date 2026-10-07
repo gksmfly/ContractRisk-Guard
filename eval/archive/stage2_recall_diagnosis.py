@@ -29,8 +29,8 @@ from backend.retrieval.search import _fuse_reciprocal_rank, _get_cached_embedder
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("stage2_recall_diagnosis.log")
-EXAONE_REPORT = PROJECT_ROOT / "data/eval/raptor_lite_vs_rrf_report.json"
-OUT_PATH = PROJECT_ROOT / "data/eval/stage2_recall_diagnosis.json"
+EXAONE_REPORT = PROJECT_ROOT / "data/eval/archive/raptor_lite_vs_rrf_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/archive/stage2_recall_diagnosis.json"
 
 _POOL_K = 50   # 법령당 확보할 후보 수(현재 운영값 8보다 크게 잡아 "풀에 있긴 한가"를 본다)
 _CUTOFFS = (1, 2, 3, 5, 10, 20, 50, 100)

@@ -5,7 +5,7 @@ lightrag_compare.py의 본작업이 잔액 부족(인덱싱 도중 $0.82로 하�
 안에 **약관규제법 43청크 전부**가 포함돼 있고, 이게 FTC 근거_법령 인용의 94.7%
 (2,314/2,444건)를 차지한다 — 민법(5.3%)만 빠진 상태.
 
-재인덱싱 없이(추가 비용 0원) 기존 인덱스(`data/eval/lightrag_full_storage`)를 그대로
+재인덱싱 없이(추가 비용 0원) 기존 인덱스(`data/eval/archive/lightrag_full_storage`)를 그대로
 열어서, 정답이 이미 인덱싱된 법령(민법 제외) 안에 있는 케이스만으로 평가한다.
 
 실행: python -m eval.archive.lightrag_compare_partial
@@ -28,7 +28,7 @@ from eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("lightrag_compare_partial.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/lightrag_vs_rrf_report_agb_only.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/archive/lightrag_vs_rrf_report_agb_only.json"
 
 
 async def main() -> None:

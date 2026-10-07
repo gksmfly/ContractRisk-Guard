@@ -55,7 +55,7 @@ from backend.utils import PROJECT_ROOT, load_logger, save_json
 logger = load_logger("sllm_lora_eval.log")
 
 CLEAN_PATH = PROJECT_ROOT / "data/fb_check/clean.jsonl"
-OUT_DIR = PROJECT_ROOT / "data/eval"
+OUT_DIR = PROJECT_ROOT / "data/eval/model"
 DEFAULT_BASE = "LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct"
 
 _SYS = "너는 한국 약관규제법 전문가다. 계약 조항을 읽고 위반 소지가 있는 조를 고른다."
@@ -346,7 +346,7 @@ def main(argv: list[str] | None = None) -> None:
                "neg_rows": [{"text": r["text"][:100], "raw": q, "flag": f}
                             for r, q, f in zip(neg, neg_raw, neg_flag) if f]},
               OUT_DIR / f"sllm_lora_{args.tag}.json")
-    logger.info(f"저장: data/eval/sllm_lora_{args.tag}.json")
+    logger.info(f"저장: data/eval/model/sllm_lora_{args.tag}.json")
 
 
 if __name__ == "__main__":

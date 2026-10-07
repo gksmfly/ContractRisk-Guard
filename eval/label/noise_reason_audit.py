@@ -48,7 +48,7 @@ logger = load_logger("noise_reason_audit.log")
 
 RESULTS_PATH = PROJECT_ROOT / "data/fb_check/fb_check_results.jsonl"
 FTC_PATH     = PROJECT_ROOT / "data/raw/ftc_cases/ftc_cases_parsed.json"
-OUT_PATH     = PROJECT_ROOT / "data/eval/noise_reason_audit.json"
+OUT_PATH     = PROJECT_ROOT / "data/eval/label/noise_reason_audit.json"
 
 
 def _read(path: Path) -> list[dict]:

@@ -25,7 +25,7 @@ C는 A·B와 **두 가지가 동시에** 다르다 — 라벨 소스(agreed vs f
 
     G    Grounding만   A − snippet_not_found NOISE (33건)        ≈ A (구조상)
     K    Consistency만 A − label/article_mismatch NOISE (1,080건) ≈ D (구조상, D ∪ snippet 33건)
-    CL   CleanLab      공정위 조항: A − CleanLab이 고른 832건 (`data/eval/e3_removed_ids.json`)
+    CL   CleanLab      공정위 조항: A − CleanLab이 고른 832건 (`data/eval/label/e3_removed_ids.json`)
                        표준계약서·근거 없는 공정위 조항: D와 동일 (CleanLab OOF가 이 부분엔 없다)
                        → CL과 D는 **근거 있는 공정위 조항을 어느 규칙으로 고르느냐**만 다르다
 
@@ -73,9 +73,9 @@ CLEAN_PATH  = PROJECT_ROOT / "data/fb_check/clean.jsonl"
 NOISE_PATH  = PROJECT_ROOT / "data/fb_check/noise.jsonl"
 BASE_DIR    = PROJECT_ROOT / "models/article_v2"
 HOLDOUT_PATH = PROJECT_ROOT / "backend/training/negative_holdout_docs.json"
-ARM_DATA_DIR = PROJECT_ROOT / "data/eval/e8_arms"
+ARM_DATA_DIR = PROJECT_ROOT / "data/eval/model/e8_arms"
 MODEL_OUT    = PROJECT_ROOT / "models"
-OUT_PATH     = PROJECT_ROOT / "data/eval/e8_downstream_ablation.json"
+OUT_PATH     = PROJECT_ROOT / "data/eval/model/e8_downstream_ablation.json"
 
 # arm B 무작위 선택 시드 (학습 시드와 분리)
 B_SUBSET_SEED = 42
@@ -190,7 +190,7 @@ def prepare_arms() -> dict[str, Path]:
         "G": lambda r: not (r.get("status") == "NOISE" and reason(r) == "snippet_not_found"),
         "K": lambda r: not (r.get("status") == "NOISE" and reason(r) in ("label_mismatch", "article_mismatch")),
     }
-    removed_path = PROJECT_ROOT / "data/eval/e3_removed_ids.json"
+    removed_path = PROJECT_ROOT / "data/eval/label/e3_removed_ids.json"
     if removed_path.exists():
         from eval.label.label_ablation import _ref_by_doc
         cl_removed = set(json.loads(removed_path.read_text(encoding="utf-8"))["cleanlab_removed"])
@@ -448,7 +448,7 @@ def _analyze(gpu: int, arms: list[str]) -> None:
     report = {
         # 이 함수의 판정은 철회됐다 — 학습 팔을 추가로 돌릴 때마다 이 파일이 다시 써지므로 표시를 코드에 둔다
         "RETRACTED":   ("철회(2026-10-03): 제13조 헤드 인공물 + 팔별 동작점 비교. "
-                        "대체 data/eval/e8b_matched.json, 근거 eval/reported_numbers.md §8"),
+                        "대체 data/eval/model/e8b_matched.json, 근거 eval/reported_numbers.md §8"),
         "experiment":  "E8",
         "description": "하류 학습 ablation (사전 등록, 미판정 예상)",
         "arms":        {"A": "필터 없음(forward, 2305건)", "B": "무작위(forward, 1473건)",

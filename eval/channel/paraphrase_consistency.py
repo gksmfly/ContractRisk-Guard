@@ -45,8 +45,8 @@ from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 logger = load_logger("paraphrase_consistency.log")
 
 HOLDOUT  = PROJECT_ROOT / "backend/training/negative_holdout_docs.json"
-CACHE    = PROJECT_ROOT / "data/eval/paraphrase_raw.jsonl"
-OUT_PATH = PROJECT_ROOT / "data/eval/paraphrase_consistency.json"
+CACHE    = PROJECT_ROOT / "data/eval/channel/paraphrase_raw.jsonl"
+OUT_PATH = PROJECT_ROOT / "data/eval/channel/paraphrase_consistency.json"
 MAX_CHARS = 1500
 MODEL_KEY = "qwen2.5-14b"
 

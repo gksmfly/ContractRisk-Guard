@@ -38,7 +38,7 @@ from backend.training.train import load_records, split_by_document
 from backend.utils import PROJECT_ROOT, load_logger, save_json
 
 logger = load_logger("fixedsplit_verify.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/fixedsplit_verify_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/model/fixedsplit_verify_report.json"
 _SEEDS = (42, 7, 1, 100, 123)
 
 

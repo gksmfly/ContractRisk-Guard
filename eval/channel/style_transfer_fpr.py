@@ -45,7 +45,7 @@ from backend.utils import PROJECT_ROOT, load_logger, save_json
 logger = load_logger("style_transfer_fpr.log")
 
 CLEAN_PATH = PROJECT_ROOT / "data/fb_check/clean.jsonl"
-OUT_PATH   = PROJECT_ROOT / "data/eval/style_transfer_fpr.json"
+OUT_PATH   = PROJECT_ROOT / "data/eval/channel/style_transfer_fpr.json"
 
 _SYSTEM = (
     "너는 한국어 법률 문서 편집자다. 주어진 조항의 실질 의미(의무·금지·권한·금액·기간 등)는 "

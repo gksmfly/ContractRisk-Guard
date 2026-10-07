@@ -30,7 +30,7 @@ from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("lightrag_compare.log")
 
-WORKING_DIR = str(PROJECT_ROOT / "data/eval/lightrag_full_storage")
+WORKING_DIR = str(PROJECT_ROOT / "data/eval/archive/lightrag_full_storage")
 OUT_PATH = PROJECT_ROOT / "data/eval/lightrag_vs_rrf_report.json"
 
 _INDEX_LOG_EVERY = 250

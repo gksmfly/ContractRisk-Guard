@@ -31,13 +31,13 @@ from eval.archive.domain_filter_compare import _dense_with_score, _sparse_with_s
 from eval.archive.legalmalr_lite_compare import _FEWSHOT as _REFORM_FEWSHOT
 from eval.archive.legalmalr_lite_compare import _SYSTEM as _REFORM_SYSTEM
 from eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
-from eval.local_llm import generate_json
+from eval.label.local_llm import generate_json
 from backend.retrieval.search import _fuse_reciprocal_rank, _get_cached_embedder
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("stage2_improvement_compare.log")
-EXAONE_REPORT = PROJECT_ROOT / "data/eval/raptor_lite_vs_rrf_report.json"
-OUT_PATH = PROJECT_ROOT / "data/eval/stage2_improvement_report.json"
+EXAONE_REPORT = PROJECT_ROOT / "data/eval/archive/raptor_lite_vs_rrf_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/archive/stage2_improvement_report.json"
 
 _POOL_SIZES = (8, 30, 50)
 _CUTOFFS = (2, 5, 10, 20)

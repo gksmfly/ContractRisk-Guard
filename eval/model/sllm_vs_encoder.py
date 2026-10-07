@@ -15,7 +15,7 @@
 
 인코더 예측은 배포 임계값(`thresholds.npy`)과 체크포인트의 `max_len`으로 낸다.
 여기서 임계값을 다시 고르면 그게 곧 gold 오염이다(`article_gold_eval` 주석과 같은 이유).
-sLLM 예측은 `data/eval/sllm_lora_<tag>.json`에 저장된 것을 **그대로 읽는다** — 다시
+sLLM 예측은 `data/eval/model/sllm_lora_<tag>.json`에 저장된 것을 **그대로 읽는다** — 다시
 생성하면 같은 모델이라도 값이 흔들린다.
 
 실행:
@@ -33,7 +33,7 @@ from backend.training.train_article import constant_baseline_f1, load_ftc_gold
 from backend.utils import PROJECT_ROOT, load_logger, save_json
 
 logger = load_logger("sllm_vs_encoder.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/sllm_vs_encoder.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/model/sllm_vs_encoder.json"
 
 
 def _f1(pred: list[str], gold: list[str]) -> float:
@@ -101,7 +101,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--encoder", default="models/article_v2")
     args = ap.parse_args(argv)
 
-    sllm = json.loads((PROJECT_ROOT / f"data/eval/sllm_lora_{args.tag}.json").read_text(encoding="utf-8"))
+    sllm = json.loads((PROJECT_ROOT / f"data/eval/model/sllm_lora_{args.tag}.json").read_text(encoding="utf-8"))
     gold = load_ftc_gold("clean")
     enc_preds, names = encoder_predictions(args.encoder, args.gpu)
     sllm_preds = [r["pred"] for r in sllm["rows"]]

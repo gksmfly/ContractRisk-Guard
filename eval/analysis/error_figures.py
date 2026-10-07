@@ -18,9 +18,9 @@
 
     .venv/bin/python -m eval.analysis.error_figures
 
-입력: `data/eval/e8b_cache/*.npz`(E8b 예측 캐시), `data/eval/teacher_on_gold_raw.jsonl`,
+입력: `data/eval/model/e8b_cache/*.npz`(E8b 예측 캐시), `data/eval/label/teacher_on_gold_raw.jsonl`,
 FB-Check 산출물(홀드아웃 조항의 gpt-4o forward). TF-IDF는 `e_base_baselines`와 같은 절차로 다시 학습한다.
-출력: `data/eval/figures/*.png`, `data/eval/error_figures.json`
+출력: `data/eval/analysis/figures/*.png`, `data/eval/analysis/error_figures.json`
 """
 
 import json
@@ -39,10 +39,10 @@ from eval.model.e8b_matched import CACHE_DIR, COMMON  # noqa: E402
 logger = load_logger("error_figures.log")
 
 HOLDOUT  = PROJECT_ROOT / "backend/training/negative_holdout_docs.json"
-RAW      = PROJECT_ROOT / "data/eval/teacher_on_gold_raw.jsonl"
+RAW      = PROJECT_ROOT / "data/eval/label/teacher_on_gold_raw.jsonl"
 FB_PATHS = [PROJECT_ROOT / "data/fb_check/clean.jsonl", PROJECT_ROOT / "data/fb_check/noise.jsonl"]
-FIG_DIR  = PROJECT_ROOT / "data/eval/figures"
-OUT_PATH = PROJECT_ROOT / "data/eval/error_figures.json"
+FIG_DIR  = PROJECT_ROOT / "data/eval/analysis/figures"
+OUT_PATH = PROJECT_ROOT / "data/eval/analysis/error_figures.json"
 
 # 시각화 규칙: 범주색은 고정 순서, 텍스트는 텍스트 색, 연속값은 단일 색상(밝음→어두움)
 SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"]

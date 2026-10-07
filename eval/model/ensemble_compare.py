@@ -43,7 +43,7 @@ logger = load_logger("ensemble_compare.log")
 GT_PATH = PROJECT_ROOT / "data/eval/ground_truth_3class.jsonl"
 SPAN_CACHE_PATH = PROJECT_ROOT / "data/eval/evidence_span_cache.jsonl"
 SEEDEXP_DIR = PROJECT_ROOT / "models/_seedexp"
-OUT_PATH = PROJECT_ROOT / "data/eval/ensemble_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/model/ensemble_report.json"
 
 _LABELS = ["High", "Medium", "Low"]
 _SEEDS = (1, 7, 42, 100, 123)

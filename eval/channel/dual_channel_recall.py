@@ -48,7 +48,7 @@ from backend.utils import PROJECT_ROOT, load_logger, save_json
 
 logger = load_logger("dual_channel_recall.log")
 
-OUT_PATH   = PROJECT_ROOT / "data/eval/dual_channel_recall_mini.json"
+OUT_PATH   = PROJECT_ROOT / "data/eval/channel/dual_channel_recall_mini.json"
 CACHE_PATH = OUT_PATH.with_suffix(".cache.json")
 
 

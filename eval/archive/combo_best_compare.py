@@ -26,12 +26,12 @@ from eval.archive.domain_filter_compare import (
     rrf_baseline_hit,
 )
 from eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
-from eval.local_llm import generate_json
+from eval.label.local_llm import generate_json
 from backend.retrieval.search import _get_cached_embedder
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("combo_best_compare.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/combo_best_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/archive/combo_best_report.json"
 
 _RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
 _CANDIDATE_K_PER_PARTITION = 10

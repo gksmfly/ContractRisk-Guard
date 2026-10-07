@@ -56,11 +56,11 @@ from backend.training.train_article import (
 from backend.utils import PROJECT_ROOT, load_logger, save_json
 
 logger = load_logger("e_base_baselines.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/e_base_baselines.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/label/e_base_baselines.json"
 
 LABELED_PATH = PROJECT_ROOT / "data/fb_check/clean.jsonl"
 HOLDOUT_PATH = PROJECT_ROOT / "backend/training/negative_holdout_docs.json"
-GOLD_REPORT  = PROJECT_ROOT / "data/eval/article_gold_report.json"
+GOLD_REPORT  = PROJECT_ROOT / "data/eval/gold/article_gold_report.json"
 # article_v2와 같은 8개 헤드(제13조는 support 부족으로 접힘)
 HEADS = ["제6조", "제7조", "제8조", "제9조", "제10조", "제11조", "제12조", "제14조"]
 
@@ -168,7 +168,7 @@ def _verdict(metric: str, lo: float, hi: float) -> str:
 def _matched_vs_koelectra(tfidf_probs: tuple, gold: list[dict], neg: list[dict]) -> dict:
     """TF-IDF(balanced, dev 임계값) vs article_v2를 **같은 재현율**에서 비교(규칙 9).
 
-    article_v2 예측은 E8b 캐시(`data/eval/e8b_cache/article_v2.npz`, 같은 gold·홀드아웃 순서)를
+    article_v2 예측은 E8b 캐시(`data/eval/model/e8b_cache/article_v2.npz`, 같은 gold·홀드아웃 순서)를
     쓴다. 지표·재표집은 E8b와 같다(gold·홀드아웃 문서 군집 부트스트랩, 문턱 재설정).
     """
     from eval.model.e8b_matched import CACHE_DIR, COMMON, _groups, _load, _metrics

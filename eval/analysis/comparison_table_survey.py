@@ -61,7 +61,7 @@ logger = load_logger("comparison_table_survey.log")
 
 FTC_JSON = PROJECT_ROOT / "data/raw/ftc_cases/ftc_cases_parsed.json"
 PDF_DIR  = PROJECT_ROOT / "data/raw/ftc_cases/pdfs"
-OUT_PATH = PROJECT_ROOT / "data/eval/comparison_table_survey.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/analysis/comparison_table_survey.json"
 
 _BEFORE = re.compile(r"(수\s*정\s*전|변\s*경\s*전|시\s*정\s*전|현\s*행)\s*(약\s*관)?")
 _AFTER  = re.compile(r"(수\s*정\s*후|변\s*경\s*후|시\s*정\s*후|개\s*정\s*안?)\s*(약\s*관)?")

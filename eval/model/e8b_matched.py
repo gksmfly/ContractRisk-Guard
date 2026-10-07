@@ -52,8 +52,8 @@ from backend.utils import PROJECT_ROOT, load_logger, save_json
 logger = load_logger("e8b_matched.log")
 
 HOLDOUT_PATH = PROJECT_ROOT / "backend/training/negative_holdout_docs.json"
-CACHE_DIR    = PROJECT_ROOT / "data/eval/e8b_cache"
-OUT_PATH     = PROJECT_ROOT / "data/eval/e8b_matched.json"
+CACHE_DIR    = PROJECT_ROOT / "data/eval/model/e8b_cache"
+OUT_PATH     = PROJECT_ROOT / "data/eval/model/e8b_matched.json"
 
 COMMON  = ["제6조", "제7조", "제8조", "제9조", "제10조", "제11조", "제12조", "제14조"]
 ARMS    = ["A", "B", "C", "D", "X", "X3352", "X1000", "XC", "CL", "G", "K", "RB"]

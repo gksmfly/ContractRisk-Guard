@@ -44,8 +44,8 @@ from backend.training.train_article import load_ftc_gold
 from backend.utils import PROJECT_ROOT, load_logger, save_json
 
 logger = load_logger("teacher_on_gold.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/teacher_on_gold.json"
-CACHE = PROJECT_ROOT / "data/eval/teacher_on_gold_raw.jsonl"
+OUT_PATH = PROJECT_ROOT / "data/eval/label/teacher_on_gold.json"
+CACHE = PROJECT_ROOT / "data/eval/label/teacher_on_gold_raw.jsonl"
 _USD_PER_RECORD = 0.0055          # forward만, 프롬프트 캐싱 반영
 
 

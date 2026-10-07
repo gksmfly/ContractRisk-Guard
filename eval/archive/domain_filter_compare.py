@@ -32,7 +32,7 @@ from backend.retrieval.search import _fuse_reciprocal_rank, _get_cached_embedder
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("domain_filter_compare.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/domain_filter_vs_rrf_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/archive/domain_filter_vs_rrf_report.json"
 
 _CANDIDATE_K = 8  # 파티션당 확보할 후보 수(production _CANDIDATE_K와 동일)
 _TOP_K = 5

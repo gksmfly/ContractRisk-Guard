@@ -100,7 +100,7 @@ def main() -> None:
            "C_s42_dev_fpr": target, "C_s42_dev_recall": float((Pc[pos] >= thr_c).any(1).mean()),
            "RB_s42_dev_fpr_orig": dev_fpr(Pr, thr_r, neg), "RB_s42_dev_recall_orig": float((Pr[pos] >= thr_r).any(1).mean()),
            "chosen": best, "thresholds_new": m["thresholds"]}
-    save_json(rep, PROJECT_ROOT / "data/eval/swap_candidate_a.json")
+    save_json(rep, PROJECT_ROOT / "data/eval/model/swap_candidate_a.json")
     logger.info(json.dumps(rep, ensure_ascii=False, indent=1))
 
 

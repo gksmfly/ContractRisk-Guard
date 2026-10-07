@@ -56,9 +56,9 @@ logger = load_logger("e3_cleanlab_ablation.log")
 
 CLEAN_PATH = PROJECT_ROOT / "data/fb_check/clean.jsonl"
 NOISE_PATH = PROJECT_ROOT / "data/fb_check/noise.jsonl"
-OOF_PATH   = PROJECT_ROOT / "data/eval/e3_oof_probs.npz"
-REMOVED_PATH = PROJECT_ROOT / "data/eval/e3_removed_ids.json"
-OUT_PATH   = PROJECT_ROOT / "data/eval/e3_cleanlab_ablation.json"
+OOF_PATH   = PROJECT_ROOT / "data/eval/label/e3_oof_probs.npz"
+REMOVED_PATH = PROJECT_ROOT / "data/eval/label/e3_removed_ids.json"
+OUT_PATH   = PROJECT_ROOT / "data/eval/label/e3_cleanlab_ablation.json"
 
 N_FOLDS   = 5
 EPOCHS    = 10

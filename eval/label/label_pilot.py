@@ -60,7 +60,7 @@ logger = load_logger("label_pilot.log")
 FTC_PATH = PROJECT_ROOT / "data/raw/ftc_cases/ftc_cases_parsed.json"
 # 블록 변형마다 **다른 파일**에 쓴다. 예전에는 고정 경로라 A(기준선) 위에 A'가
 # 덮어써지고 B·C도 서로를 지웠다 — 300호출을 쓰고 마지막 실행 하나만 남는 구조였다.
-_OUT_DIR = PROJECT_ROOT / "data/eval"
+_OUT_DIR = PROJECT_ROOT / "data/eval/label"
 
 
 def out_path(block: str) -> Path:

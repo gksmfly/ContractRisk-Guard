@@ -20,7 +20,7 @@ from backend.retrieval.search import fetch_candidates
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("rerank_compare.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/rerank_vs_rrf_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/archive/rerank_vs_rrf_report.json"
 
 _RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
 _CANDIDATE_POOL = 20  # 재랭킹이 뽑아낼 여지를 주기 위해 RRF top-5보다 넉넉히 확보

@@ -33,7 +33,7 @@ from backend.training.train_article import load_ftc_gold
 from backend.utils import PROJECT_ROOT, load_logger, save_json
 
 logger = load_logger("threshold_match_sweep.log")
-OUT_DIR = PROJECT_ROOT / "data/eval"   # 파일명에 태그를 붙인다 — 고정이면 다음 모델이 덮어쓴다
+OUT_DIR = PROJECT_ROOT / "data/eval/analysis"   # 파일명에 태그를 붙인다 — 고정이면 다음 모델이 덮어쓴다
 
 
 def _probs(texts: list[str], model_dir: str, gpu: int) -> tuple[np.ndarray, list[str], np.ndarray]:
@@ -78,7 +78,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--tag", default="exaone")
     args = ap.parse_args(argv)
 
-    sllm = json.loads((PROJECT_ROOT / f"data/eval/sllm_lora_{args.tag}.json").read_text(encoding="utf-8"))
+    sllm = json.loads((PROJECT_ROOT / f"data/eval/model/sllm_lora_{args.tag}.json").read_text(encoding="utf-8"))
     target_recall = sllm["recall_any"]
     sllm_fpr = sllm["fpr_intact"]
 
@@ -140,7 +140,7 @@ def main(argv: list[str] | None = None) -> None:
                "diff_fpr": diff, "verdict": verdict, "sweep": rows,
                "caveat": "배율은 gold에서 고른 비교량. 배포 임계값은 dev에서 뽑은 thresholds.npy 그대로"},
               OUT_DIR / f"threshold_match_{args.tag}.json")
-    logger.info(f"저장: data/eval/threshold_match_{args.tag}.json")
+    logger.info(f"저장: data/eval/analysis/threshold_match_{args.tag}.json")
 
 
 if __name__ == "__main__":

@@ -32,8 +32,8 @@ from backend.utils import PROJECT_ROOT, load_logger, save_json
 
 logger = load_logger("prompt_block_compare.log")
 
-EVAL_DIR = PROJECT_ROOT / "data/eval"
-OUT_PATH = EVAL_DIR / "prompt_block_ablation_report.json"
+PILOT_DIR = PROJECT_ROOT / "data/eval/label"
+OUT_PATH = PROJECT_ROOT / "data/eval/analysis/prompt_block_ablation_report.json"
 
 # (표시 이름, 파일). A는 v4 프롬프트 실행 당시 저장본이라 별도 이름이다.
 _RUNS = [
@@ -53,7 +53,7 @@ def _f1(s: dict) -> float:
 
 
 def load_run(fname: str, model: str = "gpt-4o") -> dict | None:
-    path = EVAL_DIR / fname
+    path = PILOT_DIR / fname
     if not path.exists():
         return None
     rep = json.loads(path.read_text(encoding="utf-8"))

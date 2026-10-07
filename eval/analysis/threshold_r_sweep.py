@@ -77,7 +77,7 @@ from backend.training.train_article import (
 from backend.utils import PROJECT_ROOT, load_logger, save_json
 
 logger = load_logger("threshold_r_sweep.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/threshold_r_sweep.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/analysis/threshold_r_sweep.json"
 _GRID = np.arange(0.05, 0.96, 0.01)
 # **위반 쪽**에 하한을 건다. 처음엔 비위반 쪽에 걸었는데(≥0.90) F1 최적해가 이미
 # 그걸 만족해서 두 곡선이 완전히 같게 나왔다 — 구속력 없는 제약이었다.

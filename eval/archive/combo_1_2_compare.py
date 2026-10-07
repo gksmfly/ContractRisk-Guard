@@ -31,7 +31,7 @@ from backend.retrieval.search import _get_cached_embedder
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("combo_1_2_compare.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/combo_1_2_vs_rrf_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/archive/combo_1_2_vs_rrf_report.json"
 
 _RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
 _CANDIDATE_K_PER_PARTITION = 5  # 파티션이 16개나 되므로 옵션2보다 파티션당은 적게, 대신 전부 모음

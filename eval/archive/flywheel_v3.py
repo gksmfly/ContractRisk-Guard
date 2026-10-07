@@ -79,7 +79,7 @@ from backend.training.train_article import (
 from backend.utils import PROJECT_ROOT, load_logger, save_json
 
 logger = load_logger("flywheel_v3.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/flywheel_v3_split.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/archive/flywheel_v3_split.json"
 # 철회된 비대칭 규칙의 산출은 `flywheel_v3_withdrawn.json`에 그대로 둔다 —
 # 덮으면 "그때 무엇이 계산됐는지"가 사라진다(측정 로그를 안 고치는 것과 같은 기준).
 

@@ -51,7 +51,7 @@ from backend.training.train_article import (
 from backend.utils import PROJECT_ROOT, load_logger, save_json
 
 logger = load_logger("article_gold_eval.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/article_gold_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/gold/article_gold_report.json"
 
 
 _STRATUM_NOTE = {

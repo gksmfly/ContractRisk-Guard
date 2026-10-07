@@ -81,7 +81,7 @@ logger = load_logger("input_distribution_check.log")
 SHEET = Path(os.environ.get("PREVALENCE_SHEET",
                             str(PROJECT_ROOT / "data/eval/prevalence/worksheet.csv")))
 CLEAN_PATH = Path(os.environ.get("ARTICLE_LABELS", str(PROJECT_ROOT / "data/fb_check/clean.jsonl")))
-OUT_PATH = PROJECT_ROOT / "data/eval/input_distribution_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/channel/input_distribution_report.json"
 
 # PDF 추출 잔해의 지문: 단어가 공백으로 쪼개지면 **1글자 한글 토큰**이 급증한다
 # (`체 납된` → `체`, `과태 료` → `료`). 붙여넣기 텍스트에는 조사·의존명사 정도만 나온다.

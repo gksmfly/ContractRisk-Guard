@@ -59,7 +59,7 @@ logger = load_logger("fbcheck_variant_compare.log")
 CLEAN_PATH = PROJECT_ROOT / "data/fb_check/clean.jsonl"
 NOISE_PATH = PROJECT_ROOT / "data/fb_check/noise.jsonl"
 EXAONE_CACHE = PROJECT_ROOT / "data/fb_check/exaone_votes.jsonl"
-OUT_PATH = PROJECT_ROOT / "data/eval/fbcheck_variant_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/channel/fbcheck_variant_report.json"
 
 _LABELS = ("High", "Medium", "Low")
 

@@ -58,7 +58,7 @@ logger = load_logger("fbcheck_external_eval.log")
 CLEAN_PATH = PROJECT_ROOT / "data/fb_check/clean.jsonl"
 NOISE_PATH = PROJECT_ROOT / "data/fb_check/noise.jsonl"
 FTC_PATH   = PROJECT_ROOT / "data/raw/ftc_cases/ftc_cases_parsed.json"
-OUT_PATH   = PROJECT_ROOT / "data/eval/fbcheck_external_report.json"
+OUT_PATH   = PROJECT_ROOT / "data/eval/channel/fbcheck_external_report.json"
 
 BOOT_N = 5000
 SEED   = 42

@@ -35,8 +35,8 @@ INCLUDE = [
 ]
 # 다시 만들 수 있고 크기만 큰 것(LightRAG 인덱스 231MB, 결론 난 실험)
 EXCLUDE = [
-    "data/eval/lightrag_full_storage",
-    "data/eval/lightrag_pilot_storage",
+    "data/eval/archive/lightrag_full_storage",
+    "data/eval/archive/lightrag_pilot_storage",
     "__pycache__",
 ]
 DB_TABLES = ["users", "accounts", "sessions", "verification_token", "analyses", "alembic_version"]

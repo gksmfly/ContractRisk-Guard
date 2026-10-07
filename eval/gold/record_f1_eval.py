@@ -49,7 +49,7 @@ from backend.training.train_article import (
 from backend.utils import PROJECT_ROOT, load_logger, save_json
 
 logger = load_logger("record_f1_eval.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/record_f1_eval.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/gold/record_f1_eval.json"
 
 
 def predict_sets(model_dir: Path, records: list[dict], names: list[str],

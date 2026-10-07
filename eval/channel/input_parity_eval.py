@@ -70,7 +70,7 @@ logger = load_logger("input_parity_eval.log")
 
 FB_RESULTS = Path(os.environ.get("FB_RESULTS", str(PROJECT_ROOT / "data/fb_check/fb_check_results.jsonl")))
 CLEAN_PATH = Path(os.environ.get("ARTICLE_LABELS", str(PROJECT_ROOT / "data/fb_check/clean.jsonl")))
-OUT_PATH   = PROJECT_ROOT / "data/eval/input_parity_report.json"
+OUT_PATH   = PROJECT_ROOT / "data/eval/channel/input_parity_report.json"
 
 
 def _span_by_text() -> dict[str, str]:

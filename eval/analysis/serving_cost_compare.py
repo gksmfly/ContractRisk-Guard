@@ -29,7 +29,7 @@ from eval.channel.gpt_channel_fpr import intact_stratum, load_negative_pool
 from backend.utils import PROJECT_ROOT, load_logger, save_json
 
 logger = load_logger("serving_cost_compare.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/serving_cost_compare.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/analysis/serving_cost_compare.json"
 
 
 def _gpu_mb(dev: object) -> float:
@@ -155,7 +155,7 @@ def main(argv: list[str] | None = None) -> None:
                "caveat": ("순차 1건 처리, 배치·vLLM·양자화 미적용. 운영 총 지연의 병목은 "
                           "GPT 호출(20조항 36초)이라 조 분류 교체의 체감 영향은 이 비보다 작다")},
               OUT_PATH)
-    logger.info(f"저장: data/eval/serving_cost_compare.json")
+    logger.info(f"저장: data/eval/analysis/serving_cost_compare.json")
 
 
 if __name__ == "__main__":

@@ -45,7 +45,7 @@ from backend.retrieval.search import fetch_candidates
 from backend.utils import PROJECT_ROOT, load_logger, save_json
 
 logger = load_logger("precedent_retrieval_compare.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/precedent_retrieval_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/retrieval/precedent_retrieval_report.json"
 
 _CUTOFFS = (2, 5, 10, 20)
 _WEIGHT_CANDIDATES = (0.0, 0.0003, 0.001, 0.01, 0.1)

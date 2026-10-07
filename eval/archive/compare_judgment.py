@@ -40,7 +40,7 @@ logger = load_logger("compare_judgment.log")
 
 GT_PATH        = PROJECT_ROOT / "data/eval/ground_truth_3class.jsonl"
 SPAN_CACHE_PATH = PROJECT_ROOT / "data/eval/evidence_span_cache.jsonl"
-OUT_PATH        = PROJECT_ROOT / "data/eval/compare_judgment_report.json"
+OUT_PATH        = PROJECT_ROOT / "data/eval/archive/compare_judgment_report.json"
 
 _LABELS = ["High", "Medium", "Low"]
 

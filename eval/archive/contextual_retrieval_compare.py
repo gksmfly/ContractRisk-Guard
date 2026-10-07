@@ -28,7 +28,7 @@ from backend.retrieval.search import _get_cached_embedder
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("contextual_retrieval_compare.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/contextual_retrieval_vs_baseline_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/archive/contextual_retrieval_vs_baseline_report.json"
 
 _TOP_K = 5
 _BATCH = 64

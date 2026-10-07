@@ -50,7 +50,7 @@ from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 logger = load_logger("precedent_ground_truth.log")
 
 RAW_CASE_DIR = Path("data/raw/case")
-INDEX_PATH = PROJECT_ROOT / "data/eval/precedent_ref_index.json"
+INDEX_PATH = PROJECT_ROOT / "data/eval/gold/precedent_ref_index.json"
 
 # "약관의 규제에 관한 법률 제6조" / "약관의규제에관한법률 제6조" 양쪽을 잡는다.
 _ARTICLE_RE = re.compile(r"([가-힣·\s]{2,20}법(?:률)?)\s*제(\d+)조")

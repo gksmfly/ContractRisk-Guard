@@ -1,7 +1,7 @@
 # backend/eval/archive/lightrag_resume_indexing.py
 """
 lightrag_compare.py의 본작업이 잔액 부족으로 1,500/3,323청크에서 중단됐다. 기존
-인덱스(data/eval/lightrag_full_storage, 이미 119MB 저장됨)를 지우지 않고 그대로 열어서
+인덱스(data/eval/archive/lightrag_full_storage, 이미 119MB 저장됨)를 지우지 않고 그대로 열어서
 나머지 1,823청크(주로 민법)만 이어서 넣는다 — 처음부터 다시 인덱싱하면 이미 쓴 비용이
 낭비된다.
 

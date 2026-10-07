@@ -40,8 +40,8 @@ logger = load_logger("hybrid_ensemble.log")
 
 GT_PATH           = PROJECT_ROOT / "data/eval/ground_truth_3class.jsonl"
 SPAN_CACHE_PATH    = PROJECT_ROOT / "data/eval/evidence_span_cache.jsonl"
-PRED_CACHE_PATH    = PROJECT_ROOT / "data/eval/retrieval_pred_cache.jsonl"
-OUT_PATH           = PROJECT_ROOT / "data/eval/hybrid_ensemble_report.json"
+PRED_CACHE_PATH    = PROJECT_ROOT / "data/eval/archive/retrieval_pred_cache.jsonl"
+OUT_PATH           = PROJECT_ROOT / "data/eval/archive/hybrid_ensemble_report.json"
 
 _LABELS = ["High", "Medium", "Low"]
 

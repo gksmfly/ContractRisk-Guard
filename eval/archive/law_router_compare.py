@@ -22,7 +22,7 @@
 | `fixed_ykk_min` | 약관규제법 + 민법 고정 |
 | `ykk_plus_exaone` | 약관규제법 + EXAONE 예측(교체가 아니라 추가) |
 
-`exaone` 구성은 `data/eval/raptor_lite_vs_rrf_report.json`의 `per_query.predicted_laws`를
+`exaone` 구성은 `data/eval/archive/raptor_lite_vs_rrf_report.json`의 `per_query.predicted_laws`를
 그대로 읽는다 — 라우팅을 다시 돌리지 않으므로 GPU도 API도 쓰지 않고, 같은 예측 위에서
 검색 조건만 바꿔 비교하게 되어 페어드 검정이 성립한다.
 
@@ -76,8 +76,8 @@ from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("law_router_compare.log")
 
-RAPTOR_REPORT = PROJECT_ROOT / "data/eval/raptor_lite_vs_rrf_report.json"
-OUT_PATH      = PROJECT_ROOT / "data/eval/law_router_compare_report.json"
+RAPTOR_REPORT = PROJECT_ROOT / "data/eval/archive/raptor_lite_vs_rrf_report.json"
+OUT_PATH      = PROJECT_ROOT / "data/eval/archive/law_router_compare_report.json"
 
 YKK = "약관의 규제에 관한 법률"
 MIN = "민법"

@@ -1,4 +1,4 @@
-# backend/eval/local_llm.py
+# eval/label/local_llm.py
 """
 OpenAI API 대신 로컬 GPU에서 도는 오픈 모델로 짧은 분류·재구성 작업을 처리하는 공용
 헬퍼. backend/fb_check/oss_experiment/local_labeling.py의 패턴(모델 로드·generate)을

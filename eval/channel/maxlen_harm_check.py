@@ -45,7 +45,7 @@ from backend.training.train_article import (
 from backend.utils import PROJECT_ROOT, load_logger, save_json
 
 logger = load_logger("maxlen_harm_check.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/maxlen_harm_check.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/channel/maxlen_harm_check.json"
 
 
 def _score(model_dir: Path, texts: list[str], gpu: int, bs: int = 16) -> tuple[Any, Any, list[str], int, float]:

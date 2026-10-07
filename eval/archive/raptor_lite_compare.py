@@ -27,12 +27,12 @@ from eval.archive.domain_filter_compare import (
     rrf_baseline_hit,
 )
 from eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
-from eval.local_llm import generate_json
+from eval.label.local_llm import generate_json
 from backend.retrieval.search import _fuse_reciprocal_rank, _get_cached_embedder
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("raptor_lite_compare.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/raptor_lite_vs_rrf_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/archive/raptor_lite_vs_rrf_report.json"
 
 _CANDIDATE_K = 8
 _TOP_K = 5

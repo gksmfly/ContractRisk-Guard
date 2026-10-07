@@ -17,12 +17,12 @@ from eval.archive.raptor_lite_compare import _FEWSHOT as _ROUTE_FEWSHOT
 from eval.archive.raptor_lite_compare import _SYSTEM_TMPL as _ROUTE_SYSTEM_TMPL
 from eval.archive.raptor_lite_compare import routed_hit
 from eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
-from eval.local_llm import generate_json
+from eval.label.local_llm import generate_json
 from backend.retrieval.search import _get_cached_embedder
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("qwen_variant_compare.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/qwen_variant_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/archive/qwen_variant_report.json"
 
 _MODEL_KEY = "qwen2.5-14b"
 

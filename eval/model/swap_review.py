@@ -35,10 +35,10 @@ CAND    = PROJECT_ROOT / "models/_e8_RB_s42"          # dev 최고 시드 (paper
 CONTROL = PROJECT_ROOT / "models/_e8_C_s7"            # KoELECTRA · 현행 데이터, dev 최고 시드
 EXTRA   = [PROJECT_ROOT / "models/_e8_RB_s7", PROJECT_ROOT / "models/_e8_RB_s123"]
 HOLDOUT = PROJECT_ROOT / "backend/training/negative_holdout_docs.json"
-PARA    = PROJECT_ROOT / "data/eval/paraphrase_raw.jsonl"
-B4      = PROJECT_ROOT / "data/eval/style_transfer_fpr.cache.json"
+PARA    = PROJECT_ROOT / "data/eval/channel/paraphrase_raw.jsonl"
+B4      = PROJECT_ROOT / "data/eval/channel/style_transfer_fpr.cache.json"
 REAL    = PROJECT_ROOT / "data/eval/real_tos"
-OUT     = PROJECT_ROOT / "data/eval/swap_review.json"
+OUT     = PROJECT_ROOT / "data/eval/model/swap_review.json"
 NOISE_FLOOR_PP = 5.0
 
 

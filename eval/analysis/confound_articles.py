@@ -46,7 +46,7 @@ from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 logger = load_logger("confound_articles.log")
 
 CLEAN_PATH = PROJECT_ROOT / "data/fb_check/clean.jsonl"
-OUT_PATH   = PROJECT_ROOT / "data/eval/confound_articles_report.json"
+OUT_PATH   = PROJECT_ROOT / "data/eval/analysis/confound_articles_report.json"
 
 
 def _articles(r: dict, label_source: str) -> frozenset:

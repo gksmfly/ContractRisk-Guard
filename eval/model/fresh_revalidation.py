@@ -125,7 +125,7 @@ def analyze(gpu: int) -> None:
            "report_vs_article_v2": {"fpr": contrast("N-RSN", "article_v2", "neg"), "recall": contrast("N-RSN", "article_v2", "pos"),
                                     "note": "article_v2는 옛 데이터로 학습해 새 시험 문서 일부를 봤을 수 있다 — 현행 쪽에 유리"},
            "decision": {"reason_fpr_reduced": reason, "harm_recall": harm, "recommend_swap": reason and not harm}}
-    save_json(rep, PROJECT_ROOT / "data/eval/fresh_revalidation.json")
+    save_json(rep, PROJECT_ROOT / "data/eval/model/fresh_revalidation.json")
     logger.info(json.dumps(rep, ensure_ascii=False, indent=1))
 
 

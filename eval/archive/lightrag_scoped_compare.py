@@ -35,11 +35,11 @@ from eval.archive.domain_filter_compare import _law_names
 from eval.archive.lightrag_compare import WORKING_DIR
 from eval.archive.raptor_lite_compare import _FEWSHOT, _SYSTEM_TMPL
 from eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
-from eval.local_llm import generate_json
+from eval.label.local_llm import generate_json
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("lightrag_scoped_compare.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/lightrag_scoped_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/archive/lightrag_scoped_report.json"
 
 _RAW_TOP_K = 30
 _TOP_K = 5

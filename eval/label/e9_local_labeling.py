@@ -73,8 +73,8 @@ MODELS: dict[str, dict] = {
 CLEAN_PATH = PROJECT_ROOT / "data/fb_check/clean.jsonl"
 NOISE_PATH = PROJECT_ROOT / "data/fb_check/noise.jsonl"
 FTC_PATH   = PROJECT_ROOT / "data/raw/ftc_cases/ftc_cases_parsed.json"
-OUT_DIR    = PROJECT_ROOT / "data/eval/e9_raw"
-OUT_PATH   = PROJECT_ROOT / "data/eval/e9_local_labeling.json"
+OUT_DIR    = PROJECT_ROOT / "data/eval/label/e9_raw"
+OUT_PATH   = PROJECT_ROOT / "data/eval/label/e9_local_labeling.json"
 
 PILOT_N  = 100
 BOOT_N   = 10_000

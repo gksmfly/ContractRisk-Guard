@@ -58,7 +58,7 @@ logger = load_logger("smoke_check.log")
 
 RESULTS_PATH = PROJECT_ROOT / "data/fb_check/fb_check_results.jsonl"
 FTC_PATH     = PROJECT_ROOT / "data/raw/ftc_cases/ftc_cases_parsed.json"
-OUT_PATH     = PROJECT_ROOT / "data/eval/smoke_check_report.json"
+OUT_PATH     = PROJECT_ROOT / "data/eval/channel/smoke_check_report.json"
 
 # ── 판정 문턱 ────────────────────────────────────────────────────────────────
 # **환경변수로 빼지 않는다.** env로 빼는 순간 결과를 보고 문턱을 조정할 수 있게 되어

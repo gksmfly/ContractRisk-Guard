@@ -1,7 +1,7 @@
 # backend/eval/archive/lightrag_compare_final.py
 """
 법령 코퍼스(3,323청크) 전체 인덱싱이 완료된 뒤 돌리는 최종 비교 — 민법 포함
-전체 법령 대상, 재인덱싱 없이 기존 완성된 인덱스(data/eval/lightrag_full_storage)를
+전체 법령 대상, 재인덱싱 없이 기존 완성된 인덱스(data/eval/archive/lightrag_full_storage)를
 그대로 연다. lightrag_compare_partial.py(약관규제법 등 94.7%만 커버)의 완전판.
 
 실행: python -m eval.archive.lightrag_compare_final
@@ -24,7 +24,7 @@ from eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("lightrag_compare_final.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/lightrag_vs_rrf_report_final.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/archive/lightrag_vs_rrf_report_final.json"
 
 
 async def main() -> None:

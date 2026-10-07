@@ -281,7 +281,7 @@ Low recall이 0.152→0.327로 두 배 넘게 개선(confusion matrix상 Low→M
 | KoELECTRA(v4) | **0.383** | 0.483 | 0.170 | 0.494 |
 | 검색기반 v2 | **0.387** | 0.607 | 0.125 | 0.428 |
 
-**문서 단위 누수를 완전히 제거하니 검색기반의 우위(0.415 vs 0.380, 차이 0.035)가 거의 사라졌다(0.387 vs 0.383, 차이 0.004).** 이 차이는 KoELECTRA 자체의 시드 변동폭(5시드 표준편차 8.9%, 위 표 참고)보다 훨씬 작아 **통계적으로 사실상 동점**으로 봐야 한다. 재현 스크립트 결과는 `data/eval/leakage_controlled_comparison.json`에 저장(코드는 이 세션 대화 중 인라인으로 실행, 별도 스크립트 파일로는 미저장 — 재현하려면 위 조건대로 doc_id 기준 필터링 후 `electra_predict()`/`retrieval_pred_cache.jsonl` 재사용하면 됨).
+**문서 단위 누수를 완전히 제거하니 검색기반의 우위(0.415 vs 0.380, 차이 0.035)가 거의 사라졌다(0.387 vs 0.383, 차이 0.004).** 이 차이는 KoELECTRA 자체의 시드 변동폭(5시드 표준편차 8.9%, 위 표 참고)보다 훨씬 작아 **통계적으로 사실상 동점**으로 봐야 한다. 재현 스크립트 결과는 `data/eval/archive/leakage_controlled_comparison.json`에 저장(코드는 이 세션 대화 중 인라인으로 실행, 별도 스크립트 파일로는 미저장 — 재현하려면 위 조건대로 doc_id 기준 필터링 후 `electra_predict()`/`retrieval_pred_cache.jsonl` 재사용하면 됨).
 
 ### 최종 결정(Phase E, 완료): KoELECTRA(v4) 유지
 

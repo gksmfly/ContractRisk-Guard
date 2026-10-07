@@ -49,7 +49,7 @@ from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 logger = load_logger("risk_scheme_compare.log")
 
 SCHEMEEXP_DIR = PROJECT_ROOT / "models/_schemeexp"
-OUT_PATH = PROJECT_ROOT / "data/eval/risk_scheme_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/analysis/risk_scheme_report.json"
 _SEEDS = (1, 7, 42, 100, 123)
 _BINARY_LABELS = ["High", "Low"]
 

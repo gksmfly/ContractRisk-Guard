@@ -36,7 +36,7 @@ logger = load_logger("label_ablation.log")
 CLEAN_PATH = PROJECT_ROOT / "data/fb_check/clean.jsonl"
 NOISE_PATH = PROJECT_ROOT / "data/fb_check/noise.jsonl"
 FTC_PATH   = PROJECT_ROOT / "data/raw/ftc_cases/ftc_cases_parsed.json"
-OUT_PATH   = PROJECT_ROOT / "data/eval/label_ablation.json"
+OUT_PATH   = PROJECT_ROOT / "data/eval/label/label_ablation.json"
 
 BOOT_N  = 10_000   # E1 무작위 제거 반복 수 (paper_plan §E1)
 BOOT_CI = 5_000    # CI용 부트스트랩 반복 수

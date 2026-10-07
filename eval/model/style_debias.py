@@ -144,9 +144,9 @@ def analyze(gpu: int) -> None:
     recs = load_article_records(CLEAN, label_source="agreed")
     _, h = split_negative_holdout(recs, 12, 42)
     b4o = [r for r in h if r.get("source") == "standard_contract" and not r.get("articles")]
-    b4x = json.loads((PROJECT_ROOT / "data/eval/style_transfer_fpr.cache.json").read_text(encoding="utf-8"))
+    b4x = json.loads((PROJECT_ROOT / "data/eval/channel/style_transfer_fpr.cache.json").read_text(encoding="utf-8"))
     items = {r["key"]: r for r in _items()}
-    para = [{**items[c["key"]], "para": c["paraphrase"]} for c in load_jsonl(PROJECT_ROOT / "data/eval/paraphrase_raw.jsonl")
+    para = [{**items[c["key"]], "para": c["paraphrase"]} for c in load_jsonl(PROJECT_ROOT / "data/eval/channel/paraphrase_raw.jsonl")
             if c.get("paraphrase") and c["quality"]["pass"] and c["key"].startswith("gold")]
     real = [c["text"] for f in sorted((PROJECT_ROOT / "data/eval/real_tos").glob("*.json"))
             for c in json.loads(f.read_text(encoding="utf-8"))["clauses"]]
@@ -221,7 +221,7 @@ def analyze(gpu: int) -> None:
     rep = {"arms": ARMS, "summary": summary, "contrasts": contrasts, "verdict": verdict,
            "n": {k: len(v) for k, v in sets.items()},
            "note": "b4x = GPT-4o-mini가 회사 약관 말투로 바꾼 공정한 표준계약서(학습 증강은 Qwen이라 다른 모델). para는 Qwen 변형이라 증강과 같은 모델 — 과대평가 가능"}
-    save_json(rep, PROJECT_ROOT / "data/eval/style_debias.json")
+    save_json(rep, PROJECT_ROOT / "data/eval/model/style_debias.json")
     for arm, s in summary.items():
         logger.info(f"  {arm:<4} {ARMS[arm]:<18} 말투오경보 {s['b4x_fpr']['mean']:5.1f}% (원문 {s['b4o_fpr']['mean']:4.1f}) "
                     f"홀드아웃 {s['hold_fpr']['mean']:4.1f}% 재현 {s['gold_recall']['mean']:4.1f}% "

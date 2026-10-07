@@ -23,6 +23,7 @@ labels/(seed_labeled.jsonl, FTC 시정조치 Seed) ─────────�
 | `processed/chunks/`(→ 실제 파일은 `processed/*.jsonl`) | 청킹·정제 결과: `laws.jsonl`, `precedents.jsonl`, `interpretations.jsonl` | `backend/preprocess/` |
 | `labels/` | `seed_labeled.jsonl` — FTC 시정조치(High) + 표준계약서(Low/Medium) Seed 라벨, Ground Truth로 사용 | `backend/labeling/seed.py` |
 | `fb_check/` | FB-Check(Forward-Backward Consistency Check) 결과: `clean.jsonl`(CLEAN), `noise.jsonl`(NOISE), `fb_check_results.jsonl`(전체), `rescued_domain_none.jsonl`(domain_none 구제 데이터) | `backend/fb_check/` |
+| `eval/` | 측정 결과. 루트에는 여러 스크립트가 같이 읽는 공용 입력(`ground_truth_3class.jsonl`, `candidates/`, `prevalence/`, `real_tos/`, `fresh/`, `style_aug/` 등)만 두고, 결과는 만든 스크립트의 `eval/` 하위 폴더와 같은 이름(`analysis/`·`channel/`·`gold/`·`label/`·`model/`·`retrieval/`·`archive/`)으로 나눈다 | `eval/` 스크립트 |
 | `logs/` | 각 단계 실행 로그 | 공통 (`load_logger`/`setup_logger`) |
 
 `fb_check/`, `data/labels/`, `data/raw/ftc_cases/`에는 과거 파싱 버그 수정 전후를 비교하기 위한 `_backup_before_*` 백업 폴더가 각 파일 안에 보관되어 있다(폴더별로 독립 백업 — 전체를 한 곳에 모으지 않음, 자세한 배경은 [models/README.md](../models/README.md) 버전 히스토리 참고).

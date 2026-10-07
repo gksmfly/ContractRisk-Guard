@@ -20,12 +20,12 @@ domain_filter_compare.py의 rrf_baseline_hit()와 동일 로직(파티션 없음
 from backend.db.connection import get_conn
 from eval.archive.domain_filter_compare import rrf_baseline_hit
 from eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
-from eval.local_llm import generate_json
+from eval.label.local_llm import generate_json
 from backend.retrieval.search import _get_cached_embedder
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("legalmalr_lite_compare.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/legalmalr_lite_vs_rrf_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/archive/legalmalr_lite_vs_rrf_report.json"
 
 _SYSTEM = (
     "너는 한국 법률 전문가다. 계약 조항 원문을 읽고, 이 조항이 실제로 다투는 법적 쟁점을 "

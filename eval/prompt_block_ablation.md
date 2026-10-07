@@ -46,7 +46,7 @@ TPM 스로틀링은 토큰 수를 그대로 따라간다:
 
 | | 블록 | 비고 |
 |---|---|---|
-| A | 전문 (현행) | 저장본 재사용 — `data/eval/label_pilot_report.json`, 재실행 안 함 |
+| A | 전문 (현행) | 저장본 재사용 — `data/eval/label/label_pilot_report.json`, 재실행 안 함 |
 | A' | 전문 (재실행) | **노이즈 바닥 측정용.** temperature 0에서도 gpt-4o는 완전 결정적이지 않다 |
 | B | 조 제목 + 각 호 앞 45자 × 2 | `articles.prompt_block_variant("summary")` — 규칙 생성, 손질 없음 |
 | C | 조 제목만 | `articles.prompt_block_variant("title")` |
@@ -835,7 +835,7 @@ CLEAN으로 통과한 FTC 조항의 24%가 "위반 없음"(빈 배열)이다. �
 > 또 움직일 수 있다. **라벨링이 끝나면 반드시 재실행할 것.**
 >
 > 아래 본문에서 `+0.9%p`·`96.9%`·`1,700건`으로 적힌 곳은 전부 08-24 시점 값이다.
-> 재현: `.venv/bin/python -m backend.eval.confound_articles` → `data/eval/confound_articles_report.json`
+> 재현: `.venv/bin/python -m backend.eval.confound_articles` → `data/eval/analysis/confound_articles_report.json`
 
 ## 처음 보고한 값이 틀렸다 — 상수 쪽에서 함정을 밟았다
 
@@ -1405,7 +1405,7 @@ gold 327건은 **조항 1개짜리 사건**만 골랐지만, `근거_법령`은 
 
 ## 비용
 
-**API 0.** teacher 예측 327건이 이미 `data/eval/teacher_on_gold_raw.jsonl`에 있고
+**API 0.** teacher 예측 327건이 이미 `data/eval/label/teacher_on_gold_raw.jsonl`에 있고
 학생 확률도 로컬에서 다시 낸다. 남은 예산 $2.11은 그대로 둔다.
 
 ## 결과 — **가설 확정. gold 정의 문제였다**

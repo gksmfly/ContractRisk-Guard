@@ -30,7 +30,7 @@ from eval.common import LAWS_PATH, N_QUERIES, build_ground_truth
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("lbox_embedding_compare.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/lbox_embedding_vs_koe5_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/archive/lbox_embedding_vs_koe5_report.json"
 
 _MODEL_ID = "lbox/legalstructure-aware-embedding-pretrained-model"
 _TOP_K = 5

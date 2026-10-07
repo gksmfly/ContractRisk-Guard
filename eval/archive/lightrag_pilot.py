@@ -29,7 +29,7 @@ from backend.utils import PROJECT_ROOT, load_jsonl, load_logger
 
 logger = load_logger("lightrag_pilot.log")
 
-WORKING_DIR = str(PROJECT_ROOT / "data/eval/lightrag_pilot_storage")
+WORKING_DIR = str(PROJECT_ROOT / "data/eval/archive/lightrag_pilot_storage")
 LAWS_PATH = PROJECT_ROOT / "data/processed/laws.jsonl"
 FTC_PATH = PROJECT_ROOT / "data/raw/ftc_cases/ftc_cases_parsed.json"
 

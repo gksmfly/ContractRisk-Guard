@@ -48,7 +48,7 @@ from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("gpt_channel_fpr.log")
 
-OUT_PATH = PROJECT_ROOT / "data/eval/gpt_channel_fpr.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/channel/gpt_channel_fpr.json"
 _END = re.compile(r"(다|음|함|임)\s*\.?\s*$")
 
 # 모델 쪽 비교값(`reported_numbers.md` §2). 여기서 다시 재지 않는다 — GPU가 필요하고,

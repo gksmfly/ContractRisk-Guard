@@ -43,7 +43,7 @@ from backend.model.electra import RISK_MAP
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("confidence_calibration.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/confidence_calibration_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/channel/confidence_calibration_report.json"
 
 _BINS = [(0.0, 0.5), (0.5, 0.6), (0.6, 0.7), (0.7, 0.8), (0.8, 0.9), (0.9, 1.01)]
 

@@ -177,7 +177,7 @@ phase1_inference_eval.py E5 단일 출처.
 
 ### GPT 채널도 같은 풀에서 쟀다 — 두 채널 게이트의 전제
 
-**출처:** `backend/eval/gpt_channel_fpr.py` → `data/eval/gpt_channel_fpr.json` (2026-09-11, API 0).
+**출처:** `backend/eval/gpt_channel_fpr.py` → `data/eval/channel/gpt_channel_fpr.json` (2026-09-11, API 0).
 저장된 `forward_articles`를 세기만 한다. 오래 "순환이라 측정 불가"로 적혀 있던 항목인데,
 **준거를 GPT 라벨이 아니라 출처로 바꾸면서 풀렸다.**
 
@@ -231,7 +231,7 @@ phase1_inference_eval.py E5 단일 출처.
 
 ### FB-Check가 더 나은 라벨을 고르는가 — 논문의 핵심 기여
 
-**출처:** `backend/eval/fbcheck_external_eval.py` → `data/eval/fbcheck_external_report.json`
+**출처:** `backend/eval/fbcheck_external_eval.py` → `data/eval/channel/fbcheck_external_report.json`
 (2026-09-07, API 0). **한 번 실행에 네 변형이 전부 나온다** — 하나만 다시 뽑아 헤드라인으로
 올리지 말 것. +8.8%p가 출처를 잃은 경로가 그것이었다.
 
@@ -339,7 +339,7 @@ n=1,158/816, MW p=2.7e-09를 **소수점까지 동일**하게 얻었다(사유�
 
 ### E1 라벨 수준 ablation — 무작위 제거 기준선으로 판정 (2026-09-28 → **10-03 재측정**)
 
-**출처:** `eval/label/label_ablation.py` → `data/eval/label_ablation.json`
+**출처:** `eval/label/label_ablation.py` → `data/eval/label/label_ablation.json`
 
     .venv/bin/python -m eval.label.label_ablation
 
@@ -372,7 +372,7 @@ n=1,158/816, MW p=2.7e-09를 **소수점까지 동일**하게 얻었다(사유�
 
 ### E3 CleanLab / 신뢰도 임계값 — FB-Check 비교 (2026-09-28 → **10-03 재측정**)
 
-**출처:** `eval/label/e3_cleanlab_ablation.py --skip-train` → `data/eval/e3_cleanlab_ablation.json`
+**출처:** `eval/label/e3_cleanlab_ablation.py --skip-train` → `data/eval/label/e3_cleanlab_ablation.json`
 
 ⚠ **순환 경고:** CleanLab은 forward 라벨로 학습한 OOF 모델로 이슈를 찾는다.
 ⚠ **09-28 값의 결함:** `_paired_vs_fbcheck`가 서로 다른 필터 결과를 위치 순서대로 짝짓고, 호출부가 같은 배열을 두 번
@@ -685,7 +685,7 @@ hit@any → per-sample F1     hit@any는 예측을 늘리면 단조 증가하므
 홀드아웃 오경보 179건(67.7%)**이 났다. 제외하면 8.0%다. B 평균 30.44% = (67.7 + 14.0 + 9.7) / 3. gold 255에 제13조
 정답은 0건이고 배포 모델은 이 조를 접는다. 또 팔마다 자기 dev 임계값(동작점)에서 비교했다(규칙 9 위반).
 
-**E8b** — `eval/model/e8b_matched.py` → `data/eval/e8b_matched.json`. 공통 8개 조 헤드, 순위 점수 r = max(p/thr)로
+**E8b** — `eval/model/e8b_matched.py` → `data/eval/model/e8b_matched.json`. 공통 8개 조 헤드, 순위 점수 r = max(p/thr)로
 재현을 맞춘 오경보, AUROC, gold·홀드아웃 문서 군집 부트스트랩 2,000회. 팔 D(CLEAN 레코드 + forward 라벨) 추가.
 모집단: gold clean 255 · 음성 홀드아웃 300(표준계약서 12문서). 3시드 평균.
 
@@ -775,7 +775,7 @@ hit@any → per-sample F1     hit@any는 예측을 늘리면 단조 증가하므
 
 ## 9. E_base — 기준선 보강 (2026-09-28 → **10-03 재측정**)
 
-**스크립트:** `backend/eval/label/e_base_baselines.py` → `data/eval/e_base_baselines.json`. 모집단 gold clean 255 · 홀드아웃 300.
+**스크립트:** `backend/eval/label/e_base_baselines.py` → `data/eval/label/e_base_baselines.json`. 모집단 gold clean 255 · 홀드아웃 300.
 
 ⚠ **09-28 값의 결함:** (1) TF-IDF 학습에서 gold 문서를 배제하지 않았다 (2) 임계값 0.5 고정은 불균형 multi-label에서 허수아비
 (3) KoELECTRA 참조값 45.75%는 **교차적합** 값(성능 주장 금지 값)이었다. "KoELECTRA만 상수를 유의하게 이긴다"는 **철회**.
@@ -804,7 +804,7 @@ KoELECTRA − TF-IDF(balanced), 문서 군집 부트스트랩:
 
 ## 10. E_teacher — GPT 직접 추론 vs KoELECTRA (2026-09-28 → **10-03 재측정**)
 
-**스크립트:** `eval/label/e_teacher_clean.py` → `data/eval/e_teacher_clean.json` (API 0, teacher 캐시 + E8b 캐시)
+**스크립트:** `eval/label/e_teacher_clean.py` → `data/eval/label/e_teacher_clean.json` (API 0, teacher 캐시 + E8b 캐시)
 
 ⚠ **09-28 값의 결함:** gold 327(noisy 72 포함), 학생은 교차적합 값, 평균 차만. "+2.38%p, 성능 거의 동등"은 **철회**.
 
@@ -831,13 +831,13 @@ KoELECTRA − TF-IDF(balanced), 문서 군집 부트스트랩:
 | 로드 시간 | — | 1.0s |
 | 스케일 | 건당 과금 | 고정 비용 |
 
-출처: `data/eval/serving_cost_compare.json` (n=40, 순차 1건 처리 기준)
+출처: `data/eval/analysis/serving_cost_compare.json` (n=40, 순차 1건 처리 기준)
 
 ---
 
 ## 11. E_xv — 검증자 독립성: GPT forward × 로컬 verify (2026-10-03, 신규)
 
-**스크립트:** `eval/label/e_cross_verify.py` → `data/eval/e_cross_verify.json`. 모집단 E1과 같음(2,305). API 0.
+**스크립트:** `eval/label/e_cross_verify.py` → `data/eval/label/e_cross_verify.json`. 모집단 E1과 같음(2,305). API 0.
 verify만 로컬 모델로 같은 프롬프트·같은 판정 규칙으로 다시 돌렸다. 채점 라벨은 모든 팔이 같은 gpt-4o forward.
 
 | verify | CLEAN 비율 | GPT 판정과 κ | 남긴 F1 | 무작위 대비 | 파싱 실패 |
@@ -860,7 +860,7 @@ verify만 로컬 모델로 같은 프롬프트·같은 판정 규칙으로 다�
 
 ## 12. E9 — 로컬 라벨러 일반화 (2026-10-03)
 
-**스크립트:** `eval/label/e9_local_labeling.py --analyze` → `data/eval/e9_local_labeling.json`. 모집단 2,305.
+**스크립트:** `eval/label/e9_local_labeling.py --analyze` → `data/eval/label/e9_local_labeling.json`. 모집단 2,305.
 
 | 라벨러 | 커버리지 | F1 (빈 제외) | F1 (빈 포함) | 자기 일관성 필터 | 문서 층화 |
 |---|---:|---:|---:|---:|---:|
@@ -902,7 +902,7 @@ verify만 로컬 모델로 같은 프롬프트·같은 판정 규칙으로 다�
 
 ## 14. 오류 분석 — 혼동 행렬 · 곡선 (2026-10-04)
 
-**스크립트:** `eval/analysis/error_figures.py` → `data/eval/error_figures.json` · 그림 `data/eval/figures/`
+**스크립트:** `eval/analysis/error_figures.py` → `data/eval/analysis/error_figures.json` · 그림 `data/eval/analysis/figures/`
 
 | 정답 조 (gold n) | KoELECTRA 적중 | GPT-4o 적중 |
 |---|---:|---:|
@@ -925,7 +925,7 @@ verify만 로컬 모델로 같은 프롬프트·같은 판정 규칙으로 다�
 
 ## 15. Paraphrase 강건성 (10-05)
 
-`eval/channel/paraphrase_consistency.py` → `data/eval/paraphrase_consistency.json`, 변형문 캐시 `data/eval/paraphrase_raw.jsonl`.
+`eval/channel/paraphrase_consistency.py` → `data/eval/channel/paraphrase_consistency.json`, 변형문 캐시 `data/eval/channel/paraphrase_raw.jsonl`.
 gold 255 + 홀드아웃 300을 Qwen2.5-14B(로컬, API 0)로 "뜻은 유지, 어휘·문장 구조만 변경" 지시해 다시 썼다.
 자동 품질 검사(숫자 보존 · 길이 비율 0.6~1.6 · 원문과 문자 유사도 < 0.9) 통과 306/511쌍(위반 135 · 표준계약서 171)이 주 분석이다.
 탈락은 대부분 숫자 변경(198건). 1,500자 초과 4건 제외, 생성 실패 40건.
@@ -951,7 +951,7 @@ gold 255 + 홀드아웃 300을 Qwen2.5-14B(로컬, API 0)로 "뜻은 유지, 어
 
 판정 규칙: `eval/paper_plan.md` §7 (사전 등록).
 
-출처: `eval/model/swap_review.py` → `data/eval/swap_review.json` — **교체 기각**
+출처: `eval/model/swap_review.py` → `data/eval/model/swap_review.json` — **교체 기각**
 
 | 단계 | 결과 | 수치 |
 |---|---|---|
@@ -971,10 +971,10 @@ gold 255 + 홀드아웃 300을 Qwen2.5-14B(로컬, API 0)로 "뜻은 유지, 어
 ### 재시도 결과 (10-05) — **(a) 기각, (b) 보류**
 
 **(a) RB_s42 재조정 → 원 후보와 동일 모델, 기각.** dev 분할 재현(614건 일치) 후 dev 표준계약서 음성 348건에서
-C_s42 오경보 3.2%, RB_s42 오경보 이미 2.9%라 규칙상 배율 s = 1.00 — 임계값이 바뀌지 않았다(`data/eval/swap_candidate_a.json`).
+C_s42 오경보 3.2%, RB_s42 오경보 이미 2.9%라 규칙상 배율 s = 1.00 — 임계값이 바뀌지 않았다(`data/eval/model/swap_candidate_a.json`).
 **RoBERTa의 오경보 문제는 dev에서는 보이지 않고 처음 보는 문서(홀드아웃 14.0%)에서만 나타난다** → dev만으로 임계값을 맞추는 접근은 이 문제를 못 고친다.
 
-**(b) RB 3시드 앙상블 → 보류** (`eval/model/swap_review.py --cand ens` → `data/eval/swap_review_ens.json`)
+**(b) RB 3시드 앙상블 → 보류** (`eval/model/swap_review.py --cand ens` → `data/eval/model/swap_review_ens.json`)
 
 | 단계 | 결과 | 수치 |
 |---|---|---|
@@ -994,7 +994,7 @@ C_s42 오경보 3.2%, RB_s42 오경보 이미 2.9%라 규칙상 배율 s = 1.00 
 
 사전 등록: `eval/paper_plan.md` §7-2.
 
-### 결과 (10-05, `eval/model/style_debias.py` → `data/eval/style_debias.json`)
+### 결과 (10-05, `eval/model/style_debias.py` → `data/eval/model/style_debias.json`)
 
 **재료:** 생성 2,465/2,562, 자동 검사 통과 **회사 말투 음성 513건 · 공문서 말투 위반 140건**(위반 쪽은 대부분 조항 번호를 빼 숫자 검사 탈락 —
 사전 등록 기준을 그대로 유지했다). SN 3,865건 · SS 4,005건. 3시드씩, GPU 0.
@@ -1021,7 +1021,7 @@ C_s42 오경보 3.2%, RB_s42 오경보 이미 2.9%라 규칙상 배율 s = 1.00 
   사람이 쓴 회사 말투의 공정한 조항이 필요한데 그런 정답셋은 없다(한계)
 - 양방향(SS)은 위반 사본이 140건뿐이라 효과가 없었고 RoBERTa에서는 재현을 해쳤다
 
-**사전 등록 4번 — RSN 3시드 앙상블에 §7 교체 규칙 재적용** (`swap_review.py --cand rsn_ens` → `data/eval/swap_review_rsn_ens.json`):
+**사전 등록 4번 — RSN 3시드 앙상블에 §7 교체 규칙 재적용** (`swap_review.py --cand rsn_ens` → `data/eval/model/swap_review_rsn_ens.json`):
 
 | 단계 | 결과 | 수치 |
 |---|---|---|
@@ -1041,7 +1041,7 @@ C_s42 오경보 3.2%, RB_s42 오경보 이미 2.9%라 규칙상 배율 s = 1.00 
 
 사전 등록: `eval/paper_plan.md` §7-3.
 
-**결과 (10-06, `eval/model/fresh_revalidation.py` → `data/eval/fresh_revalidation.json`) — 교체 권고 없음, 현행 유지**
+**결과 (10-06, `eval/model/fresh_revalidation.py` → `data/eval/model/fresh_revalidation.json`) — 교체 권고 없음, 현행 유지**
 
 새 시험셋: 위반 428조항(공정위 111사건) · 표준계약서 360조항(12문서). 두 모델 모두 이 문서와 그 사본을 학습·dev에서 뺐다. GPU 1.
 

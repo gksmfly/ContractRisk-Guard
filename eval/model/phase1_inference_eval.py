@@ -45,7 +45,7 @@ from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("phase1_inference_eval.log")
 
-OUT_PATH = PROJECT_ROOT / "data/eval/phase1_inference_eval.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/model/phase1_inference_eval.json"
 BOOT_N   = 5_000
 SEED     = 42
 

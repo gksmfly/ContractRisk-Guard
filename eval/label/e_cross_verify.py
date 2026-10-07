@@ -56,8 +56,8 @@ logger = load_logger("e_cross_verify.log")
 
 CLEAN_PATH = PROJECT_ROOT / "data/fb_check/clean.jsonl"
 NOISE_PATH = PROJECT_ROOT / "data/fb_check/noise.jsonl"
-OUT_DIR    = PROJECT_ROOT / "data/eval/e_cross_verify_raw"
-OUT_PATH   = PROJECT_ROOT / "data/eval/e_cross_verify.json"
+OUT_DIR    = PROJECT_ROOT / "data/eval/label/e_cross_verify_raw"
+OUT_PATH   = PROJECT_ROOT / "data/eval/label/e_cross_verify.json"
 
 BOOT_N = 10_000
 SEED   = 42

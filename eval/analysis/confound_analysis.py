@@ -49,7 +49,7 @@ from backend.model.electra import RISK_MAP
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("confound_analysis.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/confound_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/analysis/confound_report.json"
 _LABELS = ["High", "Medium", "Low"]
 
 

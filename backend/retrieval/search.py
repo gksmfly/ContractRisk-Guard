@@ -44,7 +44,7 @@ RRF 12/100(12.0%) vs LightRAG 20/100(20.0%) — LightRAG만 맞은 14건, RRF만
 (참고: 1,500/3,323청크만 인덱싱했던 예산 제약 하의 이전 예비 결과는 RRF
 10.0% vs LightRAG 35.0%였으나, 쿼리 표본 자체가 달라 이 최종 결과와 직접
 비교 불가 — 이 최종 수치로 대체됨.) 결과는
-`data/eval/lightrag_vs_rrf_report_final.json`. 아키텍처 전환 여부는 미결정
+`data/eval/archive/lightrag_vs_rrf_report_final.json`. 아키텍처 전환 여부는 미결정
 — 유의성 부족·전면 재인덱싱 비용(그래프 추출 LLM 호출) 대비 이득이 작아
 현재는 Hybrid RRF 유지, 판례 코퍼스(30,154청크)는 LightRAG 미검증.
 

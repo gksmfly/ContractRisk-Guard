@@ -44,7 +44,7 @@ from backend.retrieval.search import search_similar_clauses
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("neighbor_judgment_compare.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/neighbor_judgment_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/retrieval/neighbor_judgment_report.json"
 _K_VALUES = (1, 3, 5, 10)
 
 

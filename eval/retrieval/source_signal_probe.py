@@ -36,7 +36,7 @@ from sklearn.model_selection import cross_val_score
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("source_signal_probe.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/source_signal_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/retrieval/source_signal_report.json"
 
 _PAGE = re.compile(r"\s*-\s*\d+\s*-\s*")
 _ARTICLE = re.compile(r"제\s*\d+\s*조(\s*의\s*\d+)?")

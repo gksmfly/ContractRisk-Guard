@@ -19,7 +19,7 @@ run() {
 
 # qwen25_7b_s123 완료 대기 (마지막 GPU1 resume 작업)
 echo "[$(date '+%H:%M:%S')] Llama-3.2 스윕: qwen25_7b_s123 완료 대기 중..."
-until [ -f data/eval/sllm_lora_qwen25_7b_s123.json ]; do sleep 30; done
+until [ -f data/eval/model/sllm_lora_qwen25_7b_s123.json ]; do sleep 30; done
 echo "[$(date '+%H:%M:%S')] GPU1 확보. Llama-3.2 다운로드 시작..."
 
 $PYTHON -c "

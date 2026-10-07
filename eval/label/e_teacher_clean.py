@@ -38,10 +38,10 @@ from eval.model.e8b_matched import CACHE_DIR, COMMON, _groups, _load
 
 logger = load_logger("e_teacher_clean.log")
 
-RAW      = PROJECT_ROOT / "data/eval/teacher_on_gold_raw.jsonl"
+RAW      = PROJECT_ROOT / "data/eval/label/teacher_on_gold_raw.jsonl"
 HOLDOUT  = PROJECT_ROOT / "backend/training/negative_holdout_docs.json"
 FB_PATHS = [PROJECT_ROOT / "data/fb_check/clean.jsonl", PROJECT_ROOT / "data/fb_check/noise.jsonl"]
-OUT_PATH = PROJECT_ROOT / "data/eval/e_teacher_clean.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/label/e_teacher_clean.json"
 
 
 def _boot(a: np.ndarray, b: np.ndarray, groups: list[np.ndarray], seed: int = 42, n: int = 5000):

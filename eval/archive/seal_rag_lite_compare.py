@@ -26,7 +26,7 @@ from backend.retrieval.search import fetch_candidates
 from backend.utils import PROJECT_ROOT, load_jsonl, load_logger, save_json
 
 logger = load_logger("seal_rag_lite_compare.log")
-OUT_PATH = PROJECT_ROOT / "data/eval/seal_rag_lite_vs_rerank_report.json"
+OUT_PATH = PROJECT_ROOT / "data/eval/archive/seal_rag_lite_vs_rerank_report.json"
 
 
 def seal_rag_lite_hit(reranker: CrossEncoder, query_text: str, correct_pairs: list[tuple]) -> bool:
