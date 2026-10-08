@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from backend.agents.graph import get_graph
-from backend.agents.judgment_agent import get_model_version
+from backend.agents.judgment_agent import get_model_version, route_document
 from backend.api.schemas import AnalyzeResponse, ClauseResult, EvidenceSpan, OutOfScopeClause
 
 # 근거 문구 매칭 기준을 FB-Check와 공유한다 — 검증 파이프라인이 통과시킨 근거를
@@ -43,10 +43,13 @@ _MAX_CONCURRENT_CLAUSES = int(os.environ.get("MAX_CONCURRENT_CLAUSES", "6"))
 _clause_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_CLAUSES)
 
 
-async def _process_clause_async(client: Any, clause: str, index: int) -> ClauseResult | OutOfScopeClause:
+async def _process_clause_async(client: Any, clause: str, index: int,
+                                doc_style: str | None = None) -> ClauseResult | OutOfScopeClause:
     """조항 하나를 스레드로 넘겨 처리하되, 전역 세마포어로 동시 호출 수를 묶는다."""
+    # 문서 종류가 정해졌을 때만 넘긴다 — 라우터 없는 체크포인트에서는 호출 형태가 예전과 같다
+    extra = (doc_style,) if doc_style else ()
     async with _clause_semaphore:
-        return await asyncio.to_thread(_process_clause, client, clause, index)
+        return await asyncio.to_thread(_process_clause, client, clause, index, *extra)
 
 
 def _tally(outcomes: list) -> tuple[list[ClauseResult], list[OutOfScopeClause]]:
@@ -166,7 +169,8 @@ _OUT_OF_SCOPE_REASON = (
 )
 
 
-def _process_clause(client: Any, clause: str, index: int) -> ClauseResult | OutOfScopeClause:
+def _process_clause(client: Any, clause: str, index: int,
+                    doc_style: str | None = None) -> ClauseResult | OutOfScopeClause:
     """단일 조항을 LangGraph 파이프라인(Analysis→Judgment→근거/반박 브랜치)으로 분석한다.
 
     **게이트는 모델이다** — `model_articles`가 비면(조를 하나도 지목하지 않으면) 그래프가
@@ -179,7 +183,10 @@ def _process_clause(client: Any, clause: str, index: int) -> ClauseResult | OutO
     조 단위 재현이 78%이므로 **약 5건 중 1건은 여기 잘못 들어와 있다**(`schemas.py` 참고).
     """
     graph = get_graph()
-    result = graph.invoke({"clause": clause}, config={"configurable": {"client": client}})
+    state: dict[str, Any] = {"clause": clause}
+    if doc_style:
+        state["doc_style"] = doc_style
+    result = graph.invoke(state, config={"configurable": {"client": client}})
 
     # **게이트가 바뀌었다 (2026-08-31).** 예전에는 GPT가 낸 2-도메인 값이 "해당없음"이면
     # 버렸다. 지금은 **분류 모델이 조를 하나라도 지목했는가**로 가른다 — 판단 주체가
@@ -225,8 +232,11 @@ async def run_analyze(text: str) -> AnalyzeResponse:
         # 갖춰놓고 쓰지 않은 셈이라, 조항당 약 10초가 그대로 누적됐다(30조항 = 5분).
         # 시간의 대부분이 OpenAI 왕복 대기라 병렬화 이득이 크다. 동시 호출 수는
         # `_clause_semaphore`(전역)가 묶으므로 여기서 한 번에 던져도 안전하다.
+        # 계약서 문체(회사 약관 / 표준계약서형)를 **문서 단위로 한 번** 판별해 모든 조항에 같은 기준을 쓴다
+        # (`judgment_agent.route_document`, paper_plan §7-13). 라우터 없는 체크포인트면 None
+        doc_style = await asyncio.to_thread(route_document, clauses)
         outcomes = await asyncio.gather(
-            *(_process_clause_async(client, c, i) for i, c in enumerate(clauses))
+            *(_process_clause_async(client, c, i, doc_style) for i, c in enumerate(clauses))
         )
     finally:
         _analyze_semaphore.release()
@@ -281,8 +291,10 @@ async def run_analyze_stream(text: str) -> AsyncIterator[dict]:
             # 조항을 병렬로 던지고 **끝나는 순서대로** 진행률을 흘린다.
             # 순차 처리 시절에는 진행률 index가 곧 조항 번호였지만, 병렬에서는
             # 완료 순서가 뒤섞이므로 진행률은 "몇 개 끝났는지"(done/total)로 센다.
+            doc_style = await asyncio.to_thread(route_document, clauses)   # 문서 단위 한 번 (§7-13)
+
             async def _process_one(i: int, c: str) -> tuple[int, ClauseResult | OutOfScopeClause]:
-                return i, await _process_clause_async(client, c, i)
+                return i, await _process_clause_async(client, c, i, doc_style)
 
             tasks = [asyncio.create_task(_process_one(i, c)) for i, c in enumerate(clauses)]
             done_n = 0

@@ -16,6 +16,8 @@ from backend.retrieval.schemas import LegalBasis
 
 class ClauseState(TypedDict, total=False):
     clause: str            # 그래프 시작 시 필수로 채워짐, 나머지는 각 노드가 순서대로 채움
+    # 계약서 전체 문체("company"/"standard", 라우터가 없으면 없음). run_analyze가 문서 단위로 한 번 정해 넘긴다
+    doc_style: str
     articles: list[str]    # 약관규제법 위반 소지 유형("제9조" 등, 복수) — Analysis가 채우는 1차 라벨
     # articles에서 파생된 옛 2-도메인 값. **판단에 쓰이지 않는다** — `verified`는 아래
     # articles ↔ model_articles를 비교한다. 저장된 옛 결과와의 응답 호환용으로만 남긴다.

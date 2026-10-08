@@ -78,6 +78,16 @@ JUDGMENT_DEVICE = os.environ.get("JUDGMENT_DEVICE", "cuda:1")
 
 _electra_model: ArticleMultiLabelElectra | None = None
 _thresholds: Any = None
+# 문서 종류별 기준 분리 (2026-10-08, `eval/paper_plan.md` §7-12·7-13 채택).
+# 체크포인트에 `router.joblib`과 `thresholds_company.npy`가 **둘 다** 있을 때만 켜진다 —
+# 없으면(article_v2 등) 예전과 똑같이 `thresholds.npy` 하나만 쓴다.
+#   router.joblib           문체 라우터(TF-IDF+LR). 문서 안 조항들의 p(회사 약관) 평균 ≥ cutoff → 회사 약관
+#   thresholds_company.npy  회사 약관 문체용 임계값(AI Hub 학습 절반 위반 재현으로 맞춘 값, §7-11)
+#   thresholds.npy          그 밖(표준계약서형)과 라우터가 없을 때의 dev 임계값
+DOC_STYLE_COMPANY = "company"
+DOC_STYLE_STANDARD = "standard"
+_router: Any = None
+_thresholds_company: Any = None
 _electra_tokenizer: ElectraTokenizerFast | None = None
 _electra_device: Any = None
 _max_len: int = 256
@@ -98,6 +108,9 @@ def _get_electra() -> tuple[ArticleMultiLabelElectra, ElectraTokenizerFast, Any]
         _electra_model = ArticleMultiLabelElectra.load(MODEL_DIR).to(_electra_device).eval()
         _electra_tokenizer = ElectraTokenizerFast.from_pretrained(str(MODEL_DIR))
         _thresholds = np.load(MODEL_DIR / "thresholds.npy")
+        _load_router()
+        if _thresholds_company is not None and len(_thresholds_company) != len(_thresholds):
+            raise RuntimeError(f"{MODEL_DIR}: thresholds_company.npy 길이가 조 목록과 다르다")
         # **max_len을 체크포인트에서 읽는다 — 여기 상수로 박지 않는다.**
         # 예전에 256이 박혀 있었다. 학습이 512로 가도 서빙만 256에서 잘랐을 것이고,
         # evidence_span 때와 **똑같은 형태의 사고**가 된다(모델은 바뀌는데 입력만 남는다).
@@ -106,7 +119,43 @@ def _get_electra() -> tuple[ArticleMultiLabelElectra, ElectraTokenizerFast, Any]
     return _electra_model, _electra_tokenizer, _electra_device
 
 
-def predict_articles(text: str) -> list[str]:
+_router_loaded = False
+
+
+def _load_router() -> None:
+    """라우터·회사 약관용 임계값만 읽는다(인코더는 안 읽는다 — 문서 판별에 필요 없다)."""
+    global _router, _thresholds_company, _router_loaded
+    if _router_loaded:
+        return
+    _router_loaded = True
+    if (MODEL_DIR / "router.joblib").exists() and (MODEL_DIR / "thresholds_company.npy").exists():
+        import joblib
+        import numpy as np
+        _router = joblib.load(MODEL_DIR / "router.joblib")
+        _thresholds_company = np.load(MODEL_DIR / "thresholds_company.npy")
+
+
+def route_document(clauses: list[str]) -> str | None:
+    """계약서 **전체**의 문체를 판별한다. 라우터가 없는 체크포인트면 None(= 기본 임계값).
+
+    조항마다 따로 판별하지 않는다 — 조항 단위는 표준계약서 조항의 26%를 회사 약관으로 보냈고,
+    문서 단위(조항 p 평균)로 바꾸자 표준계약서 오경보가 10.6% → 7.4%로 돌아왔다(§7-13).
+    서비스가 계약서를 통째로 받으므로 문서 단위가 실제 사용 방식과도 맞다.
+    """
+    _load_router()
+    if _router is None or not clauses:
+        return None
+    p = _router["classifier"].predict_proba(_router["vectorizer"].transform(clauses))[:, 1]
+    return DOC_STYLE_COMPANY if float(p.mean()) >= float(_router.get("cutoff", 0.5)) else DOC_STYLE_STANDARD
+
+
+def _thresholds_for(doc_style: str | None) -> Any:
+    if doc_style == DOC_STYLE_COMPANY and _thresholds_company is not None:
+        return _thresholds_company
+    return _thresholds
+
+
+def predict_articles(text: str, doc_style: str | None = None) -> list[str]:
     """조항이 위반할 가능성이 있는 **약관규제법 조 목록**을 반환한다. 빈 리스트면 미지목.
 
     ## 위험도 3단계를 더 이상 내지 않는다 (2026-08-31)
@@ -167,7 +216,7 @@ def predict_articles(text: str) -> list[str]:
             enc.get("token_type_ids", torch.zeros(1, _max_len, dtype=torch.long)).to(device),
         )
     probs = torch.sigmoid(logits)[0].cpu().numpy()
-    return [n for n, p, t in zip(model.article_names, probs, _thresholds) if p >= t]
+    return [n for n, p, t in zip(model.article_names, probs, _thresholds_for(doc_style)) if p >= t]
 
 
 def judgment_node(state: ClauseState) -> dict:
@@ -175,7 +224,8 @@ def judgment_node(state: ClauseState) -> dict:
     # `predict_articles` 참고). 옛 주석은 "models/v4가 span 길이로 학습됐으므로 span을
     # 넣어야 분포가 맞는다"였는데, v4는 서빙에서 빠졌고 `article_v1`은 원문 전용으로
     # 학습됐다(`train_article` 규칙 6, augment=False). 모델만 바뀌고 입력만 남아 있었다.
-    articles = predict_articles(state["clause"])
+    # 문서 종류는 `run_analyze`가 계약서 전체를 보고 한 번 정해 넘긴다(없으면 기본 임계값)
+    articles = predict_articles(state["clause"], doc_style=state.get("doc_style"))
     return {
         "model_articles": articles,
         # 조항을 지목했는가 = 사용자에게 보여줄 것인가. 이진이다.

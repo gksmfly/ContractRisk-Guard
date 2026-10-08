@@ -23,12 +23,12 @@ class TestJudgmentInput:
         with patch("backend.agents.judgment_agent.predict_articles", return_value=[]) as pred:
             judgment_node({"clause": "제9조 (해지) 회사는 언제든 계약을 해지할 수 있다",
                            "evidence_span": "언제든 계약을 해지할 수 있다"})
-        pred.assert_called_once_with("제9조 (해지) 회사는 언제든 계약을 해지할 수 있다")
+        pred.assert_called_once_with("제9조 (해지) 회사는 언제든 계약을 해지할 수 있다", doc_style=None)
 
     def test_missing_span_still_uses_clause(self) -> None:
         with patch("backend.agents.judgment_agent.predict_articles", return_value=[]) as pred:
             judgment_node({"clause": "조항 원문"})
-        pred.assert_called_once_with("조항 원문")
+        pred.assert_called_once_with("조항 원문", doc_style=None)
 
 
 class TestJudgmentOutput:
@@ -50,3 +50,44 @@ class TestJudgmentOutput:
         with patch("backend.agents.judgment_agent.predict_articles", return_value=["제9조"]):
             out = judgment_node({"clause": "c", "articles": ["제6조"]})
         assert out["verified"] is False
+
+
+class TestDocStyleRouting:
+    """문서 종류별 기준 분리(paper_plan §7-12·7-13). 라우터가 있을 때만 켜지고, 판별은 문서 단위다."""
+
+    def test_doc_style_is_forwarded_to_predict(self) -> None:
+        with patch("backend.agents.judgment_agent.predict_articles", return_value=[]) as pred:
+            judgment_node({"clause": "조항 원문", "doc_style": "company"})
+        pred.assert_called_once_with("조항 원문", doc_style="company")
+
+    def test_thresholds_pick_company_set_only_when_loaded(self) -> None:
+        import numpy as np
+
+        import backend.agents.judgment_agent as ja
+        base, comp = np.array([0.5, 0.5]), np.array([0.05, 0.05])
+        with patch.object(ja, "_thresholds", base), patch.object(ja, "_thresholds_company", comp):
+            assert ja._thresholds_for("company") is comp
+            assert ja._thresholds_for("standard") is base
+            assert ja._thresholds_for(None) is base
+        with patch.object(ja, "_thresholds", base), patch.object(ja, "_thresholds_company", None):
+            assert ja._thresholds_for("company") is base      # 라우터 없는 체크포인트 = 예전과 같다
+
+    def test_route_document_uses_document_mean(self) -> None:
+        """조항 하나가 회사 약관처럼 보여도 문서 평균이 표준계약서면 문서 전체가 표준계약서다."""
+        import numpy as np
+
+        import backend.agents.judgment_agent as ja
+
+        class _Clf:
+            def predict_proba(self, X):
+                return np.array([[0.1, 0.9], [0.8, 0.2], [0.8, 0.2]])   # 평균 p(회사) = 0.43
+
+        class _Vec:
+            def transform(self, xs):
+                return xs
+
+        router = {"vectorizer": _Vec(), "classifier": _Clf(), "cutoff": 0.5}
+        with patch.object(ja, "_load_router", return_value=None), patch.object(ja, "_router", router):
+            assert ja.route_document(["a", "b", "c"]) == "standard"
+        with patch.object(ja, "_load_router", return_value=None), patch.object(ja, "_router", None):
+            assert ja.route_document(["a"]) is None
