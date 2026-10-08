@@ -94,6 +94,11 @@ STYLE_ARMS = {
     # 새 시험 데이터 재검증 (paper_plan §7-3): 새 시험 문서를 뺀 라벨
     "NC":   (PROJECT_ROOT / "data/eval/fresh/labels_NC.jsonl", None),
     "NRSN": (PROJECT_ROOT / "data/eval/fresh/labels_NRSN.jsonl", "klue/roberta-base"),
+    # AI Hub 외부 평가 (paper_plan §7-8): 다중 검증자 FB-Check와 같은 수 무작위 제거 대조군
+    "MV":   (ARM_DATA_DIR / "arm_MV_agreed.jsonl", None),
+    "RMV":  (ARM_DATA_DIR / "arm_RMV_agreed.jsonl", None),
+    # 외부 오경보 줄이기 (paper_plan §7-9 나): C + AI Hub 학습 절반 공정 조항 1,500건
+    "CN":   (ARM_DATA_DIR / "arm_CN_agreed.jsonl", None),
 }
 
 # AI Hub 팔 → 학습 부분표본 크기(0 = 전량)
@@ -375,7 +380,7 @@ def _compare_arms(arm_c_evals: list[dict], arm_x_evals: list[dict],
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--arms",      nargs="+", choices=["A", "B", "C", "D", "X", "X3352", "X1000", "XC", "CL", "G", "K", "RB", "KSN", "KSS", "RSN", "RSS", "NC", "NRSN"],
+    parser.add_argument("--arms",      nargs="+", choices=["A", "B", "C", "D", "X", "X3352", "X1000", "XC", "CL", "G", "K", "RB", "KSN", "KSS", "RSN", "RSS", "NC", "NRSN", "MV", "RMV", "CN"],
                         default=["A", "B", "C"])
     parser.add_argument("--seeds",     nargs="+", type=int, default=SEEDS)
     parser.add_argument("--gpu",       type=int,  default=0)
