@@ -9,6 +9,7 @@ CI:     AI Hub 파일 단위 군집 부트스트랩 + 시드 분산
 
     .venv/bin/python -m eval.model.aihub_eval --gpu 0                  # §7-8 (3시드)
     .venv/bin/python -m eval.model.aihub_eval --gpu 0 --mode seeds10   # §7-9 가: D·B 시드 10개
+    .venv/bin/python -m eval.model.aihub_eval --gpu 0 --mode seeds20   # §7-15: 시드 20개 (학습은 aihub_seeds20.py)
     .venv/bin/python -m eval.model.aihub_eval --gpu 0 --mode cn        # §7-9 나: AI Hub 평가 절반에서 CN vs C
 """
 
@@ -104,6 +105,10 @@ MODES = {
     "seeds10": {"arms": ["D", "B"], "seeds": [42, 7, 123, 11, 22, 33, 44, 55, 66, 77],
                 "primary": [("D", "B", "FB-Check 필터 vs 같은 수 무작위 (forward), 시드 10개")], "report": [],
                 "out": OUT.with_name("aihub_eval_seeds10.json"), "half": False},
+    "seeds20": {"arms": ["D", "B"], "seeds": [42, 7, 123, 11, 22, 33, 44, 55, 66, 77,
+                                              88, 99, 101, 202, 303, 404, 505, 606, 707, 808],
+                "primary": [("D", "B", "FB-Check 필터 vs 같은 수 무작위 (forward), 시드 20개 — 최종 (§7-15)")], "report": [],
+                "out": OUT.with_name("aihub_eval_seeds20.json"), "half": False},
     "cnc":     {"arms": ["C", "CNC"], "seeds": SEEDS,
                 "primary": [("CNC", "C", "CN 임계값 dev 재조정 vs 현행 (AI Hub 평가 절반, §7-10)")], "report": [],
                 "out": OUT.with_name("aihub_eval_cnc.json"), "half": True},
@@ -170,7 +175,8 @@ def main() -> None:
     for a in ARMS_:
         for s in SEEDS_:
             d = PROJECT_ROOT / f"models/_e8_{a}_s{s}"
-            if (d / "model.safetensors").exists():
+            # 디스크 때문에 가중치를 지운 모델도 예측 캐시가 있으면 쓴다 (§7-15)
+            if (d / "model.safetensors").exists() or (CACHE / f"{a}_s{s}.npz").exists():
                 probs[(a, s)] = load_probs(f"{a}_s{s}", d, texts, args.gpu)
     probs[("article_v2", 0)] = load_probs("article_v2", PROJECT_ROOT / "models/article_v2", texts, args.gpu)
 
@@ -216,7 +222,7 @@ def main() -> None:
     report = {f"{x}-{y}": {"desc": dsc, **contrast(x, y)} for x, y, dsc in REPORT_ if x in boots and y in boots}
     decision = {k: v["auroc"]["verdict"] for k, v in primary.items()}
     sub = [items[i] for i in keep_idx]
-    rep = {"rule": "eval/paper_plan.md §7-8" if args.mode == "full" else "eval/paper_plan.md §7-9", "mode": args.mode,
+    rep = {"rule": {"full": "eval/paper_plan.md §7-8", "seeds20": "eval/paper_plan.md §7-15"}.get(args.mode, "eval/paper_plan.md §7-9"), "mode": args.mode,
            "seeds": SEEDS_, "n": {"pos": int(sum(i["label"] for i in sub)), "neg": int(sum(1 - i["label"] for i in sub)),
                                   "pos_single_article": int(sum(i["label"] == 1 and len(i["articles"]) == 1 for i in sub)),
                                   "files": len(groups)},
