@@ -10,9 +10,9 @@ from fastapi.responses import JSONResponse
 
 from backend.api.routers.analyze import router
 from backend.db.connection import close_pool, init_pool
-from backend.utils import load_logger
+from backend.utils import PROJECT_ROOT, load_logger
 
-load_dotenv()
+load_dotenv(PROJECT_ROOT / ".env")      # 실행 위치와 무관하게 프로젝트 루트의 .env (backend/utils.py 참고)
 
 logger = load_logger("server.log")
 

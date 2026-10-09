@@ -7,9 +7,12 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-load_dotenv()
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]  # ContractRisk-Guard/
+
+# `.env`는 **프로젝트 루트 기준**으로 읽는다. 인자 없는 `load_dotenv()`는 실행 위치에 따라 못 찾을 수
+# 있었다 — 다른 폴더에서 서버를 띄우면 `MODEL_DIR` 설정이 조용히 빠져 기본 체크포인트로 돌았다(2026-10-08 확인).
+# 이미 설정된 환경변수(docker-compose의 env_file 등)는 덮어쓰지 않는다(override=False 기본값).
+load_dotenv(PROJECT_ROOT / ".env")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -49,7 +49,18 @@ from backend.agents.state import ClauseState
 from backend.model.electra import ArticleMultiLabelElectra
 from backend.utils import PROJECT_ROOT
 
-MODEL_DIR = Path(os.environ.get("MODEL_DIR", str(PROJECT_ROOT / "models/article_v2")))
+
+def _resolve_model_dir() -> Path:
+    """`MODEL_DIR`이 상대 경로(`models/article_v3`)면 **프로젝트 루트 기준**으로 푼다.
+
+    실행 위치 기준으로 풀면 다른 폴더에서 띄웠을 때 없는 경로를 가리킨다(2026-10-08 확인).
+    """
+    # 빈 값("MODEL_DIR=")은 설정 안 됨으로 본다 — Path("")는 "."이 되어 프로젝트 루트를 모델 폴더로 착각한다
+    p = Path(os.environ.get("MODEL_DIR") or str(PROJECT_ROOT / "models/article_v2"))
+    return p if p.is_absolute() else PROJECT_ROOT / p
+
+
+MODEL_DIR = _resolve_model_dir()
 
 
 def get_model_version() -> str:
