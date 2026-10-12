@@ -24,7 +24,7 @@ Act (약관규제법) — unilateral termination (§9), liability limitation (§
 
 ## Approach
 
-- **FB-Check to filter hallucinations from auto-labeled data**: Forward Labeling (GPT-4o generates label L and evidence span E from clause C) → Backward Grounding (1st-generation KoELECTRA validates E ⊂ C at index level) → Consistency Verification (re-labels from E alone; L′ == L → CLEAN, otherwise NOISE)
+- **FB-Check to filter hallucinations from auto-labeled data**: Forward Labeling (GPT-4o generates label L and evidence span E from clause C) → Backward Grounding (plain string check that E actually appears in C — no model is involved) → Consistency Verification (re-labels from E alone; L′ == L → CLEAN, otherwise NOISE)
 - **Data Flywheel** — *suspended after three attempts, none of which showed an effect.* The most
   recent (2026-09-06) put `article_v2` in as a third voter and first reported +36.7%p; that was
   **withdrawn within the day** once it turned out the exclusion rule swept in every record whose GPT
@@ -123,7 +123,7 @@ ContractRisk-Guard/
 │   ├── api/                        # FastAPI server, routers, schemas
 │   ├── fb_check/                   # FB-Check auto-labeling pipeline
 │   │   ├── forward_labeling.py     # GPT-4o: label L + evidence E from clause C
-│   │   ├── backward_grounding.py   # KoELECTRA: validate E ⊂ C + independent prediction
+│   │   ├── backward_grounding.py   # string check that E ⊂ C (no model; the KoELECTRA prediction is only recorded, never used)
 │   │   └── consistency_verification.py  # Re-label from E only; L′ == L → CLEAN
 │   ├── domain/                     # Legal document filtering
 │   ├── preprocess/                 # Text cleaning and chunking
