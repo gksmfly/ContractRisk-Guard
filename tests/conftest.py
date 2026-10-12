@@ -9,7 +9,21 @@
 라우팅 자체는 `tests/agents/test_judgment_agent.py::TestDocStyleRouting`이 따로 검사한다.
 """
 
+import os
+
 import pytest
+
+# ## 모델 이름 환경변수를 테스트가 정한다 (2026-10-12)
+#
+# `FORWARD_MODEL`·`VERIFY_MODEL`은 모듈 최상단에서 **import 시점에** 읽힌다(`lazy_env`).
+# 로컬에는 `.env`가 있어 값이 채워지지만 CI에는 `.env`가 없어, `run_forward`가 맨 앞의
+# `require_env`에서 RuntimeError로 멈췄다 — `test_api_errors`의 두 테스트가 CI에서 계속 실패했다.
+# 반대로 개발자 PC의 `.env`가 `VERIFY_MODEL=local:qwen2.5-14b`면 기본 모델로 부르는 테스트가
+# 진짜 로컬 모델을 올리려 든다. 어느 쪽이든 테스트 결과가 환경에 좌우되면 안 되므로 여기서 고정한다.
+# conftest는 테스트 모듈보다 먼저 로드되고 `.env`는 기존 값을 덮어쓰지 않으므로 이 값이 이긴다.
+os.environ["FORWARD_MODEL"] = "test-model"
+os.environ["VERIFY_MODEL"] = "test-model"
+os.environ.pop("EXPLAIN_MODEL", None)
 
 
 @pytest.fixture(autouse=True)

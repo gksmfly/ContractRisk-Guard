@@ -39,8 +39,8 @@ from langgraph.graph.state import CompiledStateGraph
 from backend.agents.analysis_agent import analysis_node
 from backend.agents.evidence_selection_agent import evidence_selection_node
 from backend.agents.evidence_verification_agent import evidence_verification_node
-from backend.agents.judgment_agent import judgment_node
 from backend.agents.explain_agent import explain_node
+from backend.agents.judgment_agent import judgment_node
 from backend.agents.red_team_agent import red_team_node
 from backend.agents.retrieval_strategy_agent import retrieval_strategy_node
 from backend.agents.state import ClauseState
