@@ -40,6 +40,7 @@ from backend.agents.analysis_agent import analysis_node
 from backend.agents.evidence_selection_agent import evidence_selection_node
 from backend.agents.evidence_verification_agent import evidence_verification_node
 from backend.agents.judgment_agent import judgment_node
+from backend.agents.explain_agent import explain_node
 from backend.agents.red_team_agent import red_team_node
 from backend.agents.retrieval_strategy_agent import retrieval_strategy_node
 from backend.agents.state import ClauseState
@@ -64,7 +65,8 @@ def _route_after_judgment(state: ClauseState) -> list[str]:
 
 
 def _route_after_verification(state: ClauseState) -> str:
-    return "retrieval_strategy" if state.get("should_retry") else END
+    # 재검색이 끝나면 explain(조문 원문 기반 설명, 꺼져 있으면 아무것도 안 함)을 거쳐 끝난다
+    return "retrieval_strategy" if state.get("should_retry") else "explain"
 
 
 def build_graph() -> CompiledStateGraph:
@@ -75,6 +77,7 @@ def build_graph() -> CompiledStateGraph:
     graph.add_node("judgment", judgment_node)
     graph.add_node("red_team", red_team_node)
     graph.add_node("evidence_verification", evidence_verification_node)
+    graph.add_node("explain", explain_node)
 
     # analysis(GPT) → judgment(모델) 순서다. 판단을 낸 뒤 그 결과로 분기하므로
     # `evidence_selection`에서 `model_articles`를 읽을 수 있다(예전 병렬 구조에서는
@@ -94,8 +97,9 @@ def build_graph() -> CompiledStateGraph:
     graph.add_conditional_edges(
         "evidence_verification",
         _route_after_verification,
-        {"retrieval_strategy": "retrieval_strategy", END: END},
+        {"retrieval_strategy": "retrieval_strategy", "explain": "explain"},
     )
+    graph.add_edge("explain", END)
 
     return graph.compile()
 
