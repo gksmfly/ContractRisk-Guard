@@ -101,6 +101,14 @@ STYLE_ARMS = {
     "CN":   (ARM_DATA_DIR / "arm_CN_agreed.jsonl", None),
 }
 
+# 2진 FB-Check 하류 학습 (paper_plan §7-16 ②): forward 라벨 팔, 파일은 prepare_arms가 만든다
+#   D2 = 2진 규칙이 남긴 레코드 · B2 = A에서 D2와 같은 수 무작위(B와 같은 방식)
+BINARY_ARMS = {"D2": ARM_DATA_DIR / "arm_D2_forward_binary.jsonl", "B2": ARM_DATA_DIR / "arm_B2_forward_random.jsonl"}
+# FB-Check v2 (paper_plan §7-17): 버리지 않고 확신도 목표값(1.0/0.5)으로 학습. label_source=soft
+SOFT_PATH = ARM_DATA_DIR / "arm_S_soft.jsonl"
+# 인과 확인 (paper_plan §7-18): 표준계약서 출처의 NOISE만 뺀다(공정위 조항은 전부 남김). forward 라벨
+DS_PATH = ARM_DATA_DIR / "arm_DS_forward_stdonly.jsonl"
+
 # AI Hub 팔 → 학습 부분표본 크기(0 = 전량)
 AIHUB_ARMS = {"X": 0, "X3352": 3352, "X1000": 1000, "XC": -1}
 # XC: 같은 시드 C 팔의 **실제 학습 수**(gold 배제·홀드아웃·dev 분리 후)에 맞춘다. C의 3,352는 분리 전
@@ -214,12 +222,50 @@ def prepare_arms() -> dict[str, Path]:
             logger.info(f"  Arm {arm}: {out} 저장 ({len(recs)}건, A 대비 −{len(a_recs) - len(recs)})")
         paths[arm] = out
 
+    # ── D2 / B2: 2진 FB-Check와 같은 수 무작위 (§7-16 ②) ──
+    from eval.label.fbcheck_binary import binary_keep
+    d2 = BINARY_ARMS["D2"]
+    if not d2.exists():
+        recs = [r for r in a_recs if binary_keep(r)]
+        save_jsonl(recs, d2)
+        logger.info(f"  Arm D2: {d2} 저장 ({len(recs)}건)")
+    n_d2 = len(load_jsonl(d2))
+    b2 = BINARY_ARMS["B2"]
+    if not b2.exists():
+        holdout_set = set(holdout_docs)
+        must = [r for r in a_recs if _doc_of(r.get("chunk_id", "")) in holdout_set]
+        rest = [r for r in a_recs if _doc_of(r.get("chunk_id", "")) not in holdout_set]
+        sel = np.random.default_rng(B_SUBSET_SEED).choice(len(rest), size=min(n_d2 - len(must), len(rest)), replace=False)
+        recs = must + [rest[i] for i in sorted(sel)]
+        save_jsonl(recs, b2)
+        logger.info(f"  Arm B2: {b2} 저장 (random {len(recs)}건)")
+    paths.update(BINARY_ARMS)
+
+    # ── S: FB-Check v2 — 근거 없음·verify 위반 아님만 버린다 (§7-17) ──
+    if not SOFT_PATH.exists():
+        def _keep_s(r: dict) -> bool:
+            f, v = r.get("forward_articles") or [], r.get("verify_articles") or []
+            return not (f and (not r.get("snippet_exists", True) or not v))
+        recs = [r for r in a_recs if _keep_s(r)]
+        save_jsonl(recs, SOFT_PATH)
+        logger.info(f"  Arm S: {SOFT_PATH} 저장 ({len(recs)}건)")
+    paths["S"] = SOFT_PATH
+
+    # ── DS: 표준계약서 NOISE만 제외 (§7-18) ──
+    if not DS_PATH.exists():
+        recs = [r for r in a_recs if not (r.get("source") == "standard_contract" and r.get("status") == "NOISE")]
+        save_jsonl(recs, DS_PATH)
+        logger.info(f"  Arm DS: {DS_PATH} 저장 ({len(recs)}건)")
+    paths["DS"] = DS_PATH
+
     return paths
 
 
 # ── 학습 ─────────────────────────────────────────────────────────────────────
 
 def _arm_label_source(arm: str) -> str:
+    if arm == "S":
+        return "soft"
     # AI Hub는 agreed == forward == 전문가 라벨이라 어느 쪽이든 같다
     return "agreed" if arm == "C" or arm in AIHUB_ARMS or arm in BACKBONE_ARMS or arm in STYLE_ARMS else "forward"
 
@@ -380,7 +426,7 @@ def _compare_arms(arm_c_evals: list[dict], arm_x_evals: list[dict],
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--arms",      nargs="+", choices=["A", "B", "C", "D", "X", "X3352", "X1000", "XC", "CL", "G", "K", "RB", "KSN", "KSS", "RSN", "RSS", "NC", "NRSN", "MV", "RMV", "CN"],
+    parser.add_argument("--arms",      nargs="+", choices=["A", "B", "C", "D", "X", "X3352", "X1000", "XC", "CL", "G", "K", "RB", "KSN", "KSS", "RSN", "RSS", "NC", "NRSN", "MV", "RMV", "CN", "D2", "B2", "S", "DS"],
                         default=["A", "B", "C"])
     parser.add_argument("--seeds",     nargs="+", type=int, default=SEEDS)
     parser.add_argument("--gpu",       type=int,  default=0)

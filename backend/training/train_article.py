@@ -102,7 +102,7 @@ def load_article_records(path: Path, augment: bool = False,
     어느 쪽이 나은지는 재봐야 안다. 기본값은 `agreed`(교집합, 더 보수적)이고,
     `--label-source forward`로 A/B 할 수 있다.
     """
-    if label_source not in ("forward", "agreed"):
+    if label_source not in ("forward", "agreed", "soft"):
         raise ValueError(f"알 수 없는 label_source: {label_source}")
     rows = load_jsonl(path)
     out: list[dict] = []
@@ -117,12 +117,19 @@ def load_article_records(path: Path, augment: bool = False,
         else:
             arts = r.get("forward_articles") or []
         arts = [a for a in arts if a in ARTICLE_IDS]
-        out.append({
+        rec = {
             "text": text,
             "articles": sorted(set(arts), key=lambda a: int(a.strip("제조"))),
             "group": _document_group(r.get("chunk_id"), f"row-{i}"),
             "source": r.get("source", ""),
-        })
+        }
+        if label_source == "soft":
+            # FB-Check v2 (paper_plan §7-17): forward·verify가 함께 짚은 조 1.0, 한쪽만 0.5.
+            # "articles"는 forward(이진)로 두어 dev 정답·pos_weight·층화가 forward 팔과 같다
+            f = {a for a in (r.get("forward_articles") or []) if a in ARTICLE_IDS}
+            v = {a for a in (r.get("verify_articles") or []) if a in ARTICLE_IDS}
+            rec["soft"] = {a: (1.0 if a in f and a in v else 0.5) for a in f | v}
+        out.append(rec)
 
     if augment:
         # 기본 OFF. 켜면 evidence_span을 별도 예시로 추가하는데, 원문이 그 문구를
@@ -383,8 +390,9 @@ def exclude_gold_documents(records: list[dict], gold: list[dict]) -> list[dict]:
 class ArticleDataset(Dataset):
     """조항 텍스트 → multi-hot 조 라벨."""
 
-    def __init__(self, records: list[dict], tokenizer: Any, max_len: int, names: list[str]) -> None:
-        self.records, self.tokenizer, self.max_len = records, tokenizer, max_len
+    def __init__(self, records: list[dict], tokenizer: Any, max_len: int, names: list[str],
+                 soft: bool = False) -> None:
+        self.records, self.tokenizer, self.max_len, self.soft = records, tokenizer, max_len, soft
         self.index = {a: i for i, a in enumerate(names)}
         self.n = len(names)
 
@@ -396,6 +404,16 @@ class ArticleDataset(Dataset):
         enc = self.tokenizer(rec["text"], max_length=self.max_len, padding="max_length",
                              truncation=True, return_tensors="pt")
         y = torch.zeros(self.n, dtype=torch.float)
+        if self.soft and "soft" in rec:   # 학습에서만 확신도 목표값 (§7-17). dev는 이진 그대로
+            for a, w in rec["soft"].items():
+                if a in self.index:
+                    y[self.index[a]] = w
+            return {
+                "input_ids":      enc["input_ids"].squeeze(0),
+                "attention_mask": enc["attention_mask"].squeeze(0),
+                "token_type_ids": enc.get("token_type_ids", torch.zeros(self.max_len, dtype=torch.long)).squeeze(0),
+                "labels":         y,
+            }
         for a in rec["articles"]:
             if a in self.index:      # 헤드에서 접힌 조(support 부족)는 라벨에서도 뺀다
                 y[self.index[a]] = 1.0
@@ -560,7 +578,7 @@ def main(argv: list[str] | None = None) -> None:
                     help="FTC 대비 표준계약서(음성 표본) 비율. 미지정이면 시드 구성 그대로. "
                          "빈 라벨이 과반이면 모델이 아무것도 예측하지 않는 쪽으로 끌리므로 "
                          "0.0 / 0.25 / 0.5 / 1.0 을 쓸어볼 것 (apply_negative_ratio 참고)")
-    ap.add_argument("--label-source", choices=["agreed", "forward"], default="agreed",
+    ap.add_argument("--label-source", choices=["agreed", "forward", "soft"], default="agreed",
                     help="어느 조 라벨로 학습할지. agreed=forward∩verify(정밀↑/거짓음성↑), "
                          "forward=forward만(재현↑/거짓양성↑). F1은 동률이라 재봐야 안다")
     ap.add_argument("--dry-run", action="store_true", help="라벨 없이 형상·손실만 검증")
@@ -640,7 +658,7 @@ def main(argv: list[str] | None = None) -> None:
     _BAR = max(b["f1"] for b in baselines.values())
 
     tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
-    tl = DataLoader(ArticleDataset(train_recs, tokenizer, args.max_len, names),
+    tl = DataLoader(ArticleDataset(train_recs, tokenizer, args.max_len, names, soft=args.label_source == "soft"),
                     batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
     dl = DataLoader(ArticleDataset(dev_recs, tokenizer, args.max_len, names),
                     batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
