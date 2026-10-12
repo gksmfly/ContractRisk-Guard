@@ -6,6 +6,12 @@ metrics.json·임계값은 남긴다. 판정은 캐시로 한다.
 
     .venv/bin/python -m eval.model.aihub_seeds20 --gpu 0        # 학습·캐시 (이어서 가능)
     .venv/bin/python -m eval.model.aihub_eval --gpu 0 --mode seeds20
+    .venv/bin/python -m eval.model.aihub_seeds20 --gpu 0 --binary   # §7-16 ②
+    .venv/bin/python -m eval.model.aihub_eval --gpu 0 --mode binary
+    .venv/bin/python -m eval.model.aihub_seeds20 --gpu 0 --soft     # §7-17
+    .venv/bin/python -m eval.model.aihub_eval --gpu 0 --mode soft
+    .venv/bin/python -m eval.model.aihub_seeds20 --gpu 0 --ds       # §7-18
+    .venv/bin/python -m eval.model.aihub_eval --gpu 0 --mode ds
 """
 
 import argparse
@@ -21,11 +27,22 @@ NEW_SEEDS = [s for s in MODES["seeds20"]["seeds"] if s not in MODES["seeds10"]["
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--gpu", type=int, default=0)
+    ap.add_argument("--binary", action="store_true", help="§7-16 ②: D2·B2 팔, 시드 10개")
+    ap.add_argument("--soft", action="store_true", help="§7-17: S(FB-Check v2)·A 팔, 시드 10개")
+    ap.add_argument("--ds", action="store_true", help="§7-18: DS(표준계약서 NOISE만 제외) 팔, 시드 10개")
     args = ap.parse_args()
+    if args.ds:
+        seeds, arms = MODES["ds"]["seeds"], ("DS",)
+    elif args.soft:
+        seeds, arms = MODES["soft"]["seeds"], ("S", "A")
+    elif args.binary:
+        seeds, arms = MODES["binary"]["seeds"], ("D2", "B2")
+    else:
+        seeds, arms = NEW_SEEDS, ("D", "B")
     paths = prepare_arms()
     texts = [it["text"] for it in testset()]
-    for s in NEW_SEEDS:
-        for arm in ("D", "B"):
+    for s in seeds:
+        for arm in arms:
             if (CACHE / f"{arm}_s{s}.npz").exists():
                 logger.info(f"  {arm} s{s}: 캐시 있음 — 건너뜀")
                 continue
