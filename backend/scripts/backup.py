@@ -30,7 +30,8 @@ INCLUDE = [
     "data",
     "models/README.md",
     "models/article_v1",
-    "models/article_v2",
+    "models/article_v2",   # 가중치 삭제됨(2026-10-12) — metrics·임계값만 남음
+    "models/article_v3",
     *sorted(str(p.relative_to(PROJECT_ROOT)) for p in (PROJECT_ROOT / "models").glob("sllm_lora_*")),
 ]
 # 다시 만들 수 있고 크기만 큰 것(LightRAG 인덱스 231MB, 결론 난 실험)

@@ -248,6 +248,23 @@ def _upsert_chunks(conn: Any, table: str, cols: list[str], rows: list[tuple]) ->
     conn.commit()
 
 
+def _dedupe(records: list[dict], label: str) -> list[dict]:
+    """같은 `chunk_id`가 입력 파일에 두 번 있으면 **먼저 나온 행만** 쓴다.
+
+    한 INSERT 묶음에 같은 키가 둘이면 `ON CONFLICT DO UPDATE`가 CardinalityViolation으로 멈춘다.
+    seed_labeled.jsonl에 중복 키 2건이 있어(4,468행 → 4,466개, 2026-10-12) 시드 적재가 거기서 죽었다.
+    """
+    seen, out = set(), []
+    for r in records:
+        if r["chunk_id"] in seen:
+            continue
+        seen.add(r["chunk_id"])
+        out.append(r)
+    if len(out) != len(records):
+        logger.warning(f"  [{label}] 중복 chunk_id {len(records) - len(out)}건 제외 (먼저 나온 행 유지)")
+    return out
+
+
 def _load_incremental(
     conn: Any, embedder: Any, table: str, cols: list[str], records: list[dict], row_fn: Any, label: str,
 ) -> int:
@@ -297,7 +314,7 @@ def load_chunks(conn: Any, embedder: Any, refresh: tuple[str, ...] = ()) -> dict
 
         all_records = load_jsonl(path)
         skip_ids = set() if src in refresh else existing
-        records = [r for r in all_records if r["chunk_id"] not in skip_ids]
+        records = _dedupe([r for r in all_records if r["chunk_id"] not in skip_ids], src)
         skipped = len(all_records) - len(records)
         if skipped:
             logger.info(f"  [chunks/{src}] {skipped}건 이미 적재 — 건너뜀")
@@ -325,7 +342,7 @@ def load_seed(conn: Any, embedder: Any) -> dict[str, int]:
 
     all_records = load_jsonl(path)
     existing = _fetch_existing_ids(conn, "seed_clauses")
-    records = [r for r in all_records if r["chunk_id"] not in existing]
+    records = _dedupe([r for r in all_records if r["chunk_id"] not in existing], "seed")
     skipped = len(all_records) - len(records)
     if skipped:
         logger.info(f"  [seed] {skipped}건 이미 적재 — 건너뜀")
@@ -354,7 +371,7 @@ def load_clean(conn: Any, embedder: Any) -> dict[str, int]:
 
     all_records = load_jsonl(path)
     existing = _fetch_existing_ids(conn, "clean_clauses")
-    records = [r for r in all_records if r["chunk_id"] not in existing]
+    records = _dedupe([r for r in all_records if r["chunk_id"] not in existing], "clean")
     skipped = len(all_records) - len(records)
     if skipped:
         logger.info(f"  [clean] {skipped}건 이미 적재 — 건너뜀")
@@ -385,7 +402,7 @@ def load_noise(conn: Any, embedder: Any) -> dict[str, int]:
 
     all_records = load_jsonl(path)
     existing = _fetch_existing_ids(conn, "noise_clauses")
-    records = [r for r in all_records if r["chunk_id"] not in existing]
+    records = _dedupe([r for r in all_records if r["chunk_id"] not in existing], "noise")
     skipped = len(all_records) - len(records)
     if skipped:
         logger.info(f"  [noise] {skipped}건 이미 적재 — 건너뜀")

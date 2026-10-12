@@ -56,7 +56,7 @@ def _resolve_model_dir() -> Path:
     실행 위치 기준으로 풀면 다른 폴더에서 띄웠을 때 없는 경로를 가리킨다(2026-10-08 확인).
     """
     # 빈 값("MODEL_DIR=")은 설정 안 됨으로 본다 — Path("")는 "."이 되어 프로젝트 루트를 모델 폴더로 착각한다
-    p = Path(os.environ.get("MODEL_DIR") or str(PROJECT_ROOT / "models/article_v2"))
+    p = Path(os.environ.get("MODEL_DIR") or str(PROJECT_ROOT / "models/article_v3"))
     return p if p.is_absolute() else PROJECT_ROOT / p
 
 
@@ -66,7 +66,7 @@ MODEL_DIR = _resolve_model_dir()
 def get_model_version() -> str:
     """판단에 쓰인 체크포인트 이름. 저장된 분석 결과에 함께 남긴다.
 
-    기본값은 `models/article_v2`(조 multi-label, max_len 512)다. 옛 `models/v4`(domain
+    기본값은 `models/article_v3`(조 multi-label + 문서 종류 라우터, 2026-10-08)다. `article_v2`는 가중치를 지웠다(2026-10-12, 디스크). 옛 `models/v4`(domain
     2종 + risk 3단계)는 **서빙에서 빠졌다** — 누수 있는 분할이었고, 학습 라벨의 16.4%를
     정확도 45%짜리 이전 세대가 결정했다.
 
