@@ -21,6 +21,10 @@ verify는 무차별로 상향하지 않는다 — 위반 확정 조항에서만 
 표준계약서에서는 거의 움직이지 않는다. 여기서 모델까지 다르게 하면 불일치가 생겼을 때
 입력 때문인지 모델 때문인지 구분할 수 없게 되므로, **두 단계는 같은 모델로 유지**한다.
 
+**2026-10-12 갱신:** 같은 프롬프트로 verify만 Qwen2.5-14B로 바꾼 실측(E_xv)에서 Qwen은 GPT CLEAN
+안에서도 문서 층화 +2.0%p를 더 걸러냈다 — 다른 모델이 독립 정보를 준다. 비용(GPT 결제 중단) 때문에
+`VERIFY_MODEL=local:qwen2.5-14b`로 로컬 verify를 쓸 수 있게 했다(`backend/fb_check/local_llm.py`).
+
 교차검증용 독립 투표자가 필요하다면 세 번째 표(`backward_grounding`의 KoELECTRA)를
 교체해야 한다 — 그쪽이 상수 투표자 대비 순 기여 +6.1%p에 그치고, 자기 산출물로 학습되는
 순환 구조다(`backend/eval/fbcheck_variant_compare.py`).
@@ -34,6 +38,7 @@ import time
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from backend.fb_check import local_llm
 from backend.fb_check.api_errors import raise_if_fatal
 from backend.labeling.articles import (
     ARTICLE_IDS,
@@ -229,6 +234,14 @@ def run_verify(
                     {"role": "user", "content": f"계약 조항:\n{text[:MAX_VERIFY_CHARS]}"}]
     else:
         raise ValueError(f"알 수 없는 verify mode: {mode}")
+
+    if local_llm.is_local(model):
+        # 로컬 오픈 모델 — API 토큰 0. 결정적(greedy)이라 재시도해도 같은 답이 나온다
+        out = local_llm.chat_json(model, messages)
+        if out is None:
+            logger.error(f"  Consistency Verify({model}) JSON 파싱 실패")
+            return None
+        return _normalize(out, model)
 
     for attempt in range(retries):
         try:

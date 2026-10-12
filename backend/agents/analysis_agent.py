@@ -9,13 +9,24 @@
 from langchain_core.runnables import RunnableConfig
 
 from backend.agents.state import ClauseState
+from backend.fb_check.api_errors import FatalAPIError
 from backend.fb_check.forward_labeling import run_forward
+from backend.utils import load_logger
+
+logger = load_logger("analysis_agent.log")
 from backend.labeling.articles import LEGACY_DOMAINS
 
 
 def analysis_node(state: ClauseState, config: RunnableConfig) -> dict:
     client = config["configurable"]["client"]
-    fwd = run_forward(client, state["clause"])
+    try:
+        fwd = run_forward(client, state["clause"])
+    except FatalAPIError as e:
+        # 크레딧 소진·키 오류(2026-10-12 확인): 예전에는 예외가 그래프 밖으로 터져 **분석 전체가 실패**했다.
+        # 서비스에서 이 단계는 근거 문구·설명용이고 위반 판단은 judgment(KoELECTRA)가 하므로,
+        # 빈 근거로 넘어가 판단 결과는 그대로 보여 준다. 라벨링 경로(fb_check)는 여전히 즉시 중단한다
+        logger.warning(f"  analysis 단계 건너뜀(근거·설명 없이 진행): {e}")
+        fwd = None
     if fwd is None:
         fwd = {"domain": "해당없음", "articles": [], "risk_level": "Low",
                "evidence_span": "", "reasoning": ""}

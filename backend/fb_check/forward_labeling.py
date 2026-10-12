@@ -37,6 +37,7 @@ import time
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from backend.fb_check import local_llm
 from backend.fb_check.api_errors import raise_if_fatal
 from backend.labeling.articles import (
     ARTICLE_IDS,
@@ -275,6 +276,15 @@ def run_forward(client: OpenAI, clause_text: str, retries: int = 3,
     messages = [{"role": "system", "content": build_system(block) if block != _DEFAULT_BLOCK else _SYSTEM}]
     messages.extend(_FEW_SHOT_EXAMPLES)
     messages.append({"role": "user", "content": f"계약 조항:\n{clause_text[:MAX_GPT_CHARS]}"})
+
+    if local_llm.is_local(model):
+        # 로컬 오픈 모델(`FORWARD_MODEL=local:qwen2.5-14b`) — API 토큰 0 (2026-10-12).
+        # ⚠ 같은 2,305건에서 Qwen forward F1은 GPT-4o보다 7.8%p 낮았다(reported_numbers §12 E9)
+        out = local_llm.chat_json(model, messages, max_new_tokens=300)
+        if out is None:
+            logger.error(f"  Forward Labeling({model}) JSON 파싱 실패")
+            return None
+        return _normalize(out, model)
 
     for attempt in range(retries):
         try:
