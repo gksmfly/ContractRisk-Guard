@@ -43,7 +43,7 @@ Act (약관규제법) — unilateral termination (§9), liability limitation (§
   Calling this "multi-agent collaboration" overstated it, so the term is dropped.
 - **Article-level taxonomy (§6–§14), not two domains**: the original 2-domain scheme (termination /
   liability limitation) discarded **56.7% of pipeline input** (1,257 of 2,218 clauses) as "not
-  applicable" — most of which were real violations of articles the scheme had no slot for.
+  applicable". 349 of those were clauses the Korea Fair Trade Commission had ruled unfair (about 41% of all FTC-ruled clauses were dropped) because the scheme had no slot for their articles.
 - **FTC enforcement cases as seed data**: 공정거래위원회 시정조치 cases are objectively High-risk
   (public enforcement = confirmed violation), avoiding annotator subjectivity
 
