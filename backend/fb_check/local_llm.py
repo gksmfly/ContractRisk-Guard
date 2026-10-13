@@ -21,6 +21,7 @@ Qwen이 앞뒤가 잘린 조각 조항에 JSON 대신 줄글로 답했다(AI Hub
 import json
 import os
 import re
+import threading
 from typing import Any
 
 MODELS = {
@@ -28,6 +29,10 @@ MODELS = {
 }
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 _cache: dict[str, tuple[Any, Any, str]] = {}
+# 서비스는 조항을 스레드 여러 개로 동시에 처리한다(analyze.py의 세마포어 6). 락이 없으면 스레드마다 모델을
+# 따로 올려 GPU 메모리가 터지고(실제로 조항 하나가 OOM으로 비었다, 2026-10-12), 한 모델에 generate가
+# 동시에 들어간다. 로드와 생성을 모두 직렬화한다 — 대신 로컬 모델 단계는 조항 수만큼 순서대로 걸린다
+_lock = threading.Lock()
 
 
 def is_local(model: str) -> bool:
@@ -35,6 +40,7 @@ def is_local(model: str) -> bool:
 
 
 def _load(key: str) -> tuple[Any, Any, str]:
+    # 호출자가 _lock을 쥔 상태에서만 부른다
     if key not in _cache:
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
@@ -46,9 +52,12 @@ def _load(key: str) -> tuple[Any, Any, str]:
         # 디스크가 모자라 모델을 RAM 디스크(/dev/shm)에 받아 둔 경우 그 캐시를 가리킨다(2026-10-12).
         # HF_HOME을 통째로 바꾸면 KoELECTRA 등 다른 캐시를 못 찾으므로 이 모델에만 적용한다
         cache = os.environ.get("LOCAL_LLM_CACHE") or None
-        tok = AutoTokenizer.from_pretrained(MODELS[key], trust_remote_code=True, cache_dir=cache)
+        # 서빙 중에 모델이 없다고 28GB를 몰래 내려받지 않는다(10-08 디스크 0MB 사고의 원인이 이것이었다).
+        # 받아야 할 때만 LOCAL_LLM_ALLOW_DOWNLOAD=1을 명시한다
+        local_only = os.environ.get("LOCAL_LLM_ALLOW_DOWNLOAD", "0").strip().lower() not in ("1", "true", "yes")
+        tok = AutoTokenizer.from_pretrained(MODELS[key], trust_remote_code=True, cache_dir=cache, local_files_only=local_only)
         model = AutoModelForCausalLM.from_pretrained(
-            MODELS[key], device_map={"": device}, trust_remote_code=True, cache_dir=cache,
+            MODELS[key], device_map={"": device}, trust_remote_code=True, cache_dir=cache, local_files_only=local_only,
             quantization_config=BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16),
         )
         model.eval()
@@ -60,13 +69,14 @@ def chat_json(model: str, messages: list[dict], max_new_tokens: int = 200) -> di
     """`local:<키>` 모델로 JSON 하나를 생성한다. 파싱 실패면 None."""
     import torch
 
-    m, tok, device = _load(model.removeprefix("local:"))
-    prompt = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True) + "{"
-    enc = tok(prompt, return_tensors="pt").to(device)
-    with torch.no_grad():
-        out = m.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False,
-                         pad_token_id=tok.pad_token_id or tok.eos_token_id)
-    text = "{" + tok.decode(out[0][enc["input_ids"].shape[1]:], skip_special_tokens=True)
+    with _lock:
+        m, tok, device = _load(model.removeprefix("local:"))
+        prompt = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True) + "{"
+        enc = tok(prompt, return_tensors="pt").to(device)
+        with torch.no_grad():
+            out = m.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False,
+                             pad_token_id=tok.pad_token_id or tok.eos_token_id)
+        text = "{" + tok.decode(out[0][enc["input_ids"].shape[1]:], skip_special_tokens=True)
     hit = _JSON_RE.search(text)
     if not hit:
         return None

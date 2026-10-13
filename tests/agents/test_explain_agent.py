@@ -62,3 +62,20 @@ def test_generation_failure_keeps_existing(monkeypatch):
         raise RuntimeError("CUDA out of memory")
     monkeypatch.setattr(ex, "generate", boom)
     assert ex.explain_node(_state()) == {}
+
+
+def test_bare_article_numbers_are_accepted(monkeypatch):
+    """모델이 "6"·"6조"처럼 적어도 제공된 조(제6조)면 위반이 아니다 (v2 프롬프트 사고 재발 방지)."""
+    monkeypatch.setenv("EXPLAIN_MODEL", "local:qwen2.5-14b")
+    basis = [LegalBasis(law="약관의 규제에 관한 법률", article="제6조", description="일반원칙 …")]
+    for cited in (["6"], ["6조"], ["제6조"], [6]):
+        monkeypatch.setattr(ex, "generate", lambda *a, _c=cited, **k: {
+            "evidence_span": "", "explanation": "불공정할 수 있다.", "cited_articles": _c, "suggestion": ""})
+        assert "reasoning" in ex.explain_node({"clause": CLAUSE, "legal_basis": basis}), cited
+
+
+def test_unprovided_number_is_still_a_violation(monkeypatch):
+    monkeypatch.setenv("EXPLAIN_MODEL", "local:qwen2.5-14b")
+    monkeypatch.setattr(ex, "generate", lambda *a, **k: {
+        "evidence_span": "", "explanation": "불공정할 수 있다.", "cited_articles": ["8"], "suggestion": ""})
+    assert ex.explain_node(_state()) == {}      # BASIS는 제9조만 제공

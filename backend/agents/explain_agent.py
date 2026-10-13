@@ -70,6 +70,19 @@ def _norm_article(num: str, sub: str | None = None) -> str:
     return f"제{int(num)}조" + (f"의{int(sub)}" if sub else "")
 
 
+_CITED_RE = re.compile(r"(?:제\s*)?(\d+)\s*(?:조)?(?:\s*의\s*(\d+))?")
+
+
+def normalize_cited(a: Any) -> str:
+    """cited_articles의 한 항목을 "제N조" 꼴로 맞춘다. 모델이 "6", "6조", "제6조" 중 무엇으로 적어도 같게 본다.
+
+    v2 프롬프트가 "조 번호"라고 써서 모델이 숫자만("6") 적었고, 엄격한 문자열 비교는 그 160건을 전부
+    위반으로 셌다(평가 A0 89.4% — 실제 제공 외 인용은 0건). 숫자가 없으면 원문을 그대로 돌려줘 위반으로 남긴다.
+    """
+    m = _CITED_RE.search(str(a))
+    return _norm_article(m.group(1), m.group(2)) if m else str(a)
+
+
 def build_messages(clause: str, legal_basis: list[Any], precedents: list[Any] | None = None) -> list[dict]:
     arts = "\n".join(f"- {b.law} {b.article}: {b.description[:MAX_ARTICLE_CHARS]}" for b in legal_basis)
     user = f"[계약 조항]\n{clause}\n\n[적용 조문]\n{arts}"
@@ -95,7 +108,7 @@ def audit(clause: str, raw: dict | None, allowed: list[str], precedents: list[An
     ok_format = (isinstance(raw, dict) and isinstance(raw.get("explanation"), str) and raw["explanation"].strip() != ""
                  and isinstance(raw.get("evidence_span"), str))
     if not ok_format:
-        return {"format_ok": False, "span_verbatim": False, "bad_cited": False, "bad_mention": False, "bad_case_no": False}
+        return {"format_ok": False, "span_verbatim": False, "bad_cited": False, "bad_cited_strict": False, "bad_mention": False, "bad_case_no": False}
     allowed_set = set(allowed)
     in_clause = mentioned_articles(clause)             # 조항 원문이 스스로 언급한 번호는 허용
     cited = raw.get("cited_articles") if isinstance(raw.get("cited_articles"), list) else []
@@ -106,7 +119,9 @@ def audit(clause: str, raw: dict | None, allowed: list[str], precedents: list[An
     return {
         "format_ok": True,
         "span_verbatim": bool(raw["evidence_span"].strip()) and check_snippet_exists(clause, raw["evidence_span"]),
-        "bad_cited": any(a not in allowed_set for a in cited if isinstance(a, str)),
+        # 형식 차이("6" 대 "제6조")는 위반이 아니다. 엄격 비교 결과는 bad_cited_strict로 따로 남긴다
+        "bad_cited": any(normalize_cited(a) not in allowed_set for a in cited if isinstance(a, (str, int))),
+        "bad_cited_strict": any(a not in allowed_set for a in cited if isinstance(a, str)),
         "bad_mention": bool(stray),
         "bad_case_no": bool(cases - given_cases),
     }
