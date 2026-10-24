@@ -3,6 +3,7 @@ import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import PostgresAdapter from "@auth/pg-adapter";
 import { db } from "@/lib/db";
+import { isEmailAllowed } from "@/lib/access";
 
 // backend가 psycopg2로 쓰는 것과 같은 Postgres를, lib/db.ts의 공유 Pool로 붙는다
 // (예전엔 여기서 별도 Pool을 새로 만들었는데, dev 핫리로드 가드가 없어서 로그인
@@ -25,6 +26,10 @@ export const authOptions: NextAuthOptions = {
     signIn: "/login",
   },
   callbacks: {
+    // 허용 이메일 목록(ALLOWED_EMAILS)에 없는 구글 계정은 로그인 자체를 막는다(lib/access.ts).
+    signIn({ user }) {
+      return isEmailAllowed(user.email);
+    },
     // 기본 session 콜백은 user.id를 클라이언트 세션에 안 실어준다 — analyses 테이블의
     // user_id 외래키로 쓸 숫자 id가 필요해서 직접 붙인다. next-auth 코어 타입은
     // AdapterUser.id를 항상 string으로 가정하지만(대부분 어댑터가 uuid/cuid를 씀),

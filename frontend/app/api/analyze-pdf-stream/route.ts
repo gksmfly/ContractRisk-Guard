@@ -1,11 +1,15 @@
 // frontend/app/api/analyze-pdf-stream/route.ts
 import { NextRequest } from "next/server";
 import { FASTAPI_URL } from "@/lib/config";
+import { requireSession } from "@/lib/require-session";
 
 // backend의 /api/analyze-pdf/stream(SSE)을 그대로 프록시한다. analyze-pdf/route.ts와
 // 달리 응답을 JSON으로 모으지 않고 upstream.body를 그대로 흘려보내 PDF도 텍스트
 // 경로와 동일하게 조항 단위 실시간 진행률을 받게 한다.
 export async function POST(req: NextRequest) {
+  const denied = await requireSession();
+  if (denied) return denied;
+
   const form = await req.formData();
 
   let upstream: Response;

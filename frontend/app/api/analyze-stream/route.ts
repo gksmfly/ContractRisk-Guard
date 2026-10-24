@@ -1,11 +1,15 @@
 // frontend/app/api/analyze-stream/route.ts
 import { NextRequest } from "next/server";
 import { FASTAPI_URL } from "@/lib/config";
+import { requireSession } from "@/lib/require-session";
 
 // backend의 /api/analyze/stream(SSE)을 그대로 프록시한다. analyze-full/route.ts와
 // 달리 응답을 JSON으로 모으지 않고 upstream.body(ReadableStream)를 그대로 흘려보내
 // 프론트가 조항이 끝날 때마다 오는 이벤트를 실시간으로 받게 한다.
 export async function POST(req: NextRequest) {
+  const denied = await requireSession();
+  if (denied) return denied;
+
   const body = await req.json();
 
   if (!body.text || body.text.trim().length < 20) {

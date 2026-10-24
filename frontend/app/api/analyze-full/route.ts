@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { RiskLevel, Domain } from "@/types";
 import { FASTAPI_URL } from "@/lib/config";
+import { requireSession } from "@/lib/require-session";
 
 interface ClauseResult {
   id: number;
@@ -50,6 +51,9 @@ export interface FullAnalyzeResult {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await requireSession();
+  if (denied) return denied;
+
   const body = await req.json();
 
   if (!body.text || body.text.trim().length < 20) {
