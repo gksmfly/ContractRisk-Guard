@@ -13,6 +13,7 @@ KoELECTRA 분류 헤드 정의 및 공유 레이블 상수
 `backend.training.train`(domain+risk).
 """
 
+import copy
 from pathlib import Path
 
 import torch
@@ -158,13 +159,31 @@ class ArticleMultiLabelElectra(nn.Module):
     ) -> torch.Tensor:
         """조별 **로짓**을 반환한다(sigmoid 전). 손실은 BCEWithLogitsLoss가 받는다."""
         kwargs = {"input_ids": input_ids, "attention_mask": attention_mask}
-        if "token_type_ids" in self.encoder.forward.__code__.co_varnames:
+        # LoRA를 씌우면 self.encoder.forward가 (*args, **kwargs)가 돼 변수명 검사가 항상 거짓이 된다 — 밑 모델을 본다
+        base = self.encoder.get_base_model() if hasattr(self.encoder, "get_base_model") else self.encoder
+        if "token_type_ids" in base.forward.__code__.co_varnames:
             kwargs["token_type_ids"] = token_type_ids
         out = self.encoder(**kwargs)
         cls = self.dropout(out.last_hidden_state[:, 0, :])
         return self.article_head(cls)
 
-    def _compute_fingerprint(self) -> float:
+    def enable_lora(self, r: int = 8, alpha: int = 16, dropout: float = 0.1,
+                    target_modules: tuple[str, ...] = ("query", "value")) -> None:
+        """인코더에 LoRA 어댑터를 붙인다 (paper_plan §7-26). 기본 가중치는 얼리고 어댑터와 분류 헤드만 학습한다.
+
+        저장은 항상 **어댑터를 합친 일반 체크포인트**로 한다(`save`) — 서빙·평가의 `load`는 바뀌지 않는다.
+        """
+        from peft import LoraConfig, get_peft_model
+        self.encoder = get_peft_model(self.encoder, LoraConfig(r=r, lora_alpha=alpha, lora_dropout=dropout,
+                                                               target_modules=list(target_modules)))
+
+    def _merged_encoder(self) -> nn.Module:
+        """저장·지문용 인코더. 어댑터가 있으면 **복사본**을 합쳐서 돌려준다(학습 중인 원본은 그대로)."""
+        if hasattr(self.encoder, "merge_and_unload"):
+            return copy.deepcopy(self.encoder).merge_and_unload()
+        return self.encoder
+
+    def _compute_fingerprint(self, encoder: nn.Module | None = None) -> float:
         """인코더+헤드 **전 파라미터**의 norm 합. 랜덤 초기화면 값이 확 달라진다.
 
         **float64로, 기기와 무관하게 계산한다.** float32로 하면 GPU와 CPU의 감산 순서가
@@ -179,14 +198,19 @@ class ArticleMultiLabelElectra(nn.Module):
         norm 0.000000) 지문만 어긋났다. 검사가 진짜 사고 대신 자기 잡음을 잡으면
         다음엔 검사를 끄게 된다.
         """
-        return float(sum(p.detach().cpu().double().norm() for p in self.parameters()))
+        if encoder is None:
+            return float(sum(p.detach().cpu().double().norm() for p in self.parameters()))
+        # 어댑터를 합친 인코더 + 헤드. 합치지 않은 파라미터로 재면 로드한 체크포인트의 지문과 어긋난다
+        ps = list(encoder.parameters()) + list(self.article_head.parameters()) + list(self.dropout.parameters())
+        return float(sum(p.detach().cpu().double().norm() for p in ps))
 
     def save(self, path: Path) -> None:
-        self.encoder.save_pretrained(path)
+        enc = self._merged_encoder()
+        enc.save_pretrained(path)
         torch.save(
             {"article_head": self.article_head.state_dict(),
              "article_names": self.article_names,
-             "fingerprint_f64": self._compute_fingerprint()},
+             "fingerprint_f64": self._compute_fingerprint(enc)},
             path / "heads.pt",
         )
 

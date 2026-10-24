@@ -581,6 +581,10 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--label-source", choices=["agreed", "forward", "soft"], default="agreed",
                     help="어느 조 라벨로 학습할지. agreed=forward∩verify(정밀↑/거짓음성↑), "
                          "forward=forward만(재현↑/거짓양성↑). F1은 동률이라 재봐야 안다")
+    ap.add_argument("--adapter", choices=["none", "lora"], default="none",
+                    help="lora: 인코더에 LoRA 어댑터(랭크 --lora-r)를 붙이고 어댑터+헤드만 학습, 저장은 합친 체크포인트 (§7-26)")
+    ap.add_argument("--lora-r", type=int, default=8)
+    ap.add_argument("--lora-alpha", type=int, default=16)
     ap.add_argument("--dry-run", action="store_true", help="라벨 없이 형상·손실만 검증")
     args = ap.parse_args(argv)
 
@@ -663,10 +667,15 @@ def main(argv: list[str] | None = None) -> None:
     dl = DataLoader(ArticleDataset(dev_recs, tokenizer, args.max_len, names),
                     batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
 
-    model = ArticleMultiLabelElectra(BASE_MODEL, names).to(device)
+    model = ArticleMultiLabelElectra(BASE_MODEL, names)
+    if args.adapter == "lora":
+        model.enable_lora(r=args.lora_r, alpha=args.lora_alpha)
+        n_tr = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        logger.info(f"  LoRA r={args.lora_r} alpha={args.lora_alpha}: 학습 파라미터 {n_tr:,} / 전체 {sum(p.numel() for p in model.parameters()):,}")
+    model = model.to(device)
     pos_w = compute_article_pos_weight(dict(counts), names, len(train_recs)).to(device)
     crit  = nn.BCEWithLogitsLoss(pos_weight=pos_w)
-    optim = torch.optim.AdamW(model.parameters(), lr=args.lr)
+    optim = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=args.lr)
     logger.info(f"  pos_weight: {dict(zip(names, [round(x, 1) for x in pos_w.tolist()]))}")
 
     model_dir = Path(args.model_dir)
@@ -730,7 +739,8 @@ def main(argv: list[str] | None = None) -> None:
         "constant_baselines": baselines,
         "baseline_to_beat": _BAR,
         "train_config": {"batch_size": args.batch_size, "lr": args.lr, "max_len": args.max_len,
-                         "epochs": args.epochs, "min_support": args.min_support, "seed": args.seed},
+                         "epochs": args.epochs, "min_support": args.min_support, "seed": args.seed,
+                         "adapter": args.adapter, "lora_r": args.lora_r if args.adapter == "lora" else None},
         "history": history,
     }, model_dir / "metrics.json")
 
