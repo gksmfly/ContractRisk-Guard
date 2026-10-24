@@ -109,6 +109,13 @@ SOFT_PATH = ARM_DATA_DIR / "arm_S_soft.jsonl"
 # 인과 확인 (paper_plan §7-18): 표준계약서 출처의 NOISE만 뺀다(공정위 조항은 전부 남김). forward 라벨
 DS_PATH = ARM_DATA_DIR / "arm_DS_forward_stdonly.jsonl"
 
+# 어댑터 팔 (paper_plan §7-26): 같은 데이터에서 인코더를 LoRA로만 학습한다. LA = 필터 없음(A) 데이터, LD = FB-Check(D) 데이터
+ADAPTER_ARMS = {"LA": "A", "LD": "D"}
+ADAPTER_LR = 3e-4      # 사전 등록 고정값. LoRA는 전체 파인튜닝보다 큰 학습률을 쓰는 것이 일반적이다. 결과를 보고 바꾸지 않는다
+
+# 라벨 문제 유형별 영향 (paper_plan §7-27): AI Hub 학습 절반의 같은 조항에서 라벨만 유형별로 정답으로 바꾼다
+LABEL_TYPE_ARMS = ("OQ", "OFP", "OFN", "OMX", "OG")
+
 # AI Hub 팔 → 학습 부분표본 크기(0 = 전량)
 AIHUB_ARMS = {"X": 0, "X3352": 3352, "X1000": 1000, "XC": -1}
 # XC: 같은 시드 C 팔의 **실제 학습 수**(gold 배제·홀드아웃·dev 분리 후)에 맞춘다. C의 3,352는 분리 전
@@ -250,6 +257,9 @@ def prepare_arms() -> dict[str, Path]:
         save_jsonl(recs, SOFT_PATH)
         logger.info(f"  Arm S: {SOFT_PATH} 저장 ({len(recs)}건)")
     paths["S"] = SOFT_PATH
+    paths["LA"] = paths["A"]
+    paths["LD"] = CLEAN_PATH
+    paths.update(_prepare_label_type_arms())
 
     # ── DS: 표준계약서 NOISE만 제외 (§7-18) ──
     if not DS_PATH.exists():
@@ -259,6 +269,27 @@ def prepare_arms() -> dict[str, Path]:
     paths["DS"] = DS_PATH
 
     return paths
+
+
+def _prepare_label_type_arms() -> dict[str, Path]:
+    """§7-27: AI Hub **학습 절반** 조항(2,579건, §7-14 행)에 Qwen 라벨·전문가 정답을 붙여 팔별 라벨 파일을 만든다. 이미 있으면 그대로."""
+    from eval.label.label_type_fix import ARMS, fixed_labels
+    out = {a: ARM_DATA_DIR / f"arm_{a}_labeltype.jsonl" for a in LABEL_TYPE_ARMS}
+    if all(f.exists() for f in out.values()):
+        return out
+    from eval.label.fbcheck_aihub import RAW, population
+    train_files = set(json.loads((PROJECT_ROOT / "data/eval/model/aihub_split.json").read_text(encoding="utf-8"))["train_files"])
+    raw = {r["key"]: r for r in load_jsonl(RAW)}
+    rows = [(p, raw[p["key"]]) for p in population() if p["group"] in train_files]
+    for arm, fix in ARMS.items():
+        recs = []
+        for p, r in rows:
+            labels = fixed_labels(set(r["forward"]), set(p["articles"]), p["label"] == 1, fix)
+            recs.append({"text": p["text"], "articles": labels, "forward_articles": labels, "agreed_articles": labels,
+                         "source": "aihub", "chunk_id": p["group"]})
+        save_jsonl(recs, out[arm])
+        logger.info(f"  Arm {arm}: {out[arm]} 저장 ({len(recs)}건, 위반 라벨 있는 조항 {sum(bool(x['articles']) for x in recs)})")
+    return out
 
 
 # ── 학습 ─────────────────────────────────────────────────────────────────────
@@ -291,7 +322,7 @@ def train_arm(arm: str, seed: int, labels_path: Path, gpu: int) -> Path:
         "--model-dir", str(out_dir),
         "--epochs",    str(tc["epochs"]),
         "--batch-size", str(tc["batch_size"]),
-        "--lr",         str(tc["lr"]),
+        "--lr",         str(ADAPTER_LR if arm in ADAPTER_ARMS else tc["lr"]),
         "--max-len",    str(tc["max_len"]),
         "--min-support", str(tc["min_support"]),
         "--seed",        str(seed),
@@ -300,7 +331,7 @@ def train_arm(arm: str, seed: int, labels_path: Path, gpu: int) -> Path:
     ]
     # 음성 홀드아웃은 표준계약서 문서 id라 AI Hub 데이터에는 없다(학습기가 "문서가 없다"로 멈춘다).
     # AI Hub 팔은 그 문서를 애초에 못 보므로 떼어낼 것도 없다 — 평가셋은 모든 팔이 같다.
-    if arm not in AIHUB_ARMS:
+    if arm not in AIHUB_ARMS and arm not in LABEL_TYPE_ARMS:
         argv += ["--negative-holdout", str(metrics_v2["negative_holdout_docs"]),
                  "--negative-holdout-docs", str(HOLDOUT_PATH)]
     n_sub = AIHUB_ARMS.get(arm, 0)
@@ -310,6 +341,8 @@ def train_arm(arm: str, seed: int, labels_path: Path, gpu: int) -> Path:
         argv += ["--train-subsample", str(n_sub)]
     if metrics_v2.get("negative_ratio") is not None:
         argv += ["--negative-ratio", str(metrics_v2["negative_ratio"])]
+    if arm in ADAPTER_ARMS:
+        argv += ["--adapter", "lora", "--lora-r", "8", "--lora-alpha", "16"]
 
     logger.info(f"  Arm {arm} seed {seed}: 학습 시작 → {out_dir}")
     logger.info(f"    명령: {' '.join(argv[2:])}")
@@ -426,7 +459,7 @@ def _compare_arms(arm_c_evals: list[dict], arm_x_evals: list[dict],
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--arms",      nargs="+", choices=["A", "B", "C", "D", "X", "X3352", "X1000", "XC", "CL", "G", "K", "RB", "KSN", "KSS", "RSN", "RSS", "NC", "NRSN", "MV", "RMV", "CN", "D2", "B2", "S", "DS"],
+    parser.add_argument("--arms",      nargs="+", choices=["A", "B", "C", "D", "X", "X3352", "X1000", "XC", "CL", "G", "K", "RB", "KSN", "KSS", "RSN", "RSS", "NC", "NRSN", "MV", "RMV", "CN", "D2", "B2", "S", "DS", "LA", "LD", *LABEL_TYPE_ARMS],
                         default=["A", "B", "C"])
     parser.add_argument("--seeds",     nargs="+", type=int, default=SEEDS)
     parser.add_argument("--gpu",       type=int,  default=0)

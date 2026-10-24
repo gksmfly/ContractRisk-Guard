@@ -123,6 +123,17 @@ MODES = {
                             ("DS", "A", "표준계약서 NOISE만 제외 vs 필터 없음 — H2 AUROC (§7-18)")],
                 "report": [],
                 "out": OUT.with_name("aihub_eval_ds.json"), "half": False},
+    "adapter": {"arms": ["LA", "A", "LD", "D"], "seeds": [42, 7, 123, 11, 22, 33, 44, 55, 66, 77],
+                "primary": [("LA", "A", "LoRA 대 전체 파인튜닝, 필터 없음 데이터 (§7-26 주 판정 1)"),
+                            ("LD", "D", "LoRA 대 전체 파인튜닝, FB-Check 데이터 (§7-26 주 판정 2)")],
+                "report": [("LD", "LA", "LoRA 위에서 FB-Check 대 필터 없음 (보고)")],
+                "out": OUT.with_name("aihub_eval_adapter.json"), "half": False},
+    "labeltype": {"arms": ["OQ", "OFP", "OFN", "OMX", "OG"], "seeds": [42, 7, 123, 11, 22, 33, 44, 55, 66, 77],
+                  "primary": [("OG", "OQ", "총 영향(게이트): 전부 정답 대 Qwen 라벨 (§7-27 주 판정 1)"),
+                              ("OFN", "OFP", "누락 수정 대 잘못된 라벨 수정 (§7-27 주 판정 2, 게이트 통과 시에만)")],
+                  "report": [("OFP", "OQ", "잘못된 라벨만 고침 대 Qwen 라벨"), ("OFN", "OQ", "누락만 고침 대 Qwen 라벨"),
+                             ("OMX", "OQ", "혼합만 고침 대 Qwen 라벨")],
+                  "out": OUT.with_name("aihub_eval_labeltype.json"), "half": True},
     "cnc":     {"arms": ["C", "CNC"], "seeds": SEEDS,
                 "primary": [("CNC", "C", "CN 임계값 dev 재조정 vs 현행 (AI Hub 평가 절반, §7-10)")], "report": [],
                 "out": OUT.with_name("aihub_eval_cnc.json"), "half": True},
@@ -236,7 +247,7 @@ def main() -> None:
     report = {f"{x}-{y}": {"desc": dsc, **contrast(x, y)} for x, y, dsc in REPORT_ if x in boots and y in boots}
     decision = {k: v["auroc"]["verdict"] for k, v in primary.items()}
     sub = [items[i] for i in keep_idx]
-    rep = {"rule": {"full": "eval/paper_plan.md §7-8", "seeds20": "eval/paper_plan.md §7-15", "binary": "eval/paper_plan.md §7-16 ②", "soft": "eval/paper_plan.md §7-17", "ds": "eval/paper_plan.md §7-18"}.get(args.mode, "eval/paper_plan.md §7-9"), "mode": args.mode,
+    rep = {"rule": {"full": "eval/paper_plan.md §7-8", "seeds20": "eval/paper_plan.md §7-15", "binary": "eval/paper_plan.md §7-16 ②", "soft": "eval/paper_plan.md §7-17", "ds": "eval/paper_plan.md §7-18", "adapter": "eval/paper_plan.md §7-26", "labeltype": "eval/paper_plan.md §7-27"}.get(args.mode, "eval/paper_plan.md §7-9"), "mode": args.mode,
            "seeds": SEEDS_, "n": {"pos": int(sum(i["label"] for i in sub)), "neg": int(sum(1 - i["label"] for i in sub)),
                                   "pos_single_article": int(sum(i["label"] == 1 and len(i["articles"]) == 1 for i in sub)),
                                   "files": len(groups)},
